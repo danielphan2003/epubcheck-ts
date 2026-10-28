@@ -159,16 +159,27 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
     // An overlay link's fragment is checked with the other overlay rules.
     if (type === "overlay-text") continue;
     if (!resourceFindings(reference, item.mediaType, item)) continue;
-    // A search key must lead to a spine item, unless an EPUB CFI says where.
-    if (type === "search-key" && !publication.spine.has(item)) {
-      const cfi = UrlFragment.parse(reference.fragment ?? "", item.mediaType).scheme === "epubcfi";
-      if (!cfi) {
-        findings.push(finding(reference, "RSC-021", Url.nameOf(target)));
-        continue;
-      }
-    }
     const fragment = reference.fragment;
     const parsed = UrlFragment.parse(fragment ?? "", item.mediaType);
+    // Only SVG images can have fragments (other than EPUB CFIs), and style sheets none.
+    if (
+      type === "image" &&
+      fragment !== undefined &&
+      parsed.scheme !== "epubcfi" &&
+      essence(item.mediaType) !== "image/svg+xml"
+    ) {
+      findings.push(finding(reference, "RSC-009"));
+      continue;
+    }
+    if (type === "stylesheet" && fragment !== undefined) {
+      findings.push(finding(reference, "RSC-013"));
+      continue;
+    }
+    // A search key must lead to a spine item, unless an EPUB CFI says where.
+    if (type === "search-key" && !publication.spine.has(item) && parsed.scheme !== "epubcfi") {
+      findings.push(finding(reference, "RSC-021", Url.nameOf(target)));
+      continue;
+    }
     // Upstream does not check where EPUB CFIs lead.
     if (type === "hyperlink" && parsed.scheme !== "epubcfi") {
       if (!isLinkable(item.mediaType, publication.version)) continue;
@@ -179,9 +190,6 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
     }
     if (fragment === undefined || fragment === "" || target.kind === "remote") continue;
     if (publication.unparsed.has(target.path)) continue;
-    // Style sheets and non-SVG images must not have fragments at all; that is checked later.
-    if (type === "stylesheet" || (type === "image" && essence(item.mediaType) !== "image/svg+xml"))
-      continue;
     if (
       parsed.id !== "" &&
       isContent(item.mediaType) &&

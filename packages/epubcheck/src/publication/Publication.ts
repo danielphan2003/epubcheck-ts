@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import * as ContentChecker from "../content/ContentChecker.ts";
+import * as ContentRules from "../content/ContentRules.ts";
 import * as FixedLayout from "../layout/FixedLayout.ts";
 import * as MediaOverlays from "../overlays/MediaOverlays.ts";
 import type * as Container from "../ocf/Container.ts";
@@ -169,6 +170,9 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
     if (Option.isNone(document) || kind === "mo" || kind === "ncx" || kind === "skm") continue;
     if (opf.version === "3") {
+      yield* reportFindings(
+        ContentRules.check(document.value, item.path, kind === "svg" ? "svg" : "xhtml"),
+      );
       const fixed = fixedLayout.has(item.path);
       yield* reportFindings(
         kind === "svg"
@@ -290,6 +294,11 @@ export const checkDocumentReferences = Effect.fn("Publication.checkDocumentRefer
     yield* reportFindings(MediaOverlays.read(document.value, path).findings);
   }
   if (Option.isNone(document) || kind === "mo" || kind === "ncx" || kind === "skm") return;
+  if (version === "3") {
+    yield* reportFindings(
+      ContentRules.check(document.value, path, kind === "svg" ? "svg" : "xhtml"),
+    );
+  }
   const context: Collect.Context = {
     version,
     container: false,

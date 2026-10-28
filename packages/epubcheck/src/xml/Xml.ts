@@ -40,6 +40,9 @@ export interface XmlDoctype {
   readonly publicId: string | undefined;
   readonly systemId: string | undefined;
   readonly internalSubset: string | undefined;
+  // Where the DOCTYPE declaration ends.
+  readonly line: number;
+  readonly column: number;
 }
 
 export interface ProcessingInstruction {
@@ -63,7 +66,7 @@ export interface XmlError {
   readonly column: number;
 }
 
-const parseDoctype = (raw: string): XmlDoctype => {
+const parseDoctype = (raw: string, line: number, column: number): XmlDoctype => {
   const match =
     /^\s*([^\s[>]+)(?:\s+(?:PUBLIC\s+(["'])(.*?)\2(?:\s+(["'])(.*?)\4)?|SYSTEM\s+(["'])(.*?)\6))?\s*(?:\[([\s\S]*)\])?\s*$/.exec(
       raw,
@@ -73,6 +76,8 @@ const parseDoctype = (raw: string): XmlDoctype => {
     publicId: match?.[3],
     systemId: match?.[5] ?? match?.[7],
     internalSubset: match?.[8],
+    line,
+    column,
   };
 };
 
@@ -223,6 +228,14 @@ const decodeUcs4 = (bytes: Uint8Array, littleEndian: boolean) => {
   }
   return text;
 };
+
+// Names of external entities (`SYSTEM` or `PUBLIC`) declared in an internal subset.
+export const externalEntityNames = (doctype: XmlDoctype) =>
+  [
+    ...(doctype.internalSubset ?? "").matchAll(
+      /<!ENTITY\s+(?:%\s+)?([^\s%]+)\s+(?:SYSTEM|PUBLIC)\b/g,
+    ),
+  ].map((match) => match[1] ?? "");
 
 // Xerces rejects an entity reference without its `;`, which saxes reports later and less
 // precisely; this finds the first one outside markup that is not parsed as text.
@@ -441,7 +454,7 @@ export const parse = (source: string, options: ParseOptions = {}) => {
   };
   let broken = new Map<string, string>();
   parser.on("doctype", (raw) => {
-    doctype = parseDoctype(raw);
+    doctype = parseDoctype(raw, parser.line, parser.column + 1);
     const rawOffset = source.indexOf("<!DOCTYPE") + "<!DOCTYPE".length;
     // An external ID needs a system literal after a public one; saxes does not check.
     const publicOnly = /^\s*[^\s[>]+\s+PUBLIC\s+(?:"[^"]*"|'[^']*')(?!\s*["'])/d.exec(raw);
