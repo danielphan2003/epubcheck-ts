@@ -1,13 +1,14 @@
 import type { MessageId } from "../messages/MessageCatalog.ts";
 import type { ManifestItem } from "../opf/PackageDocument.ts";
+import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as UrlFragment from "../util/UrlFragment.ts";
 import type { Features, Finding, Reference, ReferenceType } from "./Collect.ts";
 import * as Url from "./Url.ts";
 
 // Checks the collected references once all documents are read, in upstream's order: a remote
-// resource must be allowed, a target must be in the container and the manifest, a hyperlink
-// must reach a spine item, and a fragment must name an existing ID. The first problem found
-// for a reference is the only one reported.
+// resource must be allowed, a target must be in the container and the manifest, a foreign
+// resource needs a fallback, a reference must suit its target's type, and a fragment must name
+// an existing ID. The first problem found for a reference is the only one reported.
 
 export interface Publication {
   readonly version: "2" | "3";
@@ -15,6 +16,7 @@ export interface Publication {
   // Container paths, NFC-normalized like the targets of references.
   readonly files: ReadonlySet<string>;
   readonly items: ReadonlyMap<string, ManifestItem>;
+  readonly byId: ReadonlyMap<string, ManifestItem>;
   // Remote manifest items, by `Url.remoteKey`.
   readonly remoteItems: ReadonlyMap<string, ManifestItem>;
   readonly spine: ReadonlySet<ManifestItem>;
@@ -57,6 +59,16 @@ const itemOf = (reference: Reference, publication: Publication) => {
   return undefined;
 };
 
+// The types upstream requires a core media type or a fallback for (RSC-032).
+const NEEDS_FALLBACK = new Set<ReferenceType>([
+  "image",
+  "audio",
+  "generic",
+  "iframe",
+  "object",
+  "embed",
+]);
+
 // Whether a document loads an SVG image, which allows its `svg` property.
 export const loadsSvg = (references: ReadonlyArray<Reference>, publication: Publication) =>
   references.some((reference) => {
@@ -67,6 +79,37 @@ export const loadsSvg = (references: ReadonlyArray<Reference>, publication: Publ
 export const check = (references: ReadonlyArray<Reference>, publication: Publication) => {
   const findings: Array<Finding> = [];
   const epub3 = publication.version === "3";
+  const hasCoreFallback = (item: ManifestItem | undefined) => {
+    const seen = new Set<string>();
+    let current = item;
+    while (current?.fallback !== undefined && !seen.has(current.id)) {
+      seen.add(current.id);
+      current = publication.byId.get(current.fallback);
+      if (current !== undefined && MediaTypes.isCore(current.mediaType)) return true;
+    }
+    return false;
+  };
+  // A foreign resource needs a fallback (RSC-032), and a script must be JavaScript.
+  const resourceFindings = (reference: Reference, mediaType: string, item?: ManifestItem) => {
+    const name = Url.nameOf(reference.target);
+    if (
+      NEEDS_FALLBACK.has(reference.type) &&
+      reference.intrinsicFallback !== true &&
+      !MediaTypes.isCore(mediaType) &&
+      !hasCoreFallback(item)
+    ) {
+      findings.push(finding(reference, "RSC-032", name, mediaType));
+    }
+    if (reference.type !== "script") return true;
+    if (!MediaTypes.isJavaScript(mediaType)) {
+      findings.push(finding(reference, "RSC-034"));
+      return false;
+    }
+    if (MediaTypes.isLegacyJavaScript(mediaType)) {
+      findings.push(finding(reference, "RSC-035", mediaType));
+    }
+    return true;
+  };
   // Undeclared resources are reported once each.
   const undeclared = new Set<string>();
   for (const reference of references) {
@@ -76,7 +119,7 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
     if (target.kind === "data") {
       if (type === "hyperlink" && isLinkable(target.mediaType, publication.version)) {
         findings.push(finding(reference, "RSC-011"));
-      }
+      } else if (type !== "hyperlink") resourceFindings(reference, target.mediaType);
       continue;
     }
     if (target.kind === "local" && target.path === publication.packagePath) continue;
@@ -97,7 +140,7 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
       }
     }
     if (item === undefined) {
-      const name = target.kind === "remote" ? target.url : Url.encodePath(target.path);
+      const name = Url.nameOf(target);
       // Upstream looks the URL up with its fragment, so an undeclared file referenced with a
       // fragment is reported as missing.
       if (
@@ -111,6 +154,7 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
       }
       continue;
     }
+    if (!resourceFindings(reference, item.mediaType, item)) continue;
     const fragment = reference.fragment;
     const parsed = UrlFragment.parse(fragment ?? "", item.mediaType);
     // Upstream does not check where EPUB CFIs lead.

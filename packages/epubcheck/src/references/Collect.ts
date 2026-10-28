@@ -1,4 +1,5 @@
 import type { MessageId } from "../messages/MessageCatalog.ts";
+import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as Xml from "../xml/Xml.ts";
 import * as Url from "./Url.ts";
 
@@ -37,6 +38,11 @@ export interface Reference {
   readonly fragment: string | undefined;
   // The media type the referencing element declares (a `type` attribute), if any.
   readonly mediaType?: string | undefined;
+  // The referencing element's local name.
+  readonly element?: string | undefined;
+  // Whether the reference needs no manifest fallback: an image in `picture`, an `object` with
+  // content, or a media source next to one of a core media type.
+  readonly intrinsicFallback?: boolean | undefined;
   // Whether the document loads it as one of its resources, which decides the `remote-resources`
   // and `svg` manifest properties.
   readonly resource: boolean;
@@ -50,6 +56,8 @@ export interface Context {
   readonly version: "2" | "3";
   // False for a single document, which has no container to resolve references in.
   readonly container: boolean;
+  // The manifest media type of a resource, in a publication.
+  readonly mediaTypeOf?: ((target: Url.Target) => string | undefined) | undefined;
 }
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -271,6 +279,37 @@ export const cssUrls = (css: string) => {
   return urls;
 };
 
+// The font types `@font-face` may use (CSS-007).
+const isFontType = (mediaType: string, version: "2" | "3") =>
+  version === "3"
+    ? MediaTypes.isCoreFont(mediaType)
+    : /^(?:font\/|application\/font|application\/x-font)/.test(mediaType) ||
+      mediaType === "application/vnd.ms-opentype";
+
+const BLESSED_IMAGES = new Set([
+  "image/gif",
+  "image/png",
+  "image/jpeg",
+  "image/svg+xml",
+  "image/webp",
+  "image/avif",
+  "image/jxl",
+]);
+
+// What a `type` attribute must agree with: the codecs of MP4 and Ogg audio, and no other
+// parameters.
+const declaredType = (value: string) => {
+  const { essence, parameters } = MediaTypes.parse(value);
+  const codecs = parameters.get("codecs");
+  const keep = (essence === "audio/mp4" || essence === "audio/ogg") && codecs !== undefined;
+  return keep ? `${essence}; codecs=${codecs}` : essence;
+};
+const canonical = (value: string) => {
+  const { essence, parameters } = MediaTypes.parse(value);
+  const sorted = [...parameters].sort(([left], [right]) => (left < right ? -1 : 1));
+  return [essence, ...sorted.map(([name, value]) => `${name}=${value}`)].join("; ");
+};
+
 // A style sheet, or the CSS of a `style` element or attribute (`offset` lines into its document).
 export const fromCss = (css: string, path: string, context: Context, offset = 0) => {
   const references: Array<Reference> = [];
@@ -289,6 +328,16 @@ export const fromCss = (css: string, path: string, context: Context, offset = 0)
     const type = found.kind === "import" ? "stylesheet" : found.fontFace ? "font" : "generic";
     // A remote style sheet is reported anyway (RSC-006); it does not need the property.
     if (type !== "stylesheet" && resolved.target.kind === "remote") remote = true;
+    const mediaType = type === "font" ? context.mediaTypeOf?.(resolved.target) : undefined;
+    if (mediaType !== undefined && !isFontType(mediaType, context.version)) {
+      findings.push({
+        id: "CSS-007",
+        args: [Url.nameOf(resolved.target), mediaType],
+        path,
+        line,
+        column: found.column,
+      });
+    }
     references.push({ ...resolved, type, resource: false, path, line, column: found.column });
   }
   return { references, findings, remote };
@@ -337,11 +386,81 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     type: ReferenceType,
     element: Xml.XmlElement,
     at: Position,
-    resource = false,
+    options: { readonly resource?: boolean; readonly intrinsicFallback?: boolean } = {},
   ) => {
     if (resolved === undefined) return;
     const mediaType = Xml.attribute(element, "type")?.trim();
-    references.push({ ...resolved, type, mediaType, resource, path, ...at });
+    const { resource = false, intrinsicFallback = false } = options;
+    references.push({
+      ...resolved,
+      type,
+      mediaType,
+      element: element.local,
+      resource,
+      intrinsicFallback,
+      path,
+      ...at,
+    });
+  };
+  const mediaTypeOf = (resolved: Url.Resolved | undefined) =>
+    resolved === undefined ? undefined : context.mediaTypeOf?.(resolved.target);
+  // An element's `type` must agree with the manifest (OPF-013); what applies is the declared type
+  // if there is one.
+  const typeOf = (
+    resolved: Url.Resolved | undefined,
+    declared: string | undefined,
+    at: Position,
+  ) => {
+    const actual = mediaTypeOf(resolved);
+    if (declared === undefined || actual === undefined || resolved === undefined) return actual;
+    const expected = declaredType(declared);
+    if (canonical(expected) !== canonical(actual)) {
+      const args = [Url.nameOf(resolved.target), declared, actual];
+      findings.push({ id: "OPF-013", args, path, ...at });
+    }
+    return expected;
+  };
+  let inPicture = false;
+  // Upstream's checks of `picture` images: `img` must be a core image type, and `source` too
+  // unless it declares its type.
+  const pictureImage = (element: Xml.XmlElement, resolved: Url.Resolved | undefined) => {
+    const actual = mediaTypeOf(resolved);
+    if (!inPicture || actual === undefined || resolved === undefined) return;
+    const args = [Url.nameOf(resolved.target), actual];
+    const type = (Xml.attribute(element, "type") ?? "").trim();
+    if (element.local === "img") {
+      if (!BLESSED_IMAGES.has(actual))
+        findings.push({ id: "MED-003", args, path, ...start(element) });
+    } else if (type === "") {
+      if (!BLESSED_IMAGES.has(actual))
+        findings.push({ id: "MED-007", args, path, ...start(element) });
+    } else typeOf(resolved, type, start(element));
+  };
+  const images = (element: Xml.XmlElement) => {
+    // Upstream checks an image's `src` and `srcset` URLs once each, in sorted order.
+    const src = Xml.attribute(element, "src");
+    const sources = new Set(srcsetUrls(Xml.attribute(element, "srcset") ?? ""));
+    if (src !== undefined) sources.add(src);
+    for (const url of [...sources].sort()) {
+      const resolved = resource(url, start(element));
+      pictureImage(element, resolved);
+      register(resolved, "image", element, start(element), {
+        resource: true,
+        intrinsicFallback: inPicture,
+      });
+    }
+  };
+  // Audio and video references take their type from the resource: audio played by a `video`
+  // element is audio.
+  const media = (
+    element: Xml.XmlElement,
+    resolved: Url.Resolved | undefined,
+    mediaType: string | undefined,
+    at: Position,
+    intrinsicFallback: boolean,
+  ) => {
+    const type = mediaType !== undefined && MediaTypes.isAudio(mediaType) ? "audio" : "video";
+    register(resolved, type, element, at, { resource: true, intrinsicFallback });
   };
   // Upstream's resource URLs: blank ones are ignored, and remote ones need `remote-resources`.
   const resource = (url: string | undefined, at: Position) => {
@@ -351,7 +470,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     return resolved;
   };
   const addResource = (element: Xml.XmlElement, url: string | undefined, type: ReferenceType) =>
-    register(resource(url, start(element)), type, element, start(element), true);
+    register(resource(url, start(element)), type, element, start(element), { resource: true });
   const hyperlink = (element: Xml.XmlElement, href: string | undefined) => {
     if (href === undefined) return;
     const trimmed = href.trim();
@@ -376,7 +495,12 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     if (found.remote) remoteStyles.push(offset);
   };
   // The sources of an `audio` or `video` element, registered at its end tag, once each.
-  const mediaSources = new Map<Xml.XmlElement, Map<string, Url.Resolved>>();
+  const mediaSources = new Map<
+    Xml.XmlElement,
+    Map<string, { readonly resolved: Url.Resolved; readonly mediaType: string | undefined }>
+  >();
+  // Whether an element has content other than whitespace, for `object` fallbacks.
+  const palpable = new Map<Xml.XmlElement, boolean>();
 
   const enter = (element: Xml.XmlElement, parent: Xml.XmlElement | undefined) => {
     const base =
@@ -404,11 +528,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
             );
             break;
           }
-          // Upstream checks an image's `src` and `srcset` URLs once each, in sorted order.
-          const src = Xml.attribute(element, "src");
-          const sources = new Set(srcsetUrls(Xml.attribute(element, "srcset") ?? ""));
-          if (src !== undefined) sources.add(src);
-          for (const url of [...sources].sort()) addResource(element, url, "image");
+          images(element);
           break;
         }
         case "object":
@@ -446,12 +566,17 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
             scripted = true;
             break;
           case "audio":
-          case "video":
+          case "video": {
             if (element.local === "video") {
               addResource(element, Xml.attribute(element, "poster"), "image");
             }
             mediaSources.set(element, new Map());
-            addResource(element, Xml.attribute(element, "src"), element.local);
+            const resolved = resource(Xml.attribute(element, "src"), start(element));
+            media(element, resolved, mediaTypeOf(resolved), start(element), false);
+            break;
+          }
+          case "picture":
+            inPicture = true;
             break;
           case "track":
             addResource(element, Xml.attribute(element, "src"), "track");
@@ -462,22 +587,24 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
           case "iframe":
             addResource(element, Xml.attribute(element, "src"), "iframe");
             break;
-          case "embed":
-            addResource(element, Xml.attribute(element, "src"), "embed");
+          case "embed": {
+            const resolved = resource(Xml.attribute(element, "src"), start(element));
+            typeOf(resolved, Xml.attribute(element, "type"), start(element));
+            register(resolved, "embed", element, start(element), { resource: true });
             break;
+          }
           case "source": {
             if (parent?.local === "picture") {
-              const src = Xml.attribute(element, "src");
-              const sources = new Set(srcsetUrls(Xml.attribute(element, "srcset") ?? ""));
-              if (src !== undefined) sources.add(src);
-              for (const url of [...sources].sort()) addResource(element, url, "image");
+              images(element);
               break;
             }
             const sources = parent === undefined ? undefined : mediaSources.get(parent);
+            if (sources === undefined) break;
             const src = Xml.attribute(element, "src");
             const resolved = resource(src, start(element));
-            if (sources !== undefined && src !== undefined && resolved !== undefined) {
-              sources.set(src, resolved);
+            const mediaType = typeOf(resolved, Xml.attribute(element, "type"), start(element));
+            if (context.container && src !== undefined && resolved !== undefined) {
+              sources.set(src, { resolved, mediaType });
             }
             break;
           }
@@ -555,18 +682,48 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
   };
 
   const exit = (element: Xml.XmlElement) => {
+    palpable.set(
+      element,
+      element.children.some((child) =>
+        child.kind === "text" ? child.text.trim() !== "" : isPalpable(child, palpable),
+      ),
+    );
     if (element.ns !== XHTML_NS || !epub3) return;
+    if (element.local === "picture") inPicture = false;
     if (element.local === "object") {
       const at = end(element);
-      register(resource(Xml.attribute(element, "data"), at), "object", element, at, true);
+      const resolved = resource(Xml.attribute(element, "data"), at);
+      typeOf(resolved, Xml.attribute(element, "type"), at);
+      register(resolved, "object", element, at, {
+        resource: true,
+        intrinsicFallback: palpable.get(element) === true,
+      });
     }
     const sources = mediaSources.get(element);
     if (sources === undefined) return;
-    for (const resolved of sources.values()) {
-      const type = element.local === "audio" ? "audio" : "video";
-      references.push({ ...resolved, type, resource: true, path, ...end(element) });
+    // A source of a core media type is a fallback for the others.
+    const fallback = [...sources.values()].some(
+      ({ mediaType }) => mediaType !== undefined && MediaTypes.isCore(mediaType),
+    );
+    for (const { resolved, mediaType } of sources.values()) {
+      media(element, resolved, mediaType, end(element), fallback);
     }
   };
+
+  // `<?xml-stylesheet href="..."?>` links a style sheet to an SVG document.
+  for (const instruction of isSvgDocument ? document.processingInstructions : []) {
+    if (instruction.target !== "xml-stylesheet") continue;
+    const pseudo = (name: string) =>
+      new RegExp(`(?:^|\\s)${name}\\s*=\\s*(["'])(.*?)\\1`).exec(instruction.body)?.[2];
+    const type = pseudo("type");
+    if (type !== undefined && MediaTypes.parse(type).essence !== "text/css") continue;
+    const at = { line: instruction.line, column: instruction.column };
+    const href = pseudo("href");
+    const resolved = href === undefined ? undefined : check(href, at);
+    if (resolved !== undefined) {
+      references.push({ ...resolved, type: "stylesheet", resource: false, path, ...at });
+    }
+  }
 
   // Iterative, with end tags: documents can nest deeper than the call stack allows.
   const stack: Array<readonly [Xml.XmlElement, Xml.XmlElement | undefined, boolean]> = [
@@ -597,6 +754,27 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
   };
   return { references, findings, features };
 };
+
+// Upstream's palpable content: embedded content, text, and elements that contain either.
+const isPalpable = (element: Xml.XmlElement, palpable: ReadonlyMap<Xml.XmlElement, boolean>) => {
+  if (element.ns === SVG_NS) return element.local === "svg";
+  if (element.ns === MATHML_NS) return element.local === "math";
+  if (element.ns !== XHTML_NS) return false;
+  if (EMBEDDED.has(element.local)) return true;
+  if (NOT_PALPABLE.has(element.local)) return false;
+  return palpable.get(element) === true;
+};
+const EMBEDDED = new Set([
+  "audio",
+  "canvas",
+  "embed",
+  "iframe",
+  "img",
+  "object",
+  "picture",
+  "video",
+]);
+const NOT_PALPABLE = new Set(["html", "head", "script", "link", "meta", "title", "style"]);
 
 // The IDs a fragment can point to.
 export const ids = (document: Xml.XmlDocument) => {

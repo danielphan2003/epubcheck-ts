@@ -13,6 +13,8 @@ export interface ManifestItem {
   readonly path: string | undefined;
   readonly mediaType: string;
   readonly properties: ReadonlyArray<string>;
+  // The ID of the manifest fallback, if any.
+  readonly fallback: string | undefined;
   readonly element: Xml.XmlElement;
 }
 
@@ -73,6 +75,7 @@ export const read = (
         properties: (Xml.attribute(element, "properties") ?? "")
           .split(/[ \t\n\v\f\r]+/)
           .filter((token) => token !== ""),
+        fallback: Xml.attribute(element, "fallback")?.trim() || undefined,
         element,
       };
     });

@@ -83,7 +83,11 @@ describe("Url.checker", () => {
       target: { kind: "remote", url: "file:///etc/a.png", scheme: "file" },
       ids: ["RSC-030"],
     },
-    { url: "data:text/plain,x", target: { kind: "data", mediaType: "text/plain" }, ids: [] },
+    {
+      url: "data:text/plain,x",
+      target: { kind: "data", url: "data:text/plain,x", mediaType: "text/plain" },
+      ids: [],
+    },
   ])("resolves $url", ({ url, target, ids }) => {
     const { problems, resolved } = Url.checker("EPUB/content.xhtml", container).check(url);
     expect(resolved?.target).toEqual(target);

@@ -2,6 +2,7 @@ import { keyedSuggestion, type MessageId } from "../messages/MessageCatalog.ts";
 import * as JavaText from "../util/JavaText.ts";
 import { percentDecode } from "../util/UrlFragment.ts";
 import * as Xml from "../xml/Xml.ts";
+import * as MediaTypes from "../resources/MediaTypes.ts";
 import { checkLanguageTag } from "./LanguageTag.ts";
 import type { ManifestItem, PackageDocument } from "./PackageDocument.ts";
 import * as JavaDigits from "./JavaDigits.ts";
@@ -109,6 +110,14 @@ const metadataElements = (root: Xml.XmlElement) => [
     .flatMap((collection) => opfChildren(collection, "metadata").slice(0, 1)),
 ];
 
+// Data URLs (EPUB 3) and file URLs are not allowed as package document hrefs.
+const urlSchemeFindings = (element: Xml.XmlElement, href: string, version: "2" | "3") => {
+  const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(href)?.[1]?.toLowerCase();
+  if (scheme === "data" && version === "3") return [at(element, "RSC-029")];
+  if (scheme === "file") return [at(element, "RSC-030", href)];
+  return [];
+};
+
 const opfChildren = (element: Xml.XmlElement | undefined, local: string) =>
   element === undefined
     ? []
@@ -185,12 +194,20 @@ const manifestChecks = ({ opf, container }: Context) => {
       findings.push(at(item.element, "OPF-099"));
       continue;
     }
-    if (opf.version === "3") {
-      const checked =
-        !isRemote(item.href) &&
-        !item.href.startsWith("data:") &&
-        isCheckedMediaType(item.mediaType);
-      if (checked && item.href.includes("#")) findings.push(at(item.element, "OPF-091"));
+    // Upstream's checkItem: a data URL stops it, and only a media type it can parse is checked
+    // for a preferred type (OPF-090) and, locally, a fragment (OPF-091).
+    const schemeFindings = urlSchemeFindings(item.element, item.href, opf.version);
+    findings.push(...schemeFindings);
+    if (opf.version === "3" && schemeFindings.every((finding) => finding.id !== "RSC-029")) {
+      if (isCheckedMediaType(item.mediaType)) {
+        const preferred = MediaTypes.preferred(item.mediaType, item.href);
+        if (preferred !== undefined) {
+          findings.push(at(item.element, "OPF-090", preferred, item.mediaType));
+        }
+        if (!isRemote(item.href) && item.href.includes("#")) {
+          findings.push(at(item.element, "OPF-091"));
+        }
+      }
     }
   }
   // Upstream checks properties as it reads each `item` that it registers (an `href`, and an `id`
@@ -241,6 +258,31 @@ const manifestChecks = ({ opf, container }: Context) => {
   return findings;
 };
 
+const CONTENT_DOCUMENT_TYPES = new Set(["application/xhtml+xml", "image/svg+xml"]);
+
+// An EPUB 3 spine item that is not a content document needs a fallback chain to one.
+const spineFallbackFinding = (
+  itemref: Xml.XmlElement,
+  item: ManifestItem,
+  byId: ReadonlyMap<string, ManifestItem>,
+) => {
+  if (CONTENT_DOCUMENT_TYPES.has(MediaTypes.parse(item.mediaType).essence)) return [];
+  if (item.fallback === undefined) return [at(itemref, "OPF-043", item.mediaType)];
+  const seen = new Set<string>();
+  let current: ManifestItem | undefined = item;
+  while (current?.fallback !== undefined && !seen.has(current.id)) {
+    seen.add(current.id);
+    current = byId.get(current.fallback);
+    if (
+      current !== undefined &&
+      CONTENT_DOCUMENT_TYPES.has(MediaTypes.parse(current.mediaType).essence)
+    ) {
+      return [];
+    }
+  }
+  return [at(itemref, "OPF-044", item.mediaType)];
+};
+
 const spineChecks = ({ document, opf }: Context) => {
   const findings: Array<Finding> = [];
   const items = new Map(opf.items.map((item) => [item.id, item] as const));
@@ -263,6 +305,9 @@ const spineChecks = ({ document, opf }: Context) => {
     linear.set(idref, isLinear && linear.get(idref) !== false);
     // Upstream reports a repeated reference at the manifest item.
     if (opf.version === "2" && seen.has(idref)) findings.push(at(item.element, "OPF-034", idref));
+    if (opf.version === "3" && !/^https?:/i.test(item.href)) {
+      findings.push(...spineFallbackFinding(itemref, item, items));
+    }
     seen.add(idref);
   }
   if (linear.size > 0 && ![...linear.values()].includes(true)) findings.push(nowhere("OPF-033"));
@@ -481,6 +526,7 @@ const vocabularyChecks = ({ document, opf }: Context) => {
   for (const { link, place } of links) {
     const href = Xml.attribute(link, "href");
     const url = href === undefined ? null : URL.parse(href, packageUrl);
+    if (href !== undefined) findings.push(...urlSchemeFindings(link, href, opf.version));
     if (url?.protocol === "data:") continue;
     if (
       href !== undefined &&
