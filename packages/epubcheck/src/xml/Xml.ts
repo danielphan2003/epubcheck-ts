@@ -204,12 +204,14 @@ export interface ParseOptions {
   readonly externalEntities?: (doctype: XmlDoctype) => Readonly<Record<string, string>>;
 }
 
-export const decode = (bytes: Uint8Array) => {
-  if (bytes[0] === 0xfe && bytes[1] === 0xff)
-    return new TextDecoder("utf-16be").decode(bytes.subarray(2));
-  if (bytes[0] === 0xff && bytes[1] === 0xfe)
-    return new TextDecoder("utf-16le").decode(bytes.subarray(2));
-  return new TextDecoder("utf-8").decode(bytes);
+const decodeUcs4 = (bytes: Uint8Array, littleEndian: boolean) => {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let text = "";
+  for (let offset = 0; offset + 4 <= bytes.length; offset += 4) {
+    const codepoint = view.getUint32(offset, littleEndian);
+    text += codepoint <= 0x10ffff ? String.fromCodePoint(codepoint) : "\uFFFD";
+  }
+  return text;
 };
 
 // Xerces rejects an entity reference without its `;`, which saxes reports later and less
@@ -256,6 +258,78 @@ const offsetOf = (source: string, line: number, column: number) => {
   }
   return offset + column - 1;
 };
+
+export interface Decoded {
+  // The detected encoding, named the way upstream reports it ("UTF-16", "UCS-4", "ISO-8859-1").
+  readonly encoding: string;
+  readonly text: string | undefined;
+  // A well-formedness error the encoding causes in Xerces, which upstream reports as RSC-016.
+  readonly error: string | undefined;
+}
+
+const declaredEncoding = (prefix: string) =>
+  /^<\?xml[^>]*?\sencoding\s*=\s*["']([^"']+)["']/.exec(prefix)?.[1];
+
+// Sniffs the encoding from a byte order mark, the first bytes, or the XML declaration.
+export const decodeDocument = (bytes: Uint8Array): Decoded => {
+  const [b0, b1, b2, b3] = bytes;
+  if (b0 === 0xef && b1 === 0xbb && b2 === 0xbf) {
+    return {
+      encoding: "UTF-8",
+      text: new TextDecoder("utf-8").decode(bytes.subarray(3)),
+      error: undefined,
+    };
+  }
+  if (
+    (b0 === 0x00 && b1 === 0x00 && b2 === 0xfe && b3 === 0xff) ||
+    (b0 === 0x00 && b1 === 0x00 && b2 === 0x00 && b3 === 0x3c)
+  ) {
+    const start = b2 === 0xfe ? 4 : 0;
+    return { encoding: "UCS-4", text: decodeUcs4(bytes.subarray(start), false), error: undefined };
+  }
+  if (
+    (b0 === 0xff && b1 === 0xfe && b2 === 0x00 && b3 === 0x00) ||
+    (b0 === 0x3c && b1 === 0x00 && b2 === 0x00 && b3 === 0x00)
+  ) {
+    const start = b0 === 0xff ? 4 : 0;
+    return { encoding: "UCS-4", text: decodeUcs4(bytes.subarray(start), true), error: undefined };
+  }
+  if ((b0 === 0xfe && b1 === 0xff) || (b0 === 0x00 && b1 === 0x3c)) {
+    const text = new TextDecoder("utf-16be").decode(bytes.subarray(b0 === 0xfe ? 2 : 0));
+    return utf16(text);
+  }
+  if ((b0 === 0xff && b1 === 0xfe) || (b0 === 0x3c && b1 === 0x00)) {
+    const text = new TextDecoder("utf-16le").decode(bytes.subarray(b0 === 0xff ? 2 : 0));
+    return utf16(text);
+  }
+  const declared = declaredEncoding(new TextDecoder("latin1").decode(bytes.subarray(0, 200)));
+  if (declared === undefined || declared.toUpperCase() === "UTF-8") {
+    return { encoding: "UTF-8", text: new TextDecoder("utf-8").decode(bytes), error: undefined };
+  }
+  try {
+    return {
+      encoding: declared.toUpperCase(),
+      text: new TextDecoder(declared).decode(bytes),
+      error: undefined,
+    };
+  } catch {
+    return {
+      encoding: declared.toUpperCase(),
+      text: undefined,
+      error: `Invalid encoding name "${declared}".`,
+    };
+  }
+};
+
+// A UTF-16 document declaring another encoding is not well-formed for Xerces.
+const utf16 = (text: string): Decoded => {
+  const declared = declaredEncoding(text);
+  return declared === undefined || declared.toUpperCase().startsWith("UTF-16")
+    ? { encoding: "UTF-16", text, error: undefined }
+    : { encoding: "UTF-16", text: undefined, error: "Content is not allowed in prolog." };
+};
+
+export const decode = (bytes: Uint8Array) => decodeDocument(bytes).text ?? "";
 
 export const parse = (source: string, options: ParseOptions = {}) => {
   const parser = new SaxesParser({ xmlns: true, position: true });

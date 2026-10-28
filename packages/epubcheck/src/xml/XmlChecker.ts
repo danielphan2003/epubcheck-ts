@@ -84,14 +84,29 @@ export const check = Effect.fn("XmlChecker.check")(function* (
   bytes: Uint8Array,
   path: string,
   schemas: ReadonlyArray<string>,
-  prepare?: (document: Xml.XmlDocument) => Nvdl.Prepared,
-  // EPUB 3 content documents: also check SVG against the strict grammar (RSC-025).
-  informative = false,
-  // The publication's EPUB version, which decides the DTDs upstream resolves.
-  version?: "2" | "3",
+  options: {
+    readonly prepare?: ((document: Xml.XmlDocument) => Nvdl.Prepared) | undefined;
+    // XHTML content documents report UTF-16 as HTM-058 instead of RSC-027.
+    readonly isXhtml?: boolean;
+    // EPUB 3 content documents: also check SVG against the strict grammar (RSC-025).
+    readonly informative?: boolean;
+    // The publication's EPUB version, which decides the DTDs upstream resolves.
+    readonly version?: "2" | "3";
+  } = {},
 ) {
+  const { prepare, isXhtml = false, informative = false, version } = options;
   const report = yield* Report.Report;
-  const parsed = Xml.parse(Xml.decode(bytes), {
+  const decoded = Xml.decodeDocument(bytes);
+  if (decoded.encoding === "UTF-16") {
+    yield* report.message(isXhtml ? "HTM-058" : "RSC-027", Report.location(path));
+  } else if (decoded.encoding !== "UTF-8") {
+    yield* report.message("RSC-028", Report.location(path), decoded.encoding);
+  }
+  if (decoded.text === undefined) {
+    yield* report.message("RSC-016", Report.location(path, 1, 1), decoded.error ?? "");
+    return Option.none<Xml.XmlDocument>();
+  }
+  const parsed = Xml.parse(decoded.text, {
     externalEntities: (doctype) => entitiesOf(doctype, version),
   });
   if (Result.isFailure(parsed)) {

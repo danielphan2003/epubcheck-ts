@@ -113,8 +113,10 @@ epub2/opf-publication.feature:29 Report a missing version attribute
 epub2/opf-publication.feature:39 Verify that the 'clr' MARC code is allowed in the `opf:role` attribute (issue 205)
 epub2/opf-publication.feature:48 Verify that package IDs with leading/trailing spaces are allowed (issue 332)
 epub2/opf-publication.feature:52 the unique identifier must not be empty
+epub2/opf-publication.feature:60 Report a reference to a resource that is not listed in the manifest
 epub2/opf-publication.feature:65 Report a resource declared in the manifest but missing from the container
 epub2/opf-publication.feature:82 Verify that operating system files (`.DS_STORE`, `thumbs.db`) are ignored (issue 256)
+epub2/opf-publication.feature:86 Report a reference to a remote resource from an `object` element when the resource is not declared in package document
 epub2/ops-content-document-svg.feature:21 Verify that namespaced extensions are allowed
 epub2/ops-content-document-svg.feature:26 Verify `font-face-src` is allowed (issue 196)
 epub2/ops-content-document-xhtml.feature:102 Report nested `a` tags (issue 287)
@@ -133,6 +135,8 @@ epub2/ops-content-document-xhtml.feature:82 Verify attributes allowed on `ins` a
 epub2/ops-content-document-xhtml.feature:86 Verify `ins` and `del` elements can contain block content
 epub2/ops-content-document-xhtml.feature:93 Report duplicate ID values
 epub2/ops-publication.feature:22 Verify an XHTML content document without an `.xhtml` extension
+epub2/ops-publication.feature:26 Report a broken internal link in XHTML
+epub2/ops-publication.feature:31 Report a missing stylesheet referenced in a link element
 epub2/ops-publication.feature:39 Verify a publication using a DTBook Content Document
 epub2/ops-publication.feature:48 Verify usage of Javascript in XHTML
 epub3/00-minimal/minimal.feature:11 Verify a minimal expanded EPUB
@@ -181,21 +185,36 @@ epub3/03-resources/resources.feature:461 Verify that remote audio resources defi
 epub3/03-resources/resources.feature:466 Verify that remote video resources are allowed
 epub3/03-resources/resources.feature:47 Verify AAC/MP4 audio with explicit OPUS codec  is allowed
 epub3/03-resources/resources.feature:471 Verify that remote video resources are allowed anywhere
+epub3/03-resources/resources.feature:501 Report a remote image declared in the package document when it is referenced from an `img` tag and also retrieved by a script
 epub3/03-resources/resources.feature:507 Verify that remote fonts are allowed
 epub3/03-resources/resources.feature:512 Verify that remote SVG fonts are allowed
 epub3/03-resources/resources.feature:517 Verify that remote fonts of unknown type declared in CSS `@font-face` are allowed
 epub3/03-resources/resources.feature:522 Verify that remote fonts of unknown type declared in SVG `font-face-uri` are allowed
+epub3/03-resources/resources.feature:567 Report a remote script
+epub3/03-resources/resources.feature:573 Report a remote stylesheet
 epub3/03-resources/resources.feature:58 Verify OPUS audio in OGG container is allowed
+epub3/03-resources/resources.feature:585 Report a remote stylesheet declared in SVG inline style import
+epub3/03-resources/resources.feature:591 Warn about a remote resource with a non `https` URL
 epub3/03-resources/resources.feature:596 do not process a `mailto` URL as a resource
 epub3/03-resources/resources.feature:600 do not process an absolute `cite` URL as a resource
+epub3/03-resources/resources.feature:625 Report a data URL in the `href` attribute of an HTML `a` element
+epub3/03-resources/resources.feature:631 Report a data URL in the `href` attribute of an SVG `a` element
+epub3/03-resources/resources.feature:637 Report a data URL in the `href` attribute of an HTML `area` element
 epub3/03-resources/resources.feature:643 Allow a data URL defining an exmpt resource (in an HTML `link` element)
 epub3/03-resources/resources.feature:648 Allow a data URL defining a CMT resource (in an HTML `img` element)
 epub3/03-resources/resources.feature:653 Allow a data URL defining a foreign resource with intrinsic fallback (in an HTML `img` element)
 epub3/03-resources/resources.feature:664 Verify a data URL having unesapced query-like component
+epub3/03-resources/resources.feature:678 Report a file URL used in an XHTML content document
 epub3/03-resources/resources.feature:699 an XML document encoded as UTF-8 with an encoding declaration is valid
 epub3/03-resources/resources.feature:704 an XML document encoded as UTF-8 with a BOM is valid
 epub3/03-resources/resources.feature:709 an XML document encoded as UTF-8 with no encoding declaration is valid
+epub3/03-resources/resources.feature:714 Warn about an XML document encoded as UTF-16 (with an encoding declaration)
 epub3/03-resources/resources.feature:72 Verify GIF images are allowed
+epub3/03-resources/resources.feature:720 Warn about an XML document encoded as UTF-16 (not declared but with a BOM)
+epub3/03-resources/resources.feature:726 Warn about an XML document encoded as UTF-16 (even with an UTF-8 declaration)
+epub3/03-resources/resources.feature:733 Report an XML document encoded as ISO-8859-1 (detected in the encoding declaration)
+epub3/03-resources/resources.feature:739 Report an XML document encoded as UCS-4 (detected with a BOM)
+epub3/03-resources/resources.feature:745 Report an XML document declared with an unknown encoding name
 epub3/03-resources/resources.feature:752 a not well-formed Package Document is reported
 epub3/03-resources/resources.feature:758 using a not-declared namespace is not allowed
 epub3/03-resources/resources.feature:764 Verify an attribute value with leading/trailing whitespace is allowed (issue 332)
@@ -243,6 +262,20 @@ epub3/04-ocf/filename-checker.feature:81 VERTICAL LINE (|) is not disallowed in 
 epub3/04-ocf/ocf.feature:102 Warn about spaces in file names (full-publication check)
 epub3/04-ocf/ocf.feature:118 Allow valid container URLs in XHTML
 epub3/04-ocf/ocf.feature:123 Allow percent-encoded URLs
+epub3/04-ocf/ocf.feature:157 Report a URL query string found in a manifest item
+epub3/04-ocf/ocf.feature:169 Report a relative `cite` URL when the resource is not found in the manifest
+epub3/04-ocf/ocf.feature:175 Report a reference from an XHTML `iframe` not declared in the manifest
+epub3/04-ocf/ocf.feature:181 Report a reference from an XHTML doc to a resource not declared in the manifest
+epub3/04-ocf/ocf.feature:187 Report a hyperlink to a resource missing from the publication
+epub3/04-ocf/ocf.feature:193 Report a MathML formula with an alternative image that cannot be found
+epub3/04-ocf/ocf.feature:199 Report a reference from an XHTML `track` not declared in the manifest
+epub3/04-ocf/ocf.feature:207 an SVG hyperlink 'href' referencing a missing resource is reported
+epub3/04-ocf/ocf.feature:213 an SVG hyperlink 'xlink:href' referencing a missing resource is reported
+epub3/04-ocf/ocf.feature:218 an SVG hyperlink with 'xlink:href' and 'href' referencing the same missing resource is reported once
+epub3/04-ocf/ocf.feature:229 an SVG image 'href' referencing a missing resource is reported
+epub3/04-ocf/ocf.feature:235 an SVG image 'xlink:href' referencing a missing resource is reported
+epub3/04-ocf/ocf.feature:240 an SVG image with 'xlink:href' and 'href' referencing the same missing resource is reported once
+epub3/04-ocf/ocf.feature:255 Report a CSS `url` that is not declared in the package document or present in the container
 epub3/04-ocf/ocf.feature:27 Verify a file name containing a `+` character is allowed (issue 188)
 epub3/04-ocf/ocf.feature:280 Report an unknown element in the `container.xml` file
 epub3/04-ocf/ocf.feature:287 Report a missing 'container.xml' file
@@ -323,6 +356,9 @@ epub3/05-package-document/package-document.feature:383 the 'link' 'hreflang' lan
 epub3/05-package-document/package-document.feature:389 the 'link' 'hreflang' language tag must be well-formed
 epub3/05-package-document/package-document.feature:395 Allow a link to a resource referenced from the spine
 epub3/05-package-document/package-document.feature:400 Allow a link to a resource embedded in a content document
+epub3/05-package-document/package-document.feature:416 Report remote audio resources not declared in the package document
+epub3/05-package-document/package-document.feature:422 Report remote audio resources defined in `sources` elements but not declared in the package document
+epub3/05-package-document/package-document.feature:428 Report a remote font not declared in the package document
 epub3/05-package-document/package-document.feature:434 Report a self-referencing manifest (full publication check)
 epub3/05-package-document/package-document.feature:44 'id' attributes can have leading or trailing space
 epub3/05-package-document/package-document.feature:440 Report a self-referencing manifest (single file check)
@@ -344,15 +380,30 @@ epub3/05-package-document/package-document.feature:549 The 'cover-image' item pr
 epub3/05-package-document/package-document.feature:55 'id' attributes must be unique after whitespace normalization
 epub3/05-package-document/package-document.feature:555 Report an unknown manifest item property
 epub3/05-package-document/package-document.feature:563 Verify content documents are identified as containing mathml
+epub3/05-package-document/package-document.feature:570 Report an XHTML document with remote audio but without the `remote-resources` property set in the package document
+epub3/05-package-document/package-document.feature:582 Report a missing `remote-resources` property when inline CSS has remote references
+epub3/05-package-document/package-document.feature:588 Report an SVG using remote fonts without the `remote-resource` property set in the package document
+epub3/05-package-document/package-document.feature:594 Report an XHTML document using remote fonts in `style` without the `remote-resource` property set in the package document
+epub3/05-package-document/package-document.feature:600 Report the declaration of the `remote-resources` property when the content has no script
+epub3/05-package-document/package-document.feature:606 Report a reference a remote resource when the `remote-resources` property is not set in the manifest
 epub3/05-package-document/package-document.feature:618 Verify that inline CSS does not trigger an unrequired `remote-resources` property error
+epub3/05-package-document/package-document.feature:626 Report the declaration of the `scripted` property when the content has no script
+epub3/05-package-document/package-document.feature:632 Report a scripted document (javascript) without the `scripted` property declared in the package document
+epub3/05-package-document/package-document.feature:638 Report a scripted document (form) without the `scripted` property declared in the package document
 epub3/05-package-document/package-document.feature:64 'refines' attribute MUST be a relative URL
 epub3/05-package-document/package-document.feature:644 Verify that script data blocks do not require the `scripted` property to be defined in the manifest
+epub3/05-package-document/package-document.feature:651 Report the declaration of the `svg` property when the content has no embedded SVG
+epub3/05-package-document/package-document.feature:657 Report references to embedded SVG when the `svg` property is not set in the manifest
+epub3/05-package-document/package-document.feature:663 Report reference to an embedded SVG when the `svg` property is not set in the manifest (one reference is set properly)
+epub3/05-package-document/package-document.feature:672 Report a content document without the `switch` property declared in the manifest
 epub3/05-package-document/package-document.feature:683 one item must have the 'nav' property
 epub3/05-package-document/package-document.feature:690 at most one item must have the 'nav' property
 epub3/05-package-document/package-document.feature:697 the 'nav' property must be on an XHTML Content Document
 epub3/05-package-document/package-document.feature:709 Report a missing spine
 epub3/05-package-document/package-document.feature:71 'refines' attribute should use a fragment ID if refering to a Publication Resource
 epub3/05-package-document/package-document.feature:716 Report an empty spine
+epub3/05-package-document/package-document.feature:723 Report when a document hyperlinked from a content document is not in the spine
+epub3/05-package-document/package-document.feature:729 Report when a document hyperlinked from the navigation document is not in the spine
 epub3/05-package-document/package-document.feature:738 An SVG Content Document is allowed in the spine
 epub3/05-package-document/package-document.feature:743 An unknown 'itemref' ID is reported
 epub3/05-package-document/package-document.feature:750 Two spine 'itemref' elements cannot reference the same manifest item
@@ -395,6 +446,7 @@ epub3/07-content-documents/content-documents-css.feature:18 Verify a minimal pub
 epub3/07-content-documents/content-documents-css.feature:41 Verify a CSS document encoded in UTF-8 (declared with `@charset`)
 epub3/07-content-documents/content-documents-css.feature:65 Verify that namespace URIs in CSS are not recognized as remote resources (issue 237)
 epub3/07-content-documents/content-documents-css.feature:70 Report an attempt to `@import` a CSS file that declared in the package document but not present in the container
+epub3/07-content-documents/content-documents-css.feature:76 Report an attempt to `@import` a CSS file that is not declared in the manifest but is present in the container
 epub3/07-content-documents/content-documents-css.feature:83 Verify valid CSS Selectors syntax
 epub3/07-content-documents/content-documents-fixed-layout.feature:103 Verify that the initial containing block rules are not checked on embedded svg elements
 epub3/07-content-documents/content-documents-fixed-layout.feature:15 Verify a fixed-layout SVG
@@ -461,6 +513,9 @@ epub3/07-content-documents/content-documents-xhtml.feature:258 Report invalid el
 epub3/07-content-documents/content-documents-xhtml.feature:265 Verify fragment identifiers are allowed in attributes after a `data-*` declaration
 epub3/07-content-documents/content-documents-xhtml.feature:27 Report RelaxNG schema errors when checking a Content Document in a full publication
 epub3/07-content-documents/content-documents-xhtml.feature:273 Do not report escaped hyperlinks to resources in the local file system
+epub3/07-content-documents/content-documents-xhtml.feature:278 Report a hyperlink to a missing identifier
+epub3/07-content-documents/content-documents-xhtml.feature:283 Report a hyperlink to a missing identifier in the Nav Doc
+epub3/07-content-documents/content-documents-xhtml.feature:288 Report a hyperlink to a mising identifier in another document
 epub3/07-content-documents/content-documents-xhtml.feature:293 Verify that href values that only contain whitepace are allowed
 epub3/07-content-documents/content-documents-xhtml.feature:298 Verify that relative paths starting with a single dot are resolved properly
 epub3/07-content-documents/content-documents-xhtml.feature:320 Allow valid hyperlink URLs
@@ -471,6 +526,7 @@ epub3/07-content-documents/content-documents-xhtml.feature:338 Report an `img` e
 epub3/07-content-documents/content-documents-xhtml.feature:344 Allow an `img` element with no `alt` attribute when it has a `title` attribute
 epub3/07-content-documents/content-documents-xhtml.feature:348 Allow an `img` element with no `alt` attribute when it is in a captioned figure
 epub3/07-content-documents/content-documents-xhtml.feature:352 Verify that `img` element can reference SVG fragments
+epub3/07-content-documents/content-documents-xhtml.feature:362 Report references to undeclared resources in `img srcset`
 epub3/07-content-documents/content-documents-xhtml.feature:370 Verify empty language tag allowed (issue 777)
 epub3/07-content-documents/content-documents-xhtml.feature:374 Report a mismatch in `lang` and `xml:lang` attributes
 epub3/07-content-documents/content-documents-xhtml.feature:380 Verify that three-character language codes are allowed (issue 615)
@@ -479,6 +535,7 @@ epub3/07-content-documents/content-documents-xhtml.feature:393 Report a `link` e
 epub3/07-content-documents/content-documents-xhtml.feature:406 Verify `link` elements used to declare alternative stylesheets
 epub3/07-content-documents/content-documents-xhtml.feature:417 Verify an `li` with a `value` attribute (issue 248)
 epub3/07-content-documents/content-documents-xhtml.feature:424 Verify `main` element is allowed
+epub3/07-content-documents/content-documents-xhtml.feature:43 Report an XHMTL document not encoded as UTF-8
 epub3/07-content-documents/content-documents-xhtml.feature:432 Verify image map
 epub3/07-content-documents/content-documents-xhtml.feature:437 Report invalid image map
 epub3/07-content-documents/content-documents-xhtml.feature:447 Allow a MathML formula with an alternative image
@@ -522,6 +579,7 @@ epub3/07-content-documents/content-documents-xhtml.feature:682 Report various in
 epub3/07-content-documents/content-documents-xhtml.feature:688 Report a `time` element nested inside another
 epub3/07-content-documents/content-documents-xhtml.feature:69 Verify `doctype` with legacy string
 epub3/07-content-documents/content-documents-xhtml.feature:698 Verify valid URLs
+epub3/07-content-documents/content-documents-xhtml.feature:709 Report a URL host that cannot be parsed
 epub3/07-content-documents/content-documents-xhtml.feature:733 Verify `epub:type` attribute on allowed content
 epub3/07-content-documents/content-documents-xhtml.feature:740 Report `epub:type` attribute on 'head' or metadata content
 epub3/07-content-documents/content-documents-xhtml.feature:745 Verify `epub:type` attribute with author-declared vocabulary
@@ -568,6 +626,7 @@ epub3/07-content-documents/content-documents-xhtml.feature:98 Report entity refe
 epub3/07-content-documents/content-documents-xhtml.feature:980 Verify RDF elements can be embedded in SVG
 epub3/08-navigation-document/navigation-document.feature:102 Allow nav hyperlinks to have leading and trailig spaces
 epub3/08-navigation-document/navigation-document.feature:109 Report a nav list without content
+epub3/08-navigation-document/navigation-document.feature:117 Report a `toc nav` that links to documents not in the spine
 epub3/08-navigation-document/navigation-document.feature:134 Verify a Navigation Document using EPUB CFI
 epub3/08-navigation-document/navigation-document.feature:143 Allow a nested `toc` nav
 epub3/08-navigation-document/navigation-document.feature:149 Verify a `toc nav` with links that match the reading order
