@@ -1,0 +1,35 @@
+packages:
+  - packages/*
+  - conformance
+  - scripts
+
+allowBuilds:
+  "@tsc-rs/typescript": true
+  esbuild: true
+
+catalog:
+  "@effect/platform-node": 4.0.7
+  "@effect/vitest": 4.0.7
+  "@types/node": 24.12.4
+  effect: 4.0.7
+  typescript: npm:@tsc-rs/typescript@0.8.0
+  vite-plus: 1.4.0
+
+minimumReleaseAgeExclude:
+  - "@effect/platform-node-shared@4.0.7"
+  - "@effect/platform-node@4.0.7"
+  - effect@4.0.7
+  - "@effect/vitest@4.0.7"
+
+patchedDependencies:
+  "@effect/vitest@4.0.7": patches/@effect__vitest@4.0.7.patch
+
+overrides:
+  "@effect/vitest>vitest": "-"
+  vite-plus: "catalog:"
+
+packageExtensions:
+  # Our patch makes @effect/vitest import vite-plus/test, as t3code does.
+  "@effect/vitest@*":
+    dependencies:
+      vite-plus: "catalog:"

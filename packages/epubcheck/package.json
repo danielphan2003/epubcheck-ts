@@ -1,0 +1,39 @@
+{
+  "name": "epubcheck-ts",
+  "version": "0.0.0",
+  "description": "Independent TypeScript rewrite of W3C EPUBCheck, built on Effect.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/danielphan2003/epubcheck-ts",
+    "directory": "packages/epubcheck"
+  },
+  "bin": {
+    "epubcheck-ts": "./src/bin.ts"
+  },
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./promise": {
+      "types": "./src/promise.ts",
+      "import": "./src/promise.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run --config ../../vite.config.ts --dir ."
+  },
+  "dependencies": {
+    "@effect/platform-node": "catalog:",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

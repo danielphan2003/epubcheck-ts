@@ -1,0 +1,5 @@
+# git autocrlf=true converts LF to CRLF on Windows, which breaks oxfmt and byte-exact fixtures.
+* text=auto eol=lf
+# Upstream EPUBCheck fixtures are byte-exact test inputs: never normalize them.
+vendor/epubcheck/** -text linguist-vendored
+packages/epubcheck/src/messages/catalog.generated.ts linguist-generated

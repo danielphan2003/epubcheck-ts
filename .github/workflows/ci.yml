@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check:
+    name: Format, lint, typecheck, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          node-version: "24"
+          cache: true
+
+      - name: Format
+        run: vp run fmt:check
+
+      - name: Lint
+        run: vp run lint
+
+      - name: Typecheck
+        run: vp run typecheck
+
+      - name: Test
+        run: vp run test
+
+  conformance:
+    name: Conformance
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          node-version: "24"
+          cache: true
+
+      # The ratchet compares against the base branch's committed score. A base without one
+      # (the bootstrap PR) only checks that the committed results are current.
+      - name: Resolve the baseline score
+        id: baseline
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          args=""
+          if git show "$BASE_SHA:conformance/score.json" > "$RUNNER_TEMP/base-score.json" 2>/dev/null; then
+            args="--baseline-score $RUNNER_TEMP/base-score.json"
+          fi
+          if git show "$BASE_SHA:conformance/passing.txt" > "$RUNNER_TEMP/base-passing.txt" 2>/dev/null; then
+            args="$args --baseline-passing $RUNNER_TEMP/base-passing.txt"
+          fi
+          echo "args=$args" >> "$GITHUB_OUTPUT"
+
+      - name: Check conformance score
+        run: node conformance/src/bin.ts check ${{ steps.baseline.outputs.args }}
