@@ -17,6 +17,7 @@ describe("MessageCatalog", () => {
 
   it("replaces a localized argument keyword with its bundle value, formatted by later arguments", () => {
     expect(formatMessage("OBS-001", ["element", "bindings"])).toContain("the bindings element");
+    expect(formatMessage("OBS-001", ["element"])).toBe("Usage of the %1$s element is outdated.");
     // Java .properties drops the space after `=`, so upstream renders no space before "with".
     expect(formatMessage("PKG-007", ["whitespace"])).toBe(
       'The content of the mimetype file must be the string "application/epub+zip"with no whitespace or newline.',

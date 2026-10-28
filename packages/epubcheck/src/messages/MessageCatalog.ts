@@ -78,7 +78,12 @@ export const formatMessage = (
   for (let index = 0; index < args.length; index++) {
     const localized = lookup(`${key}.${args[index]}`, locale);
     if (localized !== undefined) {
-      effectiveArgs = [...args.slice(0, index), formatJava(localized, args.slice(index + 1))];
+      // Upstream formats the keyword's text only when arguments follow it.
+      const rest = args.slice(index + 1);
+      effectiveArgs = [
+        ...args.slice(0, index),
+        rest.length > 0 ? formatJava(localized, rest) : localized,
+      ];
       break;
     }
   }

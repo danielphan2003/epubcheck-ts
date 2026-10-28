@@ -12,7 +12,8 @@ redistributes material from the projects below under their own licenses.
 What we redistribute, all verbatim under `vendor/epubcheck/` except where noted:
 
 - `src/test/resources/`: the Cucumber feature files and EPUB fixtures that the conformance
-  runner executes.
+  runner executes. Some fixtures embed third-party fonts as test inputs, such as Open Sans
+  (Apache-2.0) in `epub3/03-resources/files/resources-cmt-font-*`.
 - `src/main/resources/com/adobe/epubcheck/messages/`: the message bundles. The message catalog
   in `packages/epubcheck/src/messages/catalog.generated.ts` is generated from them.
 - `src/main/java/com/adobe/epubcheck/messages/DefaultSeverities.java`: read by

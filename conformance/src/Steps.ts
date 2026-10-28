@@ -173,7 +173,8 @@ const check = Effect.fn("Steps.check")(function* (world: World, file: string) {
   };
   const result = yield* checker.check(invocation);
   world.checks.push({ invocation, messages: result.messages });
-  world.messages = [...result.messages];
+  // Upstream's TestReport accumulates messages across every check in a scenario.
+  world.messages.push(...result.messages);
 });
 
 const consumeWhere = (world: World, predicate: (message: Report.Message) => boolean) => {

@@ -1,7 +1,8 @@
 import type { CheckResult } from "../EpubCheck.ts";
 import type { Message } from "./Report.ts";
 
-// Mirrors the shape of upstream's Jackson-serialized CheckingReport; fields we do not compute yet are null.
+// Follows the shape of upstream's CheckingReport JSON. Fields we do not compute yet are null, and
+// every location is listed (upstream caps them at --maxOfEachMessage).
 const groupMessages = (messages: ReadonlyArray<Message>) => {
   const groups = new Map<string, { readonly first: Message; readonly all: Array<Message> }>();
   for (const message of messages) {

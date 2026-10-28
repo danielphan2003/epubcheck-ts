@@ -35,7 +35,10 @@ const parseProperties = (text: string) => {
       .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex: string) =>
         String.fromCharCode(Number.parseInt(hex, 16)),
       )
-      .replace(/\\(.)/g, (_, char: string) => (char === "n" ? "\n" : char === "t" ? "\t" : char));
+      .replace(
+        /\\(.)/g,
+        (_, char: string) => ({ n: "\n", t: "\t", r: "\r", f: "\f" })[char] ?? char,
+      );
     entries.push([key, value]);
   }
   return entries;

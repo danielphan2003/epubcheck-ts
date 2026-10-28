@@ -11,9 +11,13 @@ export const UPSTREAM_PATHS = [
   "src/main/java/com/adobe/epubcheck/messages/DefaultSeverities.java",
 ];
 
-export const REFERENCE_JAR_URL = `https://github.com/w3c/epubcheck/releases/download/${UPSTREAM_TAG}/epubcheck-${UPSTREAM_TAG.slice(1)}.zip`;
-export const REFERENCE_JAR_SHA256 =
-  "33350c61038e71dfb3d45a76aed04bf5481e6d5500cb780f6e98db8bbd15a28c";
+// SHA-256 of each upstream release archive the reference jar may be fetched from.
+export const REFERENCE_JAR_SHA256: Readonly<Record<string, string>> = {
+  "v5.4.0": "33350c61038e71dfb3d45a76aed04bf5481e6d5500cb780f6e98db8bbd15a28c",
+};
+
+export const referenceJarUrl = (tag: string) =>
+  `https://github.com/w3c/epubcheck/releases/download/${tag}/epubcheck-${tag.slice(1)}.zip`;
 
 export const UpstreamManifest = Schema.Struct({
   repository: Schema.String,

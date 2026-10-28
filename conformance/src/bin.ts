@@ -29,6 +29,7 @@ class ConformanceCheckFailed extends Schema.TaggedError<ConformanceCheckFailed>(
 const Upstream = Schema.fromJsonString(
   Schema.Struct({
     tag: Schema.String,
+    paths: Schema.Array(Schema.String),
     objects: Schema.Record(Schema.String, Schema.String),
   }),
 );
@@ -46,13 +47,19 @@ const referenceJar = Effect.fn("Conformance.referenceJar")(function* () {
   return path.join(files.root, ".cache/epubcheck", `epubcheck-${tag.slice(1)}`, "epubcheck.jar");
 });
 
-// The vendored copy must stay byte-identical to upstream: compare git object ids at HEAD.
-const vendorTampering = Effect.fn("Conformance.vendorTampering")(function* () {
+// The committed vendored copy must stay byte-identical to upstream: every vendored path needs a
+// recorded git object id, and HEAD's object for that path must equal it.
+const vendorProblems = Effect.fn("Conformance.vendorProblems")(function* () {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const files = yield* paths;
-  const { objects } = yield* readUpstream();
-  const changed: Array<string> = [];
-  for (const [relative, expected] of Object.entries(objects)) {
+  const upstream = yield* readUpstream();
+  const problems: Array<string> = [];
+  for (const relative of upstream.paths) {
+    const expected = upstream.objects[relative];
+    if (expected === undefined) {
+      problems.push(`vendor/epubcheck/UPSTREAM.json records no object id for ${relative}.`);
+      continue;
+    }
     const actual = yield* spawner
       .string(
         ChildProcess.make("git", ["rev-parse", `HEAD:vendor/epubcheck/${relative}`], {
@@ -61,11 +68,17 @@ const vendorTampering = Effect.fn("Conformance.vendorTampering")(function* () {
       )
       .pipe(
         Effect.map((output) => output.trim()),
-        Effect.orElseSucceed(() => ""),
+        Effect.catchTags({ PlatformError: () => Effect.void }),
       );
-    if (actual !== expected) changed.push(relative);
+    if (actual === undefined) {
+      problems.push(`Cannot run git to verify vendor/epubcheck/${relative}.`);
+    } else if (actual !== expected) {
+      problems.push(
+        `vendor/epubcheck/${relative} differs from upstream; vendored files must stay verbatim.`,
+      );
+    }
   }
-  return changed;
+  return problems;
 });
 
 const paths = Effect.gen(function* () {
@@ -236,11 +249,7 @@ const check = Command.make(
         );
       }
     }
-    for (const relative of yield* vendorTampering()) {
-      reasons.push(
-        `vendor/epubcheck/${relative} differs from upstream; vendored files must stay verbatim.`,
-      );
-    }
+    reasons.push(...(yield* vendorProblems()));
     if (reasons.length > 0) return yield* new ConformanceCheckFailed({ reasons });
   }),
 ).pipe(
