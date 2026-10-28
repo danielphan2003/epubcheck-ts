@@ -54,43 +54,90 @@ epub-accessibility/accessibility.feature:18 Report unknown 'a11y' metadata
 epub-accessibility/accessibility.feature:23 Verify an 'a11y:certifierCredential' property can be defined as a link
 epub-accessibility/accessibility.feature:27 Allow using the 'a11y:exemption' property in package metadata
 epub-accessibility/accessibility.feature:31 Allow using the 'a11y:contactEmail' property in package metadata
+epub-dictionaries/dictionaries-package-document.feature:103 The source language of a single-dictionary publication must be defined
+epub-dictionaries/dictionaries-package-document.feature:109 The source language of a single-dictionary publication must not be defined more than once
+epub-dictionaries/dictionaries-package-document.feature:115 The target language of a single-dictionary publication must one of the declared 'dc:language' values
 epub-dictionaries/dictionaries-package-document.feature:121 The source/target languages of a multiple-dictionary publication can be defined in the collections
 epub-dictionaries/dictionaries-package-document.feature:125 The target language of a dictionary collection must be defined
 epub-dictionaries/dictionaries-package-document.feature:131 The source language of a dictionary collection must not be defined more than once
+epub-dictionaries/dictionaries-package-document.feature:137 The target language of a dictionary collection must one of the declared 'dc:language' values
 epub-dictionaries/dictionaries-package-document.feature:145 A Search Key Map document must have the correct media type
+epub-dictionaries/dictionaries-package-document.feature:21 An EPUB Dictionary publication must have a 'dictionary' `dc:type` property
 epub-dictionaries/dictionaries-package-document.feature:29 A publication with single EPUB Dictionary is valid
+epub-dictionaries/dictionaries-package-document.feature:33 A single EPUB Dictionary must declare a search key map
+epub-dictionaries/dictionaries-package-document.feature:39 A single EPUB Dictionary search key map must have the 'dictionary' property
 epub-dictionaries/dictionaries-package-document.feature:47 A dictionary collection can be used to define multiple EPUB Dictionaries
+epub-dictionaries/dictionaries-package-document.feature:51 A dictionary collection must contain a search key map
+epub-dictionaries/dictionaries-package-document.feature:57 A dictionary collection must not contain a search key map used by another collection
+epub-dictionaries/dictionaries-package-document.feature:63 A dictionary collection must not contain more than one search key map
 epub-dictionaries/dictionaries-package-document.feature:69 A dictionary collection must not contain child collections
+epub-dictionaries/dictionaries-package-document.feature:75 A dictionary collection must not contain resources not in the manifest
+epub-dictionaries/dictionaries-package-document.feature:81 A dictionary collection must not contain resources other than XHTML Content Documents and Search Key Map
 epub-dictionaries/dictionaries-package-document.feature:91 A dictionary-type property `monolingual` is valid
+epub-dictionaries/dictionaries-package-document.feature:95 A dictionary-type property with an unknown value is reported
 epub-dictionaries/dictionaries-publication.feature:103 Verify a publication with a single glossary
 epub-dictionaries/dictionaries-publication.feature:108 Verify the 'glossary' manifest item property is not mandatory in the default checking profile
+epub-dictionaries/dictionaries-publication.feature:18 Report a dictionary that does not meet the content model requirements
+epub-dictionaries/dictionaries-publication.feature:30 Report a search key map file that does not have an `.xml` extension
+epub-dictionaries/dictionaries-publication.feature:40 Report a dictionary search key map with an invalid content model
+epub-dictionaries/dictionaries-publication.feature:49 Report a link to a missing resource
+epub-dictionaries/dictionaries-publication.feature:54 Report a link to a CSS file instead of a content document
+epub-dictionaries/dictionaries-publication.feature:64 Report a dictionary that does not identify itself in a `dc:type` element
+epub-dictionaries/dictionaries-publication.feature:71 Report a dictionary that is not processed using the 'dict' profile but is detected as a dictionary from a content document's `epub:type` value
 epub-dictionaries/dictionaries-publication.feature:80 Verify a publication with a single dictionary
+epub-dictionaries/dictionaries-publication.feature:84 Report a single dictionary without any content documents with dictionary content
 epub-dictionaries/dictionaries-publication.feature:92 Verify a publication with multiple dictionaries
+epub-dictionaries/dictionaries-publication.feature:96 Report multiple dictionaries without any content documents with dictionary content
 epub-distributable-objects/do-package-document.feature:18 a simple EPUB Embedded Object
 epub-distributable-objects/do-package-document.feature:24 an embedded object must have a `dc:identifier` metadata
 epub-edupub/edupub-content-document-xhtml.feature:19 Minimal Content Document
 epub-edupub/edupub-content-document-xhtml.feature:26 Verify `body` used as an explicit section of content
 epub-edupub/edupub-content-document-xhtml.feature:30 Verify `body` only contains sectioning elements when no heading (remove this invalid duplicate? see issue 1109)
 epub-edupub/edupub-content-document-xhtml.feature:34 Verify `body` only contains sectioning elements when no heading
+epub-edupub/edupub-content-document-xhtml.feature:38 Report `body` used as an explicit section without a heading
+epub-edupub/edupub-content-document-xhtml.feature:44 Report a missing section heading
 epub-edupub/edupub-content-document-xhtml.feature:50 Allow a section heading specified as ARIA heading role
 epub-edupub/edupub-content-document-xhtml.feature:54 Verify a heading with only an `img` that has alternative text
+epub-edupub/edupub-content-document-xhtml.feature:58 Report a heading with only an `img` without alternative text
 epub-edupub/edupub-content-document-xhtml.feature:68 Verify section title and subtitle are in a `header` element
+epub-edupub/edupub-content-document-xhtml.feature:72 Report section subtitle not in a `header` element
+epub-edupub/edupub-content-document-xhtml.feature:78 Report invalid and missing headings in sectioning elements
+epub-edupub/edupub-content-document-xhtml.feature:84 Report invalid subheadings within a `body` used as an explicit section
+epub-edupub/edupub-content-document-xhtml.feature:90 Report `aria-label` on `body` and `section` with headings
+epub-edupub/edupub-content-document-xhtml.feature:99 Report incorrect heading level following `aria-label` on `body`
 epub-edupub/edupub-package-document.feature:17 a minimal EDUPUB publication is reported as valid
 epub-edupub/edupub-package-document.feature:23 a minimal EDUPUB teachers’s edition is reported as valid
+epub-edupub/edupub-package-document.feature:27 an EDUPUB teachers’s edition must declare the type 'edupub'
+epub-edupub/edupub-package-document.feature:33 an EDUPUB teachers’s edition should declare the source student edition
+epub-edupub/edupub-package-document.feature:41 an EDUPUB publication must declare the type 'edupub'
+epub-edupub/edupub-package-document.feature:49 an EDUPUB’s accessibility features must be declared
+epub-edupub/edupub-package-document.feature:55 an EDUPUB’s accessibility features must at least include 'tableOfContents'
 epub-edupub/edupub-publication.feature:20 Verify a basic edupub publication
 epub-edupub/edupub-publication.feature:27 Verify an edupub publication with fixed-layout documents
 epub-edupub/edupub-publication.feature:33 Verify an edupub publication with multiple renditions
+epub-edupub/edupub-publication.feature:37 Report a missing publication-level 'dc:type' for edupub publication with multiple renditions
+epub-edupub/edupub-publication.feature:43 Report a missing rendition-level 'dc:type' for edupub publication with multiple renditions
 epub-edupub/edupub-publication.feature:54 Verify that non-linear content does not have to follow the sectioning rules
 epub-edupub/edupub-publication.feature:69 Verify an edupub publication with a page list
 epub-indexes/indexes-content-document-xhtml.feature:19 Verify a minimal index
+epub-indexes/indexes-content-document-xhtml.feature:26 Report document without an index declaration
+epub-indexes/indexes-content-document-xhtml.feature:32 Report `index` semantic not declared on `body` element
 epub-indexes/indexes-package-document.feature:18 An index collection is reported as valid
 epub-indexes/indexes-package-document.feature:22 An index collection may contain index-group child collections
+epub-indexes/indexes-package-document.feature:26 An index collection must only contain links to XHTML Content Documents
 epub-indexes/indexes-package-document.feature:32 An index collection must not contain child collections other than index-group
 epub-indexes/indexes-package-document.feature:38 An index-group collection must not contain child collections
 epub-indexes/indexes-package-document.feature:44 An index-group collection must be a child collection of an index collection
+epub-indexes/indexes-publication.feature:20 Report an index publication with an invalid content model
+epub-indexes/indexes-publication.feature:27 Report a single-file index with an invalid content model
+epub-indexes/indexes-publication.feature:33 Report an index collection with an invalid content model
 epub-indexes/indexes-publication.feature:44 Verify an index publication
+epub-indexes/indexes-publication.feature:49 Report an index publication without an index
 epub-indexes/indexes-publication.feature:61 Verify a single-file index
+epub-indexes/indexes-publication.feature:65 Report a single-file index without an index
 epub-indexes/indexes-publication.feature:76 Verify an index collection
+epub-indexes/indexes-publication.feature:80 Report an index collection without an index
+epub-multiple-renditions/multiple-rendition-publication.feature:101 Report a mapping document with an unknown nav type
 epub-multiple-renditions/multiple-rendition-publication.feature:18 Verify basic multiple rendition publication
 epub-multiple-renditions/multiple-rendition-publication.feature:25 Report a multiple-rendition publication with no 'metadata.xml' file
 epub-multiple-renditions/multiple-rendition-publication.feature:30 Report an incomplete identifier in multiple-rendition 'metadata.xml' file
@@ -101,15 +148,25 @@ epub-multiple-renditions/multiple-rendition-publication.feature:60 Verify a rend
 epub-multiple-renditions/multiple-rendition-publication.feature:67 Report a mapping document that is not identified as XHTML in the container document
 epub-multiple-renditions/multiple-rendition-publication.feature:73 Report a container with more than one mapping document
 epub-multiple-renditions/multiple-rendition-publication.feature:79 Report a container with multiple renditions but missing all the core identifying features
+epub-multiple-renditions/multiple-rendition-publication.feature:89 Report a mapping document without a version identifier
+epub-multiple-renditions/multiple-rendition-publication.feature:95 Report a mapping document without a resource map
 epub-previews/previews-package-document.feature:18 an embedded EPUB preview collection
 epub-previews/previews-publication.feature:18 Verify a preview publication
+epub-previews/previews-publication.feature:25 Report a preview publication that does not identify itself in a `dc:type` element
+epub-previews/previews-publication.feature:35 Report a preview pubication that does not identify its source publication
+epub-previews/previews-publication.feature:42 Report a preview publication that uses its own identifier as the source publication
 epub-previews/previews-publication.feature:52 Verify an embedded preview
 epub-previews/previews-publication.feature:59 Report an embedded preview that does not have a manifest
 epub-previews/previews-publication.feature:65 Report an embedded preview without any links to preview content
+epub-previews/previews-publication.feature:71 Report an embedded preview without that links to non-xhtml content documents
+epub-previews/previews-publication.feature:76 Report an embedded preview that uses EPUB CFIs in the links to xhtml content documents
 epub-region-nav/region-nav-publication.feature:18 Verify a basic data nav file
 epub-region-nav/region-nav-publication.feature:25 Report a data nav file that is not encoded as `application/xhtml+xml`
+epub-region-nav/region-nav-publication.feature:33 Report a data nav file included in the spine
+epub-region-nav/region-nav-publication.feature:38 Report a data nav with an unidentified `nav` element in it
 epub-region-nav/region-nav-publication.feature:47 Report the inclusion of more than one data nav file
 epub-region-nav/region-nav-publication.feature:56 Verify a data nav that defines region-based navgiation
+epub-region-nav/region-nav-publication.feature:75 Report a region-based `nav` element with an invalid content model
 epub-region-nav/region-nav-publication.feature:92 Verify subregion navigation using comics semantics
 epub-scriptable-components/scriptable-components-package-document.feature:19 A minimal embedded scriptable component is reported as valid
 epub-scriptable-components/scriptable-components-package-document.feature:23 The 'epubsc' prefix must be declared
@@ -916,6 +973,7 @@ epub3/D-vocabularies/package-rendering-vocab.feature:69 A 'rendition:layout' pro
 epub3/D-vocabularies/package-rendering-vocab.feature:81 A 'rendition:layout-pre-paginated' property can be used as a spine override
 epub3/D-vocabularies/package-rendering-vocab.feature:88 A 'rendition:layout-pre-paginated' override in a roll publication is reported
 epub3/D-vocabularies/package-rendering-vocab.feature:97 two 'rendition:layout' overrides in the same 'itemref' element are reported
+epub3/E-obsolete-features/deprecated-features.feature:102 Report `epub:trigger` that references non-existent IDs
 epub3/E-obsolete-features/deprecated-features.feature:118 'xsd' reserved prefix for package metadata is deprecated
 epub3/E-obsolete-features/deprecated-features.feature:139 report a deprecated reserved prefix both in declaration and properties
 epub3/E-obsolete-features/deprecated-features.feature:147 report a deprecated reserved prefix declaration even if unused

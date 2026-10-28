@@ -157,6 +157,14 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
       continue;
     }
     if (!resourceFindings(reference, item.mediaType, item)) continue;
+    // A search key must lead to a spine item, unless an EPUB CFI says where.
+    if (type === "search-key" && !publication.spine.has(item)) {
+      const cfi = UrlFragment.parse(reference.fragment ?? "", item.mediaType).scheme === "epubcfi";
+      if (!cfi) {
+        findings.push(finding(reference, "RSC-021", Url.nameOf(target)));
+        continue;
+      }
+    }
     const fragment = reference.fragment;
     const parsed = UrlFragment.parse(fragment ?? "", item.mediaType);
     // Upstream does not check where EPUB CFIs lead.

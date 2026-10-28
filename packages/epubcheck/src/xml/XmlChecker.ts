@@ -83,7 +83,8 @@ const withinStack = <A>(run: () => A) => {
 export const check = Effect.fn("XmlChecker.check")(function* (
   bytes: Uint8Array,
   path: string,
-  schemas: ReadonlyArray<string>,
+  // Fixed, or chosen from the parsed document (a package document's profile depends on it).
+  schemas: ReadonlyArray<string> | ((document: Xml.XmlDocument) => ReadonlyArray<string>),
   options: {
     readonly prepare?: ((document: Xml.XmlDocument) => Nvdl.Prepared) | undefined;
     // XHTML content documents report UTF-16 as HTM-058 instead of RSC-027.
@@ -120,7 +121,13 @@ export const check = Effect.fn("XmlChecker.check")(function* (
     return Option.none<Xml.XmlDocument>();
   }
   const checked = withinStack(() =>
-    validateDocument(parsed.success, path, schemas, prepare, informative),
+    validateDocument(
+      parsed.success,
+      path,
+      typeof schemas === "function" ? schemas(parsed.success) : schemas,
+      prepare,
+      informative,
+    ),
   );
   // Upstream reports an item it fails to process this way, and skips its other checks.
   if (checked === undefined) {

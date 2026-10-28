@@ -7,6 +7,7 @@ import * as Path from "effect/Path";
 import * as Result from "effect/Result";
 import * as JavaText from "../util/JavaText.ts";
 
+import * as Profiles from "../profiles/Profiles.ts";
 import * as Report from "../report/Report.ts";
 import * as Schemas from "../schema/Schemas.ts";
 import * as Xml from "../xml/Xml.ts";
@@ -29,6 +30,11 @@ export interface OcfResult {
   readonly packageDocuments: ReadonlyArray<PackageDocument>;
   // The `mimetype` file's content, trimmed, which upstream's reports give as the format.
   readonly formatName: string | undefined;
+}
+
+interface ContainerLinks {
+  readonly rootfiles: ReadonlyArray<string>;
+  readonly mappings: ReadonlyArray<string>;
 }
 
 // Upstream ICU canonicalCaseFold: NFD, then full case folding. Lower-upper-lower approximates
@@ -212,11 +218,24 @@ const checkContainerFile = Effect.fn("OcfChecker.checkContainerFile")(function* 
   const report = yield* Report.Report;
   if (!container.files.includes(CONTAINER_FILE)) {
     if (!hadFatal) yield* report.message("RSC-002", at);
-    return Option.none<ReadonlyArray<string>>();
+    return Option.none<ContainerLinks>();
   }
   const document = yield* parseXml(container, CONTAINER_FILE);
-  if (Option.isNone(document)) return Option.some<ReadonlyArray<string>>([]);
+  const none = { rootfiles: [], mappings: [] };
+  if (Option.isNone(document)) return Option.some<ContainerLinks>(none);
   const rootfiles: Array<string> = [];
+  // Rendition Mapping Documents of a multiple-rendition publication.
+  const mappings = [...Xml.descendants(document.value.root)]
+    .filter(
+      (element) =>
+        element.ns === CONTAINER_NS &&
+        element.local === "link" &&
+        (Xml.attribute(element, "rel") ?? "").split(/\s+/).includes("mapping"),
+    )
+    .flatMap((element) => {
+      const href = Xml.attribute(element, "href")?.trim();
+      return href === undefined || href === "" ? [] : [resolveRootfile(href)];
+    });
   for (const element of Xml.descendants(document.value.root)) {
     if (element.ns !== CONTAINER_NS || element.local !== "rootfile") continue;
     const location = Report.location(CONTAINER_FILE, element.line, element.column);
@@ -232,10 +251,13 @@ const checkContainerFile = Effect.fn("OcfChecker.checkContainerFile")(function* 
     const mediaType = (Xml.attribute(element, "media-type") ?? "unknown").trim().toLowerCase();
     if (mediaType === PACKAGE_MEDIA_TYPE) rootfiles.push(resolveRootfile(fullPath));
   }
-  return Option.some<ReadonlyArray<string>>(rootfiles);
+  return Option.some<ContainerLinks>({ rootfiles, mappings });
 });
 
-export const check = Effect.fn("OcfChecker.check")(function* (target: string) {
+export const check = Effect.fn("OcfChecker.check")(function* (
+  target: string,
+  profile: Profiles.Profile = "default",
+) {
   const report = yield* Report.Report;
   const path = yield* Path.Path;
   const at = Report.location(path.basename(target));
@@ -246,16 +268,17 @@ export const check = Effect.fn("OcfChecker.check")(function* (target: string) {
   yield* checkStructure(container, at);
   const formatName = yield* checkMimetype(container, at);
   const hadFatal = (yield* report.messages).some((message) => message.severity === "FATAL");
-  const rootfiles = yield* checkContainerFile(container, at, hadFatal);
-  if (Option.isNone(rootfiles)) return Option.none<OcfResult>();
+  const links = yield* checkContainerFile(container, at, hadFatal);
+  if (Option.isNone(links)) return Option.none<OcfResult>();
+  const rootfiles = links.value.rootfiles;
 
   const containerLocation = Report.location(CONTAINER_FILE);
-  if (rootfiles.value.length === 0) {
+  if (rootfiles.length === 0) {
     yield* report.message("RSC-003", containerLocation);
     return Option.none<OcfResult>();
   }
   const packageDocuments: Array<PackageDocument> = [];
-  for (const [index, rootfile] of rootfiles.value.entries()) {
+  for (const [index, rootfile] of rootfiles.entries()) {
     if (!container.files.includes(rootfile)) {
       yield* report.message("OPF-002", containerLocation, rootfile);
       return Option.none<OcfResult>();
@@ -271,7 +294,7 @@ export const check = Effect.fn("OcfChecker.check")(function* (target: string) {
 
   // Every declared rendition counts, including ones whose version could not be read.
   const version = packageDocuments[0]?.version ?? "3";
-  if (rootfiles.value.length > 1) {
+  if (rootfiles.length > 1) {
     if (version === "2") yield* report.message("PKG-013", containerLocation);
     else if (!container.files.includes("META-INF/metadata.xml"))
       yield* report.message("RSC-019", at);
@@ -288,8 +311,15 @@ export const check = Effect.fn("OcfChecker.check")(function* (target: string) {
       : [
           ["META-INF/encryption.xml", Schemas.ENCRYPTION_30],
           [CONTAINER_FILE, Schemas.CONTAINER_30],
-          ["META-INF/metadata.xml", Schemas.METADATA_30],
+          [
+            "META-INF/metadata.xml",
+            [
+              ...Schemas.METADATA_30,
+              ...(profile === "edupub" ? ["30/edupub/edu-ocf-metadata.sch"] : []),
+            ],
+          ],
           ["META-INF/signatures.xml", Schemas.SIGNATURES_30],
+          ...links.value.mappings.map((mapping) => [mapping, Schemas.RENDITION_MAPPING] as const),
         ];
   for (const [file, schemas] of metaFiles) {
     const bytes = yield* readResource(container, file);

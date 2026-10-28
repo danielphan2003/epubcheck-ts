@@ -1,6 +1,7 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
+import * as Profiles from "../profiles/Profiles.ts";
 import * as Report from "../report/Report.ts";
 import * as Schemas from "../schema/Schemas.ts";
 import * as XmlChecker from "../xml/XmlChecker.ts";
@@ -14,12 +15,21 @@ export const check = Effect.fn("OpfChecker.check")(function* (
   path: string,
   version: "2" | "3",
   container?: ReadonlySet<string>,
+  profile: Profiles.Profile = "default",
 ) {
   const report = yield* Report.Report;
   const document = yield* XmlChecker.check(
     bytes,
     path,
-    version === "2" ? Schemas.PACKAGE_20 : Schemas.PACKAGE_30,
+    (parsed) =>
+      version === "2"
+        ? Schemas.PACKAGE_20
+        : [
+            ...Schemas.PACKAGE_30,
+            ...Profiles.packageSchemas(
+              Profiles.effective(profile, PackageDocument.read(parsed, path, version).metadata),
+            ),
+          ],
     { version },
   );
   if (Option.isNone(document)) return Option.none<PackageDocument.PackageDocument>();

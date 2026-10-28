@@ -6,6 +6,7 @@ import type * as Container from "../ocf/Container.ts";
 import * as OcfChecker from "../ocf/OcfChecker.ts";
 import type { ManifestItem, PackageDocument } from "../opf/PackageDocument.ts";
 import * as Collect from "../references/Collect.ts";
+import * as Profiles from "../profiles/Profiles.ts";
 import * as ReferenceChecker from "../references/ReferenceChecker.ts";
 import * as Url from "../references/Url.ts";
 import * as Report from "../report/Report.ts";
@@ -40,7 +41,20 @@ const checkImage = Effect.fn("Publication.checkImage")(function* (
 export const checkResources = Effect.fn("Publication.checkResources")(function* (
   container: Container.Container,
   opf: PackageDocument,
+  requestedProfile: Profiles.Profile = "default",
 ) {
+  const profile = Profiles.effective(requestedProfile, opf.metadata);
+  const roles = Profiles.collectionRoles(opf.collections);
+  const spineItems = new Map(opf.spineItems.map((itemref) => [itemref.idref, itemref] as const));
+  const isStructured = (item: ManifestItem) => {
+    const itemref = spineItems.get(item.id);
+    if (itemref === undefined || !itemref.linear) return false;
+    if (itemref.properties.includes("rendition:layout-pre-paginated")) return false;
+    return (
+      opf.metadata.layout !== "pre-paginated" ||
+      itemref.properties.includes("rendition:layout-reflowable")
+    );
+  };
   const nfc = (path: string) => path.normalize("NFC");
   const byId = new Map(opf.items.map((item) => [item.id, item] as const));
   const ids = new Map<string, ReadonlySet<string>>();
@@ -76,6 +90,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   };
   const references: Array<Collect.Reference> = [];
   let scripts = false;
+  const documents: Array<{ readonly path: string; readonly features: Collect.Features }> = [];
   for (const item of opf.items) {
     // An item for the package document itself is OPF-099, not a content document.
     if (item.path === undefined || item.path === opf.path) continue;
@@ -99,14 +114,34 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       continue;
     }
     if (kind === undefined) continue;
-    const document = yield* ContentChecker.check(bytes.value, item.path, kind, opf.version);
+    const extraSchemas =
+      opf.version === "3" && kind === "xhtml"
+        ? Profiles.xhtmlSchemas(profile, {
+            properties: item.properties,
+            collectionRoles: roles.get(item.path) ?? new Set(),
+            structured: isStructured(item),
+          })
+        : [];
+    const document = yield* ContentChecker.check(
+      bytes.value,
+      item.path,
+      kind,
+      opf.version,
+      extraSchemas,
+    );
+    if (Option.isSome(document) && kind === "skm") {
+      const keys = Collect.fromSearchKeyMap(document.value, item.path, context);
+      references.push(...keys.references);
+      yield* reportFindings(keys.findings);
+    }
     if (Option.isNone(document)) unparsed.add(nfc(item.path));
-    if (Option.isNone(document) || kind === "mo" || kind === "ncx") continue;
+    if (Option.isNone(document) || kind === "mo" || kind === "ncx" || kind === "skm") continue;
     const collected = Collect.fromDocument(document.value, item.path, context);
     references.push(...collected.references);
     ids.set(nfc(item.path), Collect.ids(document.value));
     yield* reportFindings(collected.findings);
     if (collected.features.scripts) scripts = true;
+    documents.push({ path: item.path, features: collected.features });
     if (opf.version === "3") {
       const { root } = document.value;
       yield* reportFindings(
@@ -121,6 +156,30 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
   }
   const report = yield* Report.Report;
+  if (opf.version === "3") {
+    const dictionary = documents.find((document) => document.features.dictionary !== undefined);
+    const hasDictionary = (paths: ReadonlyArray<string>) =>
+      documents.some(
+        (document) => paths.includes(document.path) && document.features.dictionary !== undefined,
+      );
+    // Each dictionary collection is a dictionary; without collections, the publication is one.
+    const dictionaries = opf.collections.filter((collection) =>
+      collection.roles.includes("dictionary"),
+    );
+    const missing =
+      dictionaries.length > 0
+        ? dictionaries.some((collection) => !hasDictionary(collection.paths))
+        : profile === "dict" && dictionary === undefined;
+    if (missing) yield* report.message("OPF-078", Report.location(opf.path));
+    const at = dictionary?.features.dictionary;
+    if (
+      dictionary !== undefined &&
+      at !== undefined &&
+      !opf.metadata.types.includes("dictionary")
+    ) {
+      yield* report.message("OPF-079", Report.location(dictionary.path, at.line, at.column));
+    }
+  }
   const itemLocation = (item: ManifestItem) =>
     Report.location(opf.path, item.element.line, item.element.column);
   // Upstream's rule for remote items: only audio, video, Flash and fonts may be remote. A remote
@@ -158,9 +217,12 @@ export const checkDocumentReferences = Effect.fn("Publication.checkDocumentRefer
   path: string,
   kind: ContentChecker.ContentKind,
   version: "2" | "3",
+  profile: Profiles.Profile = "default",
 ) {
-  const document = yield* ContentChecker.check(bytes, path, kind, version);
-  if (Option.isNone(document) || kind === "mo" || kind === "ncx") return;
+  const extraSchemas =
+    version === "3" && kind === "xhtml" ? Profiles.xhtmlSchemas(profile, undefined) : [];
+  const document = yield* ContentChecker.check(bytes, path, kind, version, extraSchemas);
+  if (Option.isNone(document) || kind === "mo" || kind === "ncx" || kind === "skm") return;
   const context: Collect.Context = { version, container: false };
   yield* reportFindings(Collect.fromDocument(document.value, path, context).findings);
 });

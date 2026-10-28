@@ -176,6 +176,14 @@ const manifestChecks = ({ opf, container }: Context) => {
     // for a preferred type (OPF-090) and, locally, a fragment (OPF-091).
     const schemeFindings = urlSchemeFindings(item.element, item.href, opf.version);
     findings.push(...schemeFindings);
+    if (
+      container !== undefined &&
+      item.path !== undefined &&
+      MediaTypes.parse(item.mediaType)?.essence === "application/vnd.epub.search-key-map+xml" &&
+      !item.path.toLowerCase().endsWith(".xml")
+    ) {
+      findings.push({ ...nowhere("OPF-080"), path: item.path });
+    }
     if (opf.version === "3" && schemeFindings.every((finding) => finding.id !== "RSC-029")) {
       if (ITEM_MEDIA_TYPE.test(item.mediaType)) {
         const preferred = MediaTypes.preferred(item.mediaType, item.href);
@@ -278,6 +286,7 @@ const spineChecks = ({ document, opf }: Context) => {
     // Data URLs are reported elsewhere (RSC-029); remote items are checked too.
     if (opf.version === "3" && !/^data:/i.test(item.href)) {
       findings.push(...spineFallbackFinding(item, items));
+      if (item.properties.includes("data-nav")) findings.push(at(item.element, "OPF-077"));
     }
     seen.add(idref);
   }
@@ -550,9 +559,53 @@ const vocabularyChecks = ({ document, opf }: Context) => {
   return findings;
 };
 
+const SEARCH_KEY_MAP = "application/vnd.epub.search-key-map+xml";
+
+// Collections defined by EPUB Dictionaries, Indexes and Previews (EPUB 3).
+const collectionChecks = ({ opf }: Context) => {
+  const findings: Array<Finding> = [];
+  const byPath = new Map(
+    opf.items.flatMap((item) => (item.path === undefined ? [] : [[item.path, item] as const])),
+  );
+  const essence = (item: ManifestItem) => MediaTypes.parse(item.mediaType)?.essence ?? "";
+  for (const collection of opf.collections) {
+    const items = collection.paths.map((path) => [path, byPath.get(path)] as const);
+    if (collection.roles.includes("dictionary")) {
+      for (const [path, item] of items) {
+        if (item === undefined) findings.push(nowhere("OPF-081", path));
+        else if (essence(item) !== SEARCH_KEY_MAP && essence(item) !== "application/xhtml+xml") {
+          findings.push(nowhere("OPF-084", path));
+        }
+      }
+      const maps = items.filter(
+        ([, item]) => item !== undefined && essence(item) === SEARCH_KEY_MAP,
+      );
+      if (maps.length === 0) findings.push(nowhere("OPF-083"));
+      else if (maps.length > 1) findings.push(nowhere("OPF-082"));
+    }
+    if (
+      collection.roles.includes("index") &&
+      items.some(([, item]) => item !== undefined && essence(item) !== "application/xhtml+xml")
+    ) {
+      findings.push(nowhere("OPF-071"));
+    }
+    if (collection.roles.includes("preview")) {
+      if (
+        items.some(([, item]) => item !== undefined && !CONTENT_DOCUMENT_TYPES.has(essence(item)))
+      ) {
+        findings.push(nowhere("OPF-075"));
+      }
+      if (collection.hrefs.some((href) => /#epubcfi\(/i.test(href)))
+        findings.push(nowhere("OPF-076"));
+    }
+  }
+  return findings;
+};
+
 export const check = (context: Context) => [
   ...(context.opf.version === "3" ? vocabularyChecks(context) : []),
   ...metadataChecks(context),
   ...manifestChecks(context),
   ...spineChecks(context),
+  ...(context.opf.version === "3" ? collectionChecks(context) : []),
 ];

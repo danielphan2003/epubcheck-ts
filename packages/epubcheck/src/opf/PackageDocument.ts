@@ -33,14 +33,37 @@ export interface Metadata {
   readonly language: string | undefined;
   readonly date: string | undefined;
   readonly modified: string | undefined;
+  readonly types: ReadonlyArray<string>;
+  // The global `rendition:layout` value.
+  readonly layout: string | undefined;
+}
+
+// A `collection` element (EPUB 3): its roles and the container paths its links point to,
+// including those of nested collections.
+export interface Collection {
+  readonly roles: ReadonlyArray<string>;
+  // The collection's own links, and the container paths they point to.
+  readonly hrefs: ReadonlyArray<string>;
+  readonly paths: ReadonlyArray<string>;
+  // Paths linked from the collection or any collection nested in it.
+  readonly allPaths: ReadonlyArray<string>;
+}
+
+export interface SpineItem {
+  readonly idref: string;
+  readonly linear: boolean;
+  readonly properties: ReadonlyArray<string>;
 }
 
 export interface PackageDocument {
   readonly path: string;
   readonly version: "2" | "3";
   readonly items: ReadonlyArray<ManifestItem>;
+  // Item IDs in spine order; `spineItems` has each itemref's details.
   readonly spine: ReadonlyArray<string>;
+  readonly spineItems: ReadonlyArray<SpineItem>;
   readonly metadata: Metadata;
+  readonly collections: ReadonlyArray<Collection>;
 }
 
 const BASE = "https://container.invalid/";
@@ -81,10 +104,43 @@ export const read = (
         element,
       };
     });
-  const itemrefs = (spine === undefined ? [] : Xml.childElements(spine))
+  const spineItems = (spine === undefined ? [] : Xml.childElements(spine))
     .filter((element) => element.ns === OPF_NS && element.local === "itemref")
-    .map((element) => (Xml.attribute(element, "idref") ?? "").trim());
-  return { path, version, items, spine: itemrefs, metadata: readMetadata(document, children) };
+    .map((element) => ({
+      idref: (Xml.attribute(element, "idref") ?? "").trim(),
+      linear: (Xml.attribute(element, "linear") ?? "").trim() !== "no",
+      properties: (Xml.attribute(element, "properties") ?? "")
+        .split(/\s+/)
+        .filter((token) => token !== ""),
+    }));
+  const itemrefs = spineItems.map((itemref) => itemref.idref);
+  const collections = [...Xml.descendants(document.root)]
+    .filter((element) => element.ns === OPF_NS && element.local === "collection")
+    .map((element) => {
+      const hrefsOf = (links: ReadonlyArray<Xml.XmlElement>) =>
+        links
+          .filter((link) => link.ns === OPF_NS && link.local === "link")
+          .map((link) => (Xml.attribute(link, "href") ?? "").trim());
+      // Fragments name parts of a resource; the resource is what the collection includes.
+      const pathsOf = (hrefs: ReadonlyArray<string>) =>
+        hrefs.flatMap((href) => resolve(href.split("#")[0] ?? href, path) ?? []);
+      const hrefs = hrefsOf(Xml.childElements(element));
+      return {
+        roles: (Xml.attribute(element, "role") ?? "").split(/\s+/).filter((role) => role !== ""),
+        hrefs,
+        paths: pathsOf(hrefs),
+        allPaths: pathsOf(hrefsOf([...Xml.descendants(element)])),
+      };
+    });
+  return {
+    path,
+    version,
+    items,
+    spine: itemrefs,
+    spineItems,
+    metadata: readMetadata(document, children),
+    collections,
+  };
 };
 
 const readMetadata = (
@@ -108,6 +164,12 @@ const readMetadata = (
   const identifier =
     identifiers.find((element) => Xml.attribute(element, "id")?.trim() === uniqueIdentifier) ??
     identifiers[0];
+  const layout = elements.find(
+    (element) =>
+      element.ns === OPF_NS &&
+      element.local === "meta" &&
+      Xml.attribute(element, "property")?.trim() === "rendition:layout",
+  );
   const modified = elements.find(
     (element) =>
       element.ns === OPF_NS &&
@@ -125,6 +187,8 @@ const readMetadata = (
     identifier: identifier === undefined ? undefined : Xml.textContent(identifier).trim(),
     language: values("language")[0],
     date: values("date")[0],
+    types: values("type"),
+    layout: layout === undefined ? undefined : Xml.textContent(layout).trim(),
     modified: modified === undefined ? undefined : Xml.textContent(modified).trim(),
   };
 };
