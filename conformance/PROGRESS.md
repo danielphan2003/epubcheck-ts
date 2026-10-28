@@ -10,3 +10,4 @@ reported message, which a checker that reports nothing cannot pass.
 | [#3](https://github.com/danielphan2003/epubcheck-ts/pull/3) | Schemas: RELAX NG engine, Schematron, NVDL rules               | 684 / 1251 | 306 / 720 |
 | [#4](https://github.com/danielphan2003/epubcheck-ts/pull/4) | Units: viewport and URL fragment parsers, unit scenarios       | 760 / 1251 | 306 / 720 |
 | [#5](https://github.com/danielphan2003/epubcheck-ts/pull/5) | Toolchain: Node 26 runtime, CI and types                       | 760 / 1251 | 306 / 720 |
+| [#6](https://github.com/danielphan2003/epubcheck-ts/pull/6) | Package documents: metadata, manifest, spine, vocabularies     | 845 / 1251 | 391 / 720 |
