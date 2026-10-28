@@ -84,6 +84,8 @@ export interface Features {
   // Content that allows the `index` and `glossary` properties.
   readonly index: boolean;
   readonly glossary: boolean;
+  // Whether the document has a style sheet or `style` element (not just `style` attributes).
+  readonly styled: boolean;
   // Where each `style` element or attribute whose CSS uses remote resources starts.
   readonly remoteStyles: ReadonlyArray<number>;
 }
@@ -391,6 +393,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
   let dictionary: Features["dictionary"];
   let index = false;
   let glossary = false;
+  let styled = false;
   const remoteStyles: Array<number> = [];
 
   interface Position {
@@ -581,6 +584,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
           if (epub3) addResource(element, Xml.attribute(element, "src"), "script");
           break;
         case "style":
+          styled = true;
           css(Xml.textContent(element), element.line);
           break;
         default:
@@ -682,6 +686,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
           if (epub3) addResource(element, Xml.attribute(element, "src"), "script");
           break;
         case "style":
+          styled = true;
           css(Xml.textContent(element), element.line);
           break;
         default:
@@ -781,6 +786,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     dictionary,
     index,
     glossary,
+    styled: styled || references.some((reference) => reference.type === "stylesheet"),
     remoteStyles,
   };
   return { references, findings, features };
@@ -826,6 +832,18 @@ const EMBEDDED = new Set([
   "video",
 ]);
 const NOT_PALPABLE = new Set(["html", "head", "script", "link", "meta", "title", "style"]);
+
+// Each ID's position in document order.
+export const idPositions = (document: Xml.XmlDocument) => {
+  const positions = new Map<string, number>();
+  for (const element of [document.root, ...Xml.descendants(document.root)]) {
+    const id =
+      Xml.attribute(element, "id") ??
+      Xml.attribute(element, "id", "http://www.w3.org/XML/1998/namespace");
+    if (id !== undefined && !positions.has(id.trim())) positions.set(id.trim(), positions.size);
+  }
+  return positions;
+};
 
 // The IDs a fragment can point to.
 export const ids = (document: Xml.XmlDocument) => {

@@ -5,6 +5,7 @@ import * as Xml from "../xml/Xml.ts";
 import * as Url from "../references/Url.ts";
 import * as FixedLayout from "../layout/FixedLayout.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
+import * as ClockValue from "../util/ClockValue.ts";
 import { checkLanguageTag } from "./LanguageTag.ts";
 import type { Collection, ManifestItem, PackageDocument } from "./PackageDocument.ts";
 import * as JavaDigits from "./JavaDigits.ts";
@@ -396,6 +397,22 @@ const metadataChecks = ({ document, opf, container }: Context) => {
     const prefixes = Vocabularies.parsePrefixes(Xml.attribute(root, "prefix"));
     for (const element of metadataElements(root)) {
       if (hasRefinesCycle(element, prefixes)) findings.push(atEnd(element, "OPF-065"));
+    }
+    // The total `media:duration` should be the sum of the overlays' durations, within 1 s.
+    const durations = opfChildren(opfChildren(root, "metadata")[0], "meta").filter(
+      (meta) => (Xml.attribute(meta, "property") ?? "").trim() === "media:duration",
+    );
+    const total = durations.find((meta) => Xml.attribute(meta, "refines") === undefined);
+    const parts = durations.filter((meta) => Xml.attribute(meta, "refines") !== undefined);
+    const totalSeconds = total === undefined ? undefined : ClockValue.parse(Xml.textContent(total));
+    const partSeconds = parts.map((meta) => ClockValue.parse(Xml.textContent(meta)));
+    if (
+      totalSeconds !== undefined &&
+      parts.length > 0 &&
+      partSeconds.every((seconds) => seconds !== undefined) &&
+      Math.abs(totalSeconds - partSeconds.reduce((sum, seconds) => sum + (seconds ?? 0), 0)) > 1
+    ) {
+      findings.push(nowhere("MED-016"));
     }
   }
   return findings;

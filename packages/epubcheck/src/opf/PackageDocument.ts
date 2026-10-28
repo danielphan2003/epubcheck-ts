@@ -37,6 +37,9 @@ export interface Metadata {
   readonly types: ReadonlyArray<string>;
   // The global `rendition:layout` values: those of metas that refine nothing.
   readonly layouts: ReadonlyArray<string>;
+  // Media Overlays styling class names (`media:active-class`, `media:playback-active-class`).
+  readonly activeClass: string | undefined;
+  readonly playbackActiveClass: string | undefined;
 }
 
 // A `collection` element (EPUB 3): its roles, its own links, and the collections nested in it.
@@ -184,6 +187,16 @@ const readMetadata = (
         false,
       )[0] === "rendition:layout",
   );
+  const meta = (property: string) => {
+    const element = elements.find(
+      (candidate) =>
+        candidate.ns === OPF_NS &&
+        candidate.local === "meta" &&
+        Xml.attribute(candidate, "property")?.trim() === property &&
+        Xml.attribute(candidate, "refines") === undefined,
+    );
+    return element === undefined ? undefined : Xml.textContent(element).trim();
+  };
   const modified = elements.find(
     (element) =>
       element.ns === OPF_NS &&
@@ -203,6 +216,8 @@ const readMetadata = (
     date: values("date")[0],
     types: values("type"),
     layouts: layouts.map((element) => Xml.textContent(element).trim()),
+    activeClass: meta("media:active-class"),
+    playbackActiveClass: meta("media:playback-active-class"),
     modified: modified === undefined ? undefined : Xml.textContent(modified).trim(),
   };
 };
