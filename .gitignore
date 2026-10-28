@@ -1,0 +1,11 @@
+node_modules/
+*.log
+*.tsbuildinfo
+dist/
+.vite-plus/
+.vitest-*
+.env
+.env.local
+.plans/
+# Reference EPUBCheck jar and its cached reports (downloaded by scripts/fetch-epubcheck-jar.ts).
+.cache/

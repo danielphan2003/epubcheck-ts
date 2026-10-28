@@ -1,0 +1,123 @@
+{
+  "upstream": "v5.4.0",
+  "passed": 372,
+  "total": 1251,
+  "expectsMessages": {
+    "passed": 1,
+    "total": 721
+  },
+  "areas": {
+    "cli": {
+      "passed": 0,
+      "total": 53
+    },
+    "epub-accessibility": {
+      "passed": 4,
+      "total": 5
+    },
+    "epub-dictionaries": {
+      "passed": 8,
+      "total": 34
+    },
+    "epub-distributable-objects": {
+      "passed": 1,
+      "total": 2
+    },
+    "epub-edupub": {
+      "passed": 14,
+      "total": 32
+    },
+    "epub-indexes": {
+      "passed": 6,
+      "total": 18
+    },
+    "epub-multiple-renditions": {
+      "passed": 2,
+      "total": 13
+    },
+    "epub-previews": {
+      "passed": 3,
+      "total": 10
+    },
+    "epub-region-nav": {
+      "passed": 3,
+      "total": 10
+    },
+    "epub-scriptable-components": {
+      "passed": 1,
+      "total": 2
+    },
+    "epub2": {
+      "passed": 30,
+      "total": 99
+    },
+    "epub3/00-minimal": {
+      "passed": 5,
+      "total": 5
+    },
+    "epub3/02-epub-publication-conformance": {
+      "passed": 2,
+      "total": 2
+    },
+    "epub3/03-resources": {
+      "passed": 59,
+      "total": 129
+    },
+    "epub3/04-ocf": {
+      "passed": 10,
+      "total": 100
+    },
+    "epub3/05-package-document": {
+      "passed": 31,
+      "total": 130
+    },
+    "epub3/06-layouts": {
+      "passed": 10,
+      "total": 20
+    },
+    "epub3/07-content-documents": {
+      "passed": 112,
+      "total": 235
+    },
+    "epub3/08-navigation-document": {
+      "passed": 17,
+      "total": 40
+    },
+    "epub3/09-media-overlays": {
+      "passed": 19,
+      "total": 50
+    },
+    "epub3/B-external-identifiers": {
+      "passed": 1,
+      "total": 3
+    },
+    "epub3/C-viewport-meta-tag": {
+      "passed": 0,
+      "total": 34
+    },
+    "epub3/D-vocabularies": {
+      "passed": 30,
+      "total": 79
+    },
+    "epub3/E-obsolete-features": {
+      "passed": 3,
+      "total": 72
+    },
+    "epub3/G-media-type-registrations": {
+      "passed": 0,
+      "total": 1
+    },
+    "localization": {
+      "passed": 1,
+      "total": 7
+    },
+    "reporting": {
+      "passed": 0,
+      "total": 24
+    },
+    "unit-tests": {
+      "passed": 0,
+      "total": 42
+    }
+  }
+}
