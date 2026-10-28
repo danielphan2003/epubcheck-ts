@@ -171,14 +171,61 @@ export const attribute = (element: XmlElement, local: string, ns = "") =>
 export const childElements = (element: XmlElement) =>
   element.children.filter((child): child is XmlElement => child.kind === "element");
 
-export const descendants = function* (element: XmlElement): Generator<XmlElement> {
-  for (const child of childElements(element)) {
-    yield child;
-    yield* descendants(child);
+// Iterative walks: documents can nest deeper than the call stack allows.
+export const descendants = (element: XmlElement) => {
+  const found: Array<XmlElement> = [];
+  const stack = [...childElements(element)].reverse();
+  while (stack.length > 0) {
+    const next = stack.pop();
+    if (next === undefined) break;
+    found.push(next);
+    for (const child of [...childElements(next)].reverse()) stack.push(child);
   }
+  return found;
 };
 
-export const textContent = (element: XmlElement): string =>
-  element.children
-    .map((child) => (child.kind === "text" ? child.text : textContent(child)))
-    .join("");
+export const textContent = (element: XmlElement) => {
+  let text = "";
+  const stack: Array<XmlNode> = [...element.children].reverse();
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (node === undefined) break;
+    if (node.kind === "text") text += node.text;
+    else for (const child of [...node.children].reverse()) stack.push(child);
+  }
+  return text;
+};
+
+export interface PackagePeek {
+  readonly root: string | undefined;
+  readonly version: string | undefined;
+  readonly error: XmlError | undefined;
+}
+
+// Streams a package document only up to the end of `metadata`, like upstream's version peek:
+// errors after that point are left to the full check.
+export const peekPackage = (source: string): PackagePeek => {
+  const parser = new SaxesParser({ xmlns: true, position: true });
+  let root: string | undefined;
+  let version: string | undefined;
+  let error: XmlError | undefined;
+  let done = false;
+  parser.on("opentag", (tag) => {
+    if (done || root !== undefined) return;
+    root = tag.local;
+    version = tag.local === "package" ? tag.attributes.version?.value : undefined;
+  });
+  parser.on("closetag", (tag) => {
+    if (tag.local === "metadata" || tag.local === "package") done = true;
+  });
+  parser.on("error", (cause) => {
+    if (done || error !== undefined) return;
+    error = {
+      message: cause.message.replace(/^[^:]*:\d+:\d+: /, ""),
+      line: parser.line,
+      column: parser.column + 1,
+    };
+  });
+  parser.write(source).close();
+  return { root, version, error };
+};
