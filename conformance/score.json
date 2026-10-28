@@ -1,9 +1,9 @@
 {
   "upstream": "v5.4.0",
-  "passed": 445,
+  "passed": 662,
   "total": 1251,
   "expectsMessages": {
-    "passed": 67,
+    "passed": 284,
     "total": 720
   },
   "areas": {
@@ -16,11 +16,11 @@
       "total": 5
     },
     "epub-dictionaries": {
-      "passed": 8,
+      "passed": 11,
       "total": 34
     },
     "epub-distributable-objects": {
-      "passed": 1,
+      "passed": 2,
       "total": 2
     },
     "epub-edupub": {
@@ -28,19 +28,19 @@
       "total": 32
     },
     "epub-indexes": {
-      "passed": 6,
+      "passed": 9,
       "total": 18
     },
     "epub-multiple-renditions": {
-      "passed": 3,
+      "passed": 10,
       "total": 13
     },
     "epub-previews": {
-      "passed": 3,
+      "passed": 5,
       "total": 10
     },
     "epub-region-nav": {
-      "passed": 3,
+      "passed": 4,
       "total": 10
     },
     "epub-scriptable-components": {
@@ -48,7 +48,7 @@
       "total": 2
     },
     "epub2": {
-      "passed": 42,
+      "passed": 58,
       "total": 99
     },
     "epub3/00-minimal": {
@@ -60,15 +60,15 @@
       "total": 2
     },
     "epub3/03-resources": {
-      "passed": 59,
+      "passed": 61,
       "total": 129
     },
     "epub3/04-ocf": {
-      "passed": 68,
+      "passed": 71,
       "total": 100
     },
     "epub3/05-package-document": {
-      "passed": 32,
+      "passed": 61,
       "total": 130
     },
     "epub3/06-layouts": {
@@ -76,15 +76,15 @@
       "total": 20
     },
     "epub3/07-content-documents": {
-      "passed": 112,
+      "passed": 163,
       "total": 235
     },
     "epub3/08-navigation-document": {
-      "passed": 17,
+      "passed": 34,
       "total": 40
     },
     "epub3/09-media-overlays": {
-      "passed": 19,
+      "passed": 32,
       "total": 50
     },
     "epub3/B-external-identifiers": {
@@ -96,11 +96,11 @@
       "total": 34
     },
     "epub3/D-vocabularies": {
-      "passed": 30,
+      "passed": 70,
       "total": 79
     },
     "epub3/E-obsolete-features": {
-      "passed": 3,
+      "passed": 28,
       "total": 72
     },
     "epub3/G-media-type-registrations": {
@@ -108,7 +108,7 @@
       "total": 1
     },
     "localization": {
-      "passed": 1,
+      "passed": 5,
       "total": 7
     },
     "reporting": {

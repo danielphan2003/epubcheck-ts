@@ -21,6 +21,9 @@ export interface XmlElement {
   readonly children: Array<XmlNode>;
   readonly line: number;
   readonly column: number;
+  // Just past the end tag (or the start tag, for empty elements); set when the element closes.
+  endLine: number;
+  endColumn: number;
 }
 
 export interface XmlText {
@@ -134,6 +137,8 @@ export const parse = (source: string, options: ParseOptions = {}) => {
       children: [],
       line: parser.line,
       column: parser.column + 1,
+      endLine: parser.line,
+      endColumn: parser.column + 1,
     };
     const parent = stack.at(-1);
     if (parent === undefined) root ??= element;
@@ -141,7 +146,11 @@ export const parse = (source: string, options: ParseOptions = {}) => {
     stack.push(element);
   });
   parser.on("closetag", () => {
-    stack.pop();
+    const element = stack.pop();
+    if (element !== undefined) {
+      element.endLine = parser.line;
+      element.endColumn = parser.column + 1;
+    }
   });
   parser.on("text", appendText);
   parser.on("cdata", appendText);

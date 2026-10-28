@@ -16,6 +16,9 @@ What we redistribute, all verbatim under `vendor/epubcheck/` except where noted:
   (Apache-2.0) in `epub3/03-resources/files/resources-cmt-font-*`.
 - `src/main/resources/com/adobe/epubcheck/messages/`: the message bundles. The message catalog
   in `packages/epubcheck/src/messages/catalog.generated.ts` is generated from them.
+- `src/main/resources/com/adobe/epubcheck/schema/`: the RELAX NG, Schematron and NVDL schemas.
+  `packages/epubcheck/src/schema/sources.generated.ts` embeds them. They carry their own licenses,
+  listed below.
 - `src/main/java/com/adobe/epubcheck/messages/DefaultSeverities.java`: read by
   `scripts/generate-messages.ts` only, as the source of each message's default severity. No Java
   code is compiled, run, or translated.
@@ -50,6 +53,22 @@ CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
+
+### Schemas bundled with EPUBCheck
+
+Paths are under `vendor/epubcheck/src/main/resources/com/adobe/epubcheck/schema/`. Each license
+file is vendored verbatim next to the schemas it covers.
+
+- `30/` (EPUB 3 schemas): MIT, Copyright (c) 2010-2011 International Digital Publishing Forum.
+  See `30/LICENSE`.
+- `30/mod/html5/` (RELAX NG schema for (X)HTML 5): MIT, Copyright (c) 2005-2007 Elika J. Etemad
+  (fantasai) and Henri Sivonen (hsivonen), Copyright (c) 2007-2012 Mozilla Foundation. See
+  `30/mod/html5/LICENSE`.
+- `30/mod/mathml/` and `30/mod/security/`: W3C Software Notice and License. See their `LICENSE`
+  files.
+- `20/rng/svg/` and `20/rng/svg11.rng` (RELAX NG schema for SVG 1.1): Copyright 2001, 2002 World
+  Wide Web Consortium; permission notice in each file's header.
+- Everything else under `20/` ships as part of EPUBCheck, under its BSD-3-Clause license above.
 
 The reference EPUBCheck jar used by `pnpm conformance diff` is downloaded at run time by
 `scripts/fetch-epubcheck-jar.ts` into the gitignored `.cache/` directory. It is never committed or

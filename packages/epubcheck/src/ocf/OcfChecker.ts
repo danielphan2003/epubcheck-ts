@@ -5,7 +5,9 @@ import * as Path from "effect/Path";
 import * as Result from "effect/Result";
 
 import * as Report from "../report/Report.ts";
+import * as Schemas from "../schema/Schemas.ts";
 import * as Xml from "../xml/Xml.ts";
+import * as XmlChecker from "../xml/XmlChecker.ts";
 import * as Container from "./Container.ts";
 import * as FilenameChecker from "./FilenameChecker.ts";
 import * as Zip from "./Zip.ts";
@@ -100,7 +102,7 @@ const loadContainer = Effect.fn("OcfChecker.loadContainer")(function* (
 });
 
 // Reads a META-INF or package file, reporting an unreadable file as upstream's XMLParser does.
-const readResource = Effect.fn("OcfChecker.readResource")(function* (
+export const readResource = Effect.fn("OcfChecker.readResource")(function* (
   container: Container.Container,
   path: string,
 ) {
@@ -268,6 +270,25 @@ export const check = Effect.fn("OcfChecker.check")(function* (target: string) {
     if (version === "2") yield* report.message("PKG-013", containerLocation);
     else if (!container.files.includes("META-INF/metadata.xml"))
       yield* report.message("RSC-019", at);
+  }
+
+  // Validate META-INF files against their schemas: encryption first, then the others.
+  const metaFiles: ReadonlyArray<readonly [string, ReadonlyArray<string>]> =
+    version === "2"
+      ? [
+          ["META-INF/encryption.xml", Schemas.ENCRYPTION_20],
+          [CONTAINER_FILE, Schemas.CONTAINER_20],
+          ["META-INF/signatures.xml", Schemas.SIGNATURES_20],
+        ]
+      : [
+          ["META-INF/encryption.xml", Schemas.ENCRYPTION_30],
+          [CONTAINER_FILE, Schemas.CONTAINER_30],
+          ["META-INF/metadata.xml", Schemas.METADATA_30],
+          ["META-INF/signatures.xml", Schemas.SIGNATURES_30],
+        ];
+  for (const [file, schemas] of metaFiles) {
+    const bytes = yield* readResource(container, file);
+    if (Option.isSome(bytes)) yield* XmlChecker.check(bytes.value, file, schemas);
   }
 
   if (container.packaged) {
