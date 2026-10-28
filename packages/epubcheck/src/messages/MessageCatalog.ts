@@ -4,8 +4,6 @@ export type MessageId = keyof typeof defaultSeverities;
 
 export type Severity = "FATAL" | "ERROR" | "WARNING" | "USAGE" | "INFO" | "SUPPRESSED";
 
-export const messageIds = Object.keys(defaultSeverities) as ReadonlyArray<MessageId>;
-
 export const isMessageId = (value: string): value is MessageId =>
   Object.prototype.hasOwnProperty.call(defaultSeverities, value);
 
@@ -48,18 +46,23 @@ const lookup = (key: string, locale: string | undefined) => {
   return undefined;
 };
 
-// Java `String.format` subset used by the bundles: `%n$s`, `%s`, `%n`, and `%%`.
+// Java `String.format` subset used by the bundles: `%n$s`, `%s`, `%n`, and `%%`. Like upstream,
+// a specifier without an argument yields the raw pattern plus " !!! Format specifier '...'".
 const formatJava = (pattern: string, args: ReadonlyArray<string>) => {
   let sequential = 0;
-  return pattern.replace(
+  let missing: string | undefined;
+  const formatted = pattern.replace(
     /%(?:(\d+)\$)?([sn%])/g,
     (match, index: string | undefined, kind: string) => {
       if (kind === "%") return "%";
       if (kind === "n") return "\n";
       const position = index === undefined ? sequential++ : Number(index) - 1;
-      return position < args.length ? (args[position] ?? "null") : match;
+      const value = args[position];
+      if (value === undefined) missing ??= match;
+      return value ?? match;
     },
   );
+  return missing === undefined ? formatted : `${pattern} !!! Format specifier '${missing}'`;
 };
 
 export const formatMessage = (

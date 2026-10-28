@@ -19,13 +19,14 @@ export class StepFailed extends Schema.TaggedError<StepFailed>()("StepFailed", {
 }
 
 type Severity = Report.Message["severity"];
+type ReportingLevel = NonNullable<EpubCheck.CheckRequest["reportingLevel"]>;
 
 export interface CheckInvocation {
   readonly path: string;
   readonly mode: EpubCheck.CheckMode;
   readonly version: EpubCheck.EpubVersion;
   readonly profile: EpubCheck.Profile;
-  readonly reportingLevel: Severity;
+  readonly reportingLevel: ReportingLevel;
   readonly locale: string;
 }
 
@@ -41,7 +42,7 @@ export interface World {
   version: EpubCheck.EpubVersion;
   mode: EpubCheck.CheckMode | undefined;
   profile: EpubCheck.Profile;
-  reportingLevel: Severity;
+  reportingLevel: ReportingLevel;
   locale: string;
   defaultLocale: string;
   reportingFormat: string;
@@ -151,7 +152,8 @@ const define = <S extends Schema.Decoder<unknown>>(
 
 const noop = Effect.void;
 
-const normalize = (text: string) => text.replace(/\s+/g, " ");
+// Upstream's TestReport collapses Java `\s` whitespace, which excludes NBSP and other spaces.
+const normalize = (text: string) => text.replace(/[ \t\n\v\f\r]+/g, " ");
 
 const check = Effect.fn("Steps.check")(function* (world: World, file: string) {
   const checker = yield* EpubCheck.EpubCheck;

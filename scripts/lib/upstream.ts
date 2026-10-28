@@ -12,11 +12,16 @@ export const UPSTREAM_PATHS = [
 ];
 
 export const REFERENCE_JAR_URL = `https://github.com/w3c/epubcheck/releases/download/${UPSTREAM_TAG}/epubcheck-${UPSTREAM_TAG.slice(1)}.zip`;
+export const REFERENCE_JAR_SHA256 =
+  "33350c61038e71dfb3d45a76aed04bf5481e6d5500cb780f6e98db8bbd15a28c";
 
 export const UpstreamManifest = Schema.Struct({
   repository: Schema.String,
   tag: Schema.String,
   commit: Schema.String,
   paths: Schema.Array(Schema.String),
+  // Git object id of each path at `commit`. A byte-identical vendored copy has the same ids, which
+  // is how `conformance check` detects edits under vendor/.
+  objects: Schema.Record(Schema.String, Schema.String),
 });
 export const UpstreamManifestJson = Schema.fromJsonString(UpstreamManifest, { space: 2 });

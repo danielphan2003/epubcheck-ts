@@ -10,7 +10,7 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
-import { REFERENCE_JAR_URL, UPSTREAM_TAG } from "./lib/upstream.ts";
+import { REFERENCE_JAR_SHA256, REFERENCE_JAR_URL, UPSTREAM_TAG } from "./lib/upstream.ts";
 
 class FetchJarError extends Schema.TaggedError<FetchJarError>()("FetchJarError", {
   step: Schema.String,
@@ -51,6 +51,14 @@ const program = Effect.gen(function* () {
       ChildProcess.make(command, args, { stdout: "inherit", stderr: "inherit" }),
     );
     if (exitCode !== 0) return yield* new FetchJarError({ step, exitCode });
+    // The jar gets executed later, so refuse an archive that is not the pinned release.
+    if (step === "download") {
+      const digest = (yield* spawner.string(ChildProcess.make("sha256sum", [archive]))).split(
+        " ",
+      )[0];
+      if (digest !== REFERENCE_JAR_SHA256)
+        return yield* new FetchJarError({ step: "verify checksum", exitCode: 1 });
+    }
   }
   if (!(yield* fs.exists(jar)))
     return yield* new FetchJarError({ step: "locate jar", exitCode: 1 });

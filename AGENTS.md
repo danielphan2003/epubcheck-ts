@@ -87,7 +87,11 @@ as type errors. Node runs the `.ts` sources directly; there is no build step.
   input, and `pnpm conformance run --oracle` answers every check with the jar, which validates the
   harness itself.
 - A checker that reports nothing passes every scenario that expects no messages, so watch the
-  "scenarios expecting reported messages" number too.
+  "scenarios expecting reported messages" number too. CI fails if either number drops.
+- The oracle cannot pass scenarios that depend on message order (`following ... are reported`
+  tables, `the message contains` after repeated IDs): the jar's JSON report sorts messages.
+- `conformance check` also fails if anything under `vendor/epubcheck` differs from the upstream
+  objects recorded in `UPSTREAM.json`.
 
 ## Pull requests
 

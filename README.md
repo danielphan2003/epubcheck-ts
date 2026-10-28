@@ -56,7 +56,7 @@ epubcheck-ts detects.
 
 <!-- conformance:start -->
 
-Upstream suite: EPUBCheck v5.4.0. Passing **372 / 1251** scenarios (29.7%); scenarios that expect reported messages: **1 / 721** (0.1%).
+Upstream suite: EPUBCheck v5.4.0. Passing **372 / 1251** scenarios (29.7%); scenarios that expect reported messages: **0 / 720** (0.0%).
 
 | Area                                    | Passing | Total |      % |
 | --------------------------------------- | ------: | ----: | -----: |

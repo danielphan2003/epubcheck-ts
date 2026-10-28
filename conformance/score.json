@@ -3,8 +3,8 @@
   "passed": 372,
   "total": 1251,
   "expectsMessages": {
-    "passed": 1,
-    "total": 721
+    "passed": 0,
+    "total": 720
   },
   "areas": {
     "cli": {

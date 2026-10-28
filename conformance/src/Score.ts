@@ -23,7 +23,9 @@ const positiveAssertion =
   /^(?:the )?(?:following )?(?:fatal error|error|warning|usage|info)s?\b.*\breported\b/i;
 
 export const expectsMessages = (scenario: Scenario) =>
-  scenario.steps.some((step) => positiveAssertion.test(step.text));
+  scenario.steps.some(
+    (step) => positiveAssertion.test(step.text) && !/\breported 0 times\b/.test(step.text),
+  );
 
 const tally = (results: ReadonlyArray<ScenarioResult>): Tally => ({
   passed: results.filter((result) => result.status === "passed").length,

@@ -137,7 +137,9 @@ export const runReference = Effect.fn("Differential.runReference")(function* (
   const threshold = MessageCatalog.severityRank(invocation.reportingLevel ?? "INFO");
   const container = path.basename(invocation.path);
   return report.messages.flatMap((message): ReadonlyArray<Report.Message> => {
-    const { ID: id, severity } = message;
+    // Upstream prints a few IDs with an underscore (`HTM_056`); the catalog uses hyphens.
+    const id = message.ID.replace("_", "-");
+    const severity = message.severity;
     if (!isKnownSeverity(severity) || !MessageCatalog.isMessageId(id)) return [];
     if (MessageCatalog.severityRank(severity) < threshold) return [];
     return message.locations.map((location) => ({

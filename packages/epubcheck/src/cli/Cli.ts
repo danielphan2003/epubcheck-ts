@@ -5,7 +5,6 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import * as EpubCheck from "../EpubCheck.ts";
-import type { Severity } from "../messages/MessageCatalog.ts";
 import * as JsonReport from "../report/JsonReport.ts";
 import type * as Report from "../report/Report.ts";
 
@@ -22,7 +21,7 @@ export interface CliOptions {
   readonly mode: EpubCheck.CheckMode | "exp" | undefined;
   readonly version: EpubCheck.EpubVersion | undefined;
   readonly profile: EpubCheck.Profile | undefined;
-  readonly reportingLevel: Severity;
+  readonly reportingLevel: NonNullable<EpubCheck.CheckRequest["reportingLevel"]>;
   readonly json: string | undefined;
   readonly locale: string | undefined;
   readonly failOnWarnings: boolean;

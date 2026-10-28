@@ -67,9 +67,13 @@ const program = Effect.gen(function* () {
     checkout,
   );
   yield* run("checkout", "git", ["checkout", "--quiet"], checkout);
-  const commit = (yield* spawner.string(
-    ChildProcess.make("git", ["rev-parse", "HEAD"], { cwd: checkout }),
-  )).trim();
+  const revParse = (revision: string) =>
+    spawner
+      .string(ChildProcess.make("git", ["rev-parse", revision], { cwd: checkout }))
+      .pipe(Effect.map((output) => output.trim()));
+  const commit = yield* revParse("HEAD");
+  const objects: Record<string, string> = {};
+  for (const relative of UPSTREAM_PATHS) objects[relative] = yield* revParse(`HEAD:${relative}`);
 
   yield* fs.remove(vendorDir, { recursive: true, force: true });
   for (const relative of UPSTREAM_PATHS) {
@@ -82,6 +86,7 @@ const program = Effect.gen(function* () {
     tag,
     commit,
     paths: UPSTREAM_PATHS,
+    objects,
   });
   yield* fs.writeFileString(path.join(vendorDir, "UPSTREAM.json"), `${manifest}\n`);
   yield* Console.log(`Vendored ${UPSTREAM_REPOSITORY}@${tag} (${commit}) into ${vendorDir}`);

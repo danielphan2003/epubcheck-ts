@@ -25,7 +25,7 @@ export const CheckRequest = Schema.Struct({
   profile: Schema.optionalKey(Profile),
   locale: Schema.optionalKey(Schema.String),
   reportingLevel: Schema.optionalKey(
-    Schema.Literals(["FATAL", "ERROR", "WARNING", "USAGE", "INFO", "SUPPRESSED"]),
+    Schema.Literals(["FATAL", "ERROR", "WARNING", "USAGE", "INFO"]),
   ),
 });
 export interface CheckRequest extends Schema.Schema.Type<typeof CheckRequest> {}

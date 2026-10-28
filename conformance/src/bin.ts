@@ -9,6 +9,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import { Command, Flag } from "effect/cli";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { EpubCheck } from "epubcheck-ts";
 
 import * as Differential from "./Differential.ts";
@@ -25,7 +26,47 @@ class ConformanceCheckFailed extends Schema.TaggedError<ConformanceCheckFailed>(
   }
 }
 
-const Upstream = Schema.fromJsonString(Schema.Struct({ tag: Schema.String }));
+const Upstream = Schema.fromJsonString(
+  Schema.Struct({
+    tag: Schema.String,
+    objects: Schema.Record(Schema.String, Schema.String),
+  }),
+);
+
+const readUpstream = Effect.fn("Conformance.readUpstream")(function* () {
+  const fs = yield* FileSystem.FileSystem;
+  const files = yield* paths;
+  return yield* Schema.decodeEffect(Upstream)(yield* fs.readFileString(files.upstream));
+});
+
+const referenceJar = Effect.fn("Conformance.referenceJar")(function* () {
+  const path = yield* Path.Path;
+  const files = yield* paths;
+  const { tag } = yield* readUpstream();
+  return path.join(files.root, ".cache/epubcheck", `epubcheck-${tag.slice(1)}`, "epubcheck.jar");
+});
+
+// The vendored copy must stay byte-identical to upstream: compare git object ids at HEAD.
+const vendorTampering = Effect.fn("Conformance.vendorTampering")(function* () {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const files = yield* paths;
+  const { objects } = yield* readUpstream();
+  const changed: Array<string> = [];
+  for (const [relative, expected] of Object.entries(objects)) {
+    const actual = yield* spawner
+      .string(
+        ChildProcess.make("git", ["rev-parse", `HEAD:vendor/epubcheck/${relative}`], {
+          cwd: files.root,
+        }),
+      )
+      .pipe(
+        Effect.map((output) => output.trim()),
+        Effect.orElseSucceed(() => ""),
+      );
+    if (actual !== expected) changed.push(relative);
+  }
+  return changed;
+});
 
 const paths = Effect.gen(function* () {
   const path = yield* Path.Path;
@@ -37,7 +78,6 @@ const paths = Effect.gen(function* () {
     score: path.join(root, "conformance/score.json"),
     passing: path.join(root, "conformance/passing.txt"),
     readme: path.join(root, "README.md"),
-    jar: path.join(root, ".cache/epubcheck/epubcheck-5.4.0/epubcheck.jar"),
     referenceCache: path.join(root, ".cache/reference-reports"),
   };
 });
@@ -48,9 +88,8 @@ const filterFlag = Flag.String("filter").pipe(
 );
 
 const runAll = Effect.fn("Conformance.runAll")(function* (filter: Option.Option<string>) {
-  const fs = yield* FileSystem.FileSystem;
   const files = yield* paths;
-  const upstream = yield* Schema.decodeEffect(Upstream)(yield* fs.readFileString(files.upstream));
+  const upstream = yield* readUpstream();
   const scenarios = (yield* Features.loadScenarios(files.resources)).filter((scenario) =>
     Option.match(filter, {
       onNone: () => true,
@@ -91,14 +130,15 @@ const run = Command.make(
   Effect.fn("Conformance.run")(function* ({ filter, failures, oracle }) {
     const fs = yield* FileSystem.FileSystem;
     const files = yield* paths;
-    if (oracle && !(yield* fs.exists(files.jar))) {
-      return yield* new Differential.ReferenceJarMissing({ jar: files.jar });
+    const jar = yield* referenceJar();
+    if (oracle && !(yield* fs.exists(jar))) {
+      return yield* new Differential.ReferenceJarMissing({ jar });
     }
     const { results, score } = yield* oracle
       ? runAll(filter).pipe(
           Effect.provide(
             Differential.referenceLayer({
-              jar: files.jar,
+              jar,
               cacheDir: files.referenceCache,
               resourcesDir: files.resources,
             }),
@@ -190,6 +230,16 @@ const check = Command.make(
           `The score dropped from ${baseline.passed} to ${score.passed} passing scenarios.`,
         );
       }
+      if (score.expectsMessages.passed < baseline.expectsMessages.passed) {
+        reasons.push(
+          `Scenarios expecting messages dropped from ${baseline.expectsMessages.passed} to ${score.expectsMessages.passed}.`,
+        );
+      }
+    }
+    for (const relative of yield* vendorTampering()) {
+      reasons.push(
+        `vendor/epubcheck/${relative} differs from upstream; vendored files must stay verbatim.`,
+      );
     }
     if (reasons.length > 0) return yield* new ConformanceCheckFailed({ reasons });
   }),
@@ -212,8 +262,8 @@ const diff = Command.make(
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const files = yield* paths;
-    if (!(yield* fs.exists(files.jar)))
-      return yield* new Differential.ReferenceJarMissing({ jar: files.jar });
+    const jar = yield* referenceJar();
+    if (!(yield* fs.exists(jar))) return yield* new Differential.ReferenceJarMissing({ jar });
     const { results } = yield* runAll(filter);
     const checks = new Map(
       results
@@ -221,7 +271,7 @@ const diff = Command.make(
         .map((entry) => [JSON.stringify(entry.invocation), entry] as const),
     );
     const reference = {
-      jar: files.jar,
+      jar,
       cacheDir: files.referenceCache,
       resourcesDir: files.resources,
     };

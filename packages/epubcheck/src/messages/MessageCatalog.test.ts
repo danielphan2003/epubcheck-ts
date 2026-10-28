@@ -9,8 +9,10 @@ describe("MessageCatalog", () => {
     );
   });
 
-  it("leaves unmatched specifiers in place when arguments are missing", () => {
-    expect(formatMessage("PKG-020", [])).toBe('OPF file "%1$s" could not be found.');
+  it("reports a missing argument the way upstream's formatter does", () => {
+    expect(formatMessage("PKG-020", [])).toBe(
+      `OPF file "%1$s" could not be found. !!! Format specifier '%1$s'`,
+    );
   });
 
   it("replaces a localized argument keyword with its bundle value, formatted by later arguments", () => {
