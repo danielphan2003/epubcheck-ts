@@ -6,6 +6,7 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import type { Severity } from "./messages/MessageCatalog.ts";
+import * as OcfChecker from "./ocf/OcfChecker.ts";
 import * as Report from "./report/Report.ts";
 
 // Upstream checker modes: a full publication (packaged or expanded) or a single document.
@@ -67,13 +68,15 @@ export class EpubCheck extends Context.Service<
 const make = Effect.gen(function* () {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const platform = yield* Effect.context<FileSystem.FileSystem | Path.Path>();
 
   const checkPublication = Effect.fn("EpubCheck.checkPublication")(function* (target: string) {
     const report = yield* Report.Report;
     const exists = yield* fs.exists(target).pipe(Effect.orElseSucceed(() => false));
     if (!exists) {
-      yield* report.message("PKG-018", Report.location(path.basename(target)));
+      return yield* report.message("PKG-018", Report.location(path.basename(target)));
     }
+    yield* OcfChecker.check(target);
   });
 
   const check = Effect.fn("EpubCheck.check")(function* (request: CheckRequest) {
@@ -84,7 +87,10 @@ const make = Effect.gen(function* () {
       reportingLevel: request.reportingLevel,
     });
     if (mode === "epub") {
-      yield* checkPublication(target).pipe(Effect.provideService(Report.Report, report));
+      yield* checkPublication(target).pipe(
+        Effect.provideService(Report.Report, report),
+        Effect.provide(platform),
+      );
     }
     return { path: target, mode, messages: yield* report.messages } satisfies CheckResult;
   });

@@ -8,7 +8,7 @@ import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
-import { EpubCheck, type Report } from "epubcheck-ts";
+import { EpubCheck, FilenameChecker, Report } from "epubcheck-ts";
 
 export class StepFailed extends Schema.TaggedError<StepFailed>()("StepFailed", {
   reason: Schema.String,
@@ -102,6 +102,9 @@ defineType(
     }
   },
 );
+defineType("codepoint", /U\+[0-9a-zA-Z]{4,6}/, (codepoint) =>
+  Number.parseInt((codepoint ?? "").slice(2), 16),
+);
 defineType("locale", /.*?/, (locale) => locale);
 defineType("messageId", /[A-Z]{3}-[0-9]{3}[a-z]?/, (id) => id);
 defineType("messageQuantity", /(?: )?(\d*)(?: time(?:s)?)?/, (times) =>
@@ -175,6 +178,17 @@ const check = Effect.fn("Steps.check")(function* (world: World, file: string) {
   world.checks.push({ invocation, messages: result.messages });
   // Upstream's TestReport accumulates messages across every check in a scenario.
   world.messages.push(...result.messages);
+});
+
+// Unit-level checks report through a fresh Report so messages are formatted like a full check.
+const reportFindings = Effect.fn("Steps.reportFindings")(function* (
+  world: World,
+  findings: ReadonlyArray<FilenameChecker.Finding>,
+) {
+  const report = yield* Report.make({ locale: world.locale, reportingLevel: world.reportingLevel });
+  for (const finding of findings)
+    yield* report.message(finding.id, Report.location(""), ...finding.args);
+  world.messages = [...(yield* report.messages)];
 });
 
 const consumeWhere = (world: World, predicate: (message: Report.Message) => boolean) => {
@@ -276,6 +290,19 @@ export const steps: ReadonlyArray<StepDefinition> = [
     "checking EPUB/file/document/directory/file\\ set {string}",
     Schema.Tuple([Schema.String]),
     (world, [file]) => check(world, file),
+  ),
+  // FilenameCheckerSteps
+  define("checking file name {string}", Schema.Tuple([Schema.String]), (world, [name]) =>
+    reportFindings(world, FilenameChecker.checkFilename(name, world.version)),
+  ),
+  define(
+    "checking file name containing code point {codepoint}",
+    Schema.Tuple([Schema.Number]),
+    (world, [codepoint]) =>
+      reportFindings(
+        world,
+        FilenameChecker.checkFilename(`a${String.fromCodePoint(codepoint)}name`, world.version),
+      ),
   ),
   // AssertionSteps
   define(

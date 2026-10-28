@@ -56,7 +56,7 @@ epubcheck-ts detects.
 
 <!-- conformance:start -->
 
-Upstream suite: EPUBCheck v5.4.0. Passing **372 / 1251** scenarios (29.7%); scenarios that expect reported messages: **0 / 720** (0.0%).
+Upstream suite: EPUBCheck v5.4.0. Passing **445 / 1251** scenarios (35.6%); scenarios that expect reported messages: **67 / 720** (9.3%).
 
 | Area                                    | Passing | Total |      % |
 | --------------------------------------- | ------: | ----: | -----: |
@@ -66,16 +66,16 @@ Upstream suite: EPUBCheck v5.4.0. Passing **372 / 1251** scenarios (29.7%); scen
 | `epub-distributable-objects`            |       1 |     2 |  50.0% |
 | `epub-edupub`                           |      14 |    32 |  43.8% |
 | `epub-indexes`                          |       6 |    18 |  33.3% |
-| `epub-multiple-renditions`              |       2 |    13 |  15.4% |
+| `epub-multiple-renditions`              |       3 |    13 |  23.1% |
 | `epub-previews`                         |       3 |    10 |  30.0% |
 | `epub-region-nav`                       |       3 |    10 |  30.0% |
 | `epub-scriptable-components`            |       1 |     2 |  50.0% |
-| `epub2`                                 |      30 |    99 |  30.3% |
+| `epub2`                                 |      42 |    99 |  42.4% |
 | `epub3/00-minimal`                      |       5 |     5 | 100.0% |
 | `epub3/02-epub-publication-conformance` |       2 |     2 | 100.0% |
 | `epub3/03-resources`                    |      59 |   129 |  45.7% |
-| `epub3/04-ocf`                          |      10 |   100 |  10.0% |
-| `epub3/05-package-document`             |      31 |   130 |  23.8% |
+| `epub3/04-ocf`                          |      68 |   100 |  68.0% |
+| `epub3/05-package-document`             |      32 |   130 |  24.6% |
 | `epub3/06-layouts`                      |      10 |    20 |  50.0% |
 | `epub3/07-content-documents`            |     112 |   235 |  47.7% |
 | `epub3/08-navigation-document`          |      17 |    40 |  42.5% |
@@ -84,7 +84,7 @@ Upstream suite: EPUBCheck v5.4.0. Passing **372 / 1251** scenarios (29.7%); scen
 | `epub3/C-viewport-meta-tag`             |       0 |    34 |   0.0% |
 | `epub3/D-vocabularies`                  |      30 |    79 |  38.0% |
 | `epub3/E-obsolete-features`             |       3 |    72 |   4.2% |
-| `epub3/G-media-type-registrations`      |       0 |     1 |   0.0% |
+| `epub3/G-media-type-registrations`      |       1 |     1 | 100.0% |
 | `localization`                          |       1 |     7 |  14.3% |
 | `reporting`                             |       0 |    24 |   0.0% |
 | `unit-tests`                            |       0 |    42 |   0.0% |

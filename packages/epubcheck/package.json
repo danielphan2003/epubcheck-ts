@@ -28,7 +28,8 @@
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "saxes": "^6.0.0"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
