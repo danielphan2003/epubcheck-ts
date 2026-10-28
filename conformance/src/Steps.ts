@@ -8,7 +8,7 @@ import * as Effect from "effect/Effect";
 import * as Path from "effect/Path";
 import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
-import { EpubCheck, FilenameChecker, Report } from "epubcheck-ts";
+import { EpubCheck, FilenameChecker, Report, UrlFragment, Viewport } from "epubcheck-ts";
 
 export class StepFailed extends Schema.TaggedError<StepFailed>()("StepFailed", {
   reason: Schema.String,
@@ -50,6 +50,8 @@ export interface World {
   checks: Array<Check>;
   messages: Array<Report.Message>;
   lastAsserted: Report.Message | undefined;
+  viewport: Viewport.Viewport | undefined;
+  fragment: UrlFragment.UrlFragment | undefined;
 }
 
 export const makeWorld = (resourcesDir: string): World => ({
@@ -66,6 +68,8 @@ export const makeWorld = (resourcesDir: string): World => ({
   checks: [],
   messages: [],
   lastAsserted: undefined,
+  viewport: undefined,
+  fragment: undefined,
 });
 
 const fail = (reason: string) => Effect.fail(new StepFailed({ reason }));
@@ -115,6 +119,17 @@ defineType("severity", caseInsensitive("(?:fatal error|error|warning|usage|info)
   const lower = (severity ?? "").toLowerCase();
   return lower === "fatal error" ? "FATAL" : lower.toUpperCase();
 });
+// Upstream's SharedParameterTypes.multimap: "a=1,2;b=3" as name -> values.
+defineType("multimap", /".*?"/, (text) =>
+  (text ?? "")
+    .slice(1, -1)
+    .split(";")
+    .map((entry) => {
+      const [name = "", values = ""] = entry.split("=");
+      return [name, values.split(",")] as const;
+    }),
+);
+defineType("error", /.*/, (error) => error);
 defineType("version", /\d(?:\.\d)?(?:\.\d)?/, (version) =>
   (version ?? "").startsWith("2") ? "2" : (version ?? "").startsWith("3") ? "3" : "unknown",
 );
@@ -303,6 +318,71 @@ export const steps: ReadonlyArray<StepDefinition> = [
         world,
         FilenameChecker.checkFilename(`a${String.fromCodePoint(codepoint)}name`, world.version),
       ),
+  ),
+  // ViewportSteps
+  define("parsing viewport {string}", Schema.Tuple([Schema.String]), (world, [content]) =>
+    Effect.sync(() => {
+      world.viewport = Viewport.parse(content);
+    }),
+  ),
+  define("no error is returned", Schema.Tuple([]), (world) =>
+    world.viewport?.errors.length === 0
+      ? noop
+      : fail(`Unexpected viewport errors: ${world.viewport?.errors.join(", ")}`),
+  ),
+  define(
+    "the parsed viewport equals {multimap}",
+    Schema.Tuple([Schema.Array(Schema.Tuple([Schema.String, Schema.Array(Schema.String)]))]),
+    (world, [expected]) => {
+      const actual = new Map<string, Array<string>>();
+      for (const [name, value] of world.viewport?.properties ?? []) {
+        actual.set(name, [...(actual.get(name) ?? []), value]);
+      }
+      const render = (entries: Iterable<readonly [string, ReadonlyArray<string>]>) =>
+        [...entries].map(([name, values]) => `${name}=${values.join(",")}`).join(";");
+      return render(actual) === render(expected)
+        ? noop
+        : fail(`Expected viewport ${render(expected)} but got ${render(actual)}`);
+    },
+  ),
+  define("error {error} is returned", Schema.Tuple([Schema.String]), (world, [error]) => {
+    const errors = world.viewport?.errors ?? [];
+    return errors.length === 1 && errors[0] === error
+      ? noop
+      : fail(`Expected viewport error ${error} but got ${errors.join(", ") || "none"}`);
+  }),
+  // URLFragmentSteps
+  define(
+    "{string} is a {} {} fragment",
+    Schema.Tuple([Schema.String, Schema.String, Schema.String]),
+    (world, [fragment, validity, type]) => {
+      const mediaType = type === "SVG" ? "image/svg+xml" : type === "HTML" ? "text/html" : "";
+      const parsed = UrlFragment.parse(fragment, mediaType);
+      world.fragment = parsed;
+      const actual = parsed.isValid ? "valid" : "invalid";
+      return actual === validity
+        ? noop
+        : fail(`Expected a ${validity} fragment but it is ${actual}`);
+    },
+  ),
+  define(
+    "it indicates an element with ID {string}",
+    Schema.Tuple([Schema.String]),
+    (world, [id]) =>
+      world.fragment?.id === id
+        ? noop
+        : fail(`Expected ID "${id}" but got "${world.fragment?.id}"`),
+  ),
+  define("it does not indicate an element", Schema.Tuple([]), (world) =>
+    world.fragment?.id === "" ? noop : fail(`Expected no ID but got "${world.fragment?.id}"`),
+  ),
+  define("it is a media fragment", Schema.Tuple([]), (world) =>
+    world.fragment?.isMediaFragment === true ? noop : fail("Expected a media fragment"),
+  ),
+  define("it has scheme {string}", Schema.Tuple([Schema.String]), (world, [scheme]) =>
+    world.fragment?.scheme === scheme
+      ? noop
+      : fail(`Expected scheme "${scheme}" but got "${world.fragment?.scheme}"`),
   ),
   // AssertionSteps
   define(

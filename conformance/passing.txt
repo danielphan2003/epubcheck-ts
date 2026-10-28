@@ -578,6 +578,40 @@ epub3/09-media-overlays/media-overlays.feature:65 Report media clips used as dir
 epub3/09-media-overlays/media-overlays.feature:76 Report a `par` element with more than one `text` child
 epub3/09-media-overlays/media-overlays.feature:83 Report a `par` element with a `seq` child
 epub3/B-external-identifiers/external-identifiers.feature:14 Verify DOCTYPE declarations with allowed external identifiers
+epub3/C-viewport-meta-tag/viewport-syntax.feature:15 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:17 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:18 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:19 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:20 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:22 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:23 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:24 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:25 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:26 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:27 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:28 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:30 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:31 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:32 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:33 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:34 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:35 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:37 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:38 parsing valid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:47 parsing invalid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:48 parsing invalid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:49 parsing invalid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:50 parsing invalid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:51 parsing invalid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:52 parsing invalid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:53 parsing invalid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:54 parsing invalid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:55 parsing invalid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:56 parsing invalid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:57 parsing invalid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:58 parsing invalid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:59 parsing invalid viewport values
+epub3/C-viewport-meta-tag/viewport-syntax.feature:60 parsing invalid viewport values
 epub3/D-vocabularies/media-overlays-vocab.feature:17 Report a 'media:active-class' property defined more than once
 epub3/D-vocabularies/media-overlays-vocab.feature:26 the 'media:duration' property can be expressed as a full clock value
 epub3/D-vocabularies/media-overlays-vocab.feature:31 the 'media:duration' property can be expressed as a timecount value
@@ -682,3 +716,45 @@ localization/localization.feature:16 The reporting locale can be configured
 localization/localization.feature:22 The reporting locale overrides the default locale
 localization/localization.feature:43 Jing locale is properly reset (after the previous scenario)
 localization/localization.feature:50 Case-conversion is locale-dependent
+unit-tests/url-fragment.feature:102 SVG invalid fragments "foo=bar"
+unit-tests/url-fragment.feature:103 SVG invalid fragments "foo="
+unit-tests/url-fragment.feature:104 SVG invalid fragments "=foo"
+unit-tests/url-fragment.feature:11 HTML ID-based fragment "id"
+unit-tests/url-fragment.feature:12 HTML ID-based fragment "%40%40"
+unit-tests/url-fragment.feature:13 HTML ID-based fragment "id:~:text=a,b"
+unit-tests/url-fragment.feature:17 HTML ID-based fragment "id:~:text=a,b"
+unit-tests/url-fragment.feature:18 HTML ID-based fragment ":~:text=a,b"
+unit-tests/url-fragment.feature:22 HTML ID-based fragment "foo=bar"
+unit-tests/url-fragment.feature:23 HTML ID-based fragment "epubcfi("
+unit-tests/url-fragment.feature:33 HTML scheme-based fragment "xpointer(id(foo))"
+unit-tests/url-fragment.feature:34 HTML scheme-based fragment "epubcfi(/6/4[chap01ref]!/4[body01])"
+unit-tests/url-fragment.feature:43 HTML media fragment "xywh=1,1,1,1"
+unit-tests/url-fragment.feature:44 HTML media fragment "t=10"
+unit-tests/url-fragment.feature:45 HTML media fragment "track=audio"
+unit-tests/url-fragment.feature:46 HTML media fragment "id=foo"
+unit-tests/url-fragment.feature:55 SVG shorthand fragment "id"
+unit-tests/url-fragment.feature:56 SVG shorthand fragment "id&t=10"
+unit-tests/url-fragment.feature:57 SVG shorthand fragment "id&t=10&t=5"
+unit-tests/url-fragment.feature:58 SVG shorthand fragment "id&foo=bar"
+unit-tests/url-fragment.feature:59 SVG shorthand fragment "id&t="
+unit-tests/url-fragment.feature:60 SVG shorthand fragment "id&"
+unit-tests/url-fragment.feature:61 SVG shorthand fragment "*id"
+unit-tests/url-fragment.feature:62 SVG shorthand fragment "%40%40"
+unit-tests/url-fragment.feature:70 SVG media fragment "t=npt:10,20"
+unit-tests/url-fragment.feature:71 SVG media fragment "t=npt:,121.5"
+unit-tests/url-fragment.feature:72 SVG media fragment "t=0:02:00,121.5"
+unit-tests/url-fragment.feature:73 SVG media fragment "t=npt:120,0:02:01."
+unit-tests/url-fragment.feature:74 SVG media fragment "t=60:00"
+unit-tests/url-fragment.feature:75 SVG media fragment "t=00:99"
+unit-tests/url-fragment.feature:76 SVG media fragment "t=123:00:00"
+unit-tests/url-fragment.feature:77 SVG media fragment "t=10&xywh=0,0,1,1"
+unit-tests/url-fragment.feature:81 SVG media fragment "xywh=160,120,320,240"
+unit-tests/url-fragment.feature:82 SVG media fragment "xywh=pixel:160,120,320,240"
+unit-tests/url-fragment.feature:83 SVG media fragment "xywh=percent:25,25,50,50"
+unit-tests/url-fragment.feature:84 SVG media fragment "xywh=160,120,320"
+unit-tests/url-fragment.feature:85 SVG media fragment "xywh=px:160,120,320,240"
+unit-tests/url-fragment.feature:89 SVG media fragment "svgView(viewBox(0,0,200,200))"
+unit-tests/url-fragment.feature:90 SVG media fragment "svgView(preserveAspectRatio(xMidYMid))"
+unit-tests/url-fragment.feature:91 SVG media fragment "svgView(transform(scale(5))"
+unit-tests/url-fragment.feature:92 SVG media fragment "svgView()"
+unit-tests/url-fragment.feature:93 SVG media fragment "svgView(viewBox(0,0,200,200"
