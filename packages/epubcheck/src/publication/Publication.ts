@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import * as ContentChecker from "../content/ContentChecker.ts";
+import * as FixedLayout from "../layout/FixedLayout.ts";
 import type * as Container from "../ocf/Container.ts";
 import * as OcfChecker from "../ocf/OcfChecker.ts";
 import type { ManifestItem, PackageDocument, SpineItem } from "../opf/PackageDocument.ts";
@@ -45,6 +46,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
 ) {
   const report = yield* Report.Report;
   const inIndex = Profiles.indexPaths(opf.collections);
+  const fixedLayout = opf.version === "3" ? FixedLayout.fixedLayoutPaths(opf) : new Set<string>();
   // Upstream marks an item non-linear or fixed-layout if any of its itemrefs makes it so; items
   // outside the spine are non-linear, and the legacy `roll` layout is fixed.
   const isFixed = (itemref: SpineItem) =>
@@ -145,6 +147,14 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
     if (Option.isNone(document)) unparsed.add(nfc(item.path));
     if (Option.isNone(document) || kind === "mo" || kind === "ncx" || kind === "skm") continue;
+    if (opf.version === "3") {
+      const fixed = fixedLayout.has(item.path);
+      yield* reportFindings(
+        kind === "svg"
+          ? FixedLayout.svgFindings(document.value, item.path, fixed)
+          : FixedLayout.xhtmlFindings(document.value, item.path, fixed),
+      );
+    }
     const collected = Collect.fromDocument(document.value, item.path, context);
     references.push(...collected.references);
     ids.set(nfc(item.path), Collect.ids(document.value));

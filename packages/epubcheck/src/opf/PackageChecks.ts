@@ -3,6 +3,7 @@ import * as JavaText from "../util/JavaText.ts";
 import { parse as parseFragment, percentDecode } from "../util/UrlFragment.ts";
 import * as Xml from "../xml/Xml.ts";
 import * as Url from "../references/Url.ts";
+import * as FixedLayout from "../layout/FixedLayout.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import { checkLanguageTag } from "./LanguageTag.ts";
 import type { Collection, ManifestItem, PackageDocument } from "./PackageDocument.ts";
@@ -280,6 +281,14 @@ const spineChecks = ({ document, opf }: Context) => {
     if (opf.version === "3" && !/^data:/i.test(item.href)) {
       findings.push(...spineFallbackFinding(item, items));
       if (item.properties.includes("data-nav")) findings.push(at(item.element, "OPF-077"));
+    }
+    const properties = (Xml.attribute(itemref, "properties") ?? "").split(/[ \t\n\v\f\r]+/);
+    if (opf.version === "3" && !FixedLayout.isPrePaginated(properties, opf.metadata.layout)) {
+      for (const property of properties) {
+        if (/^(?:rendition:)?page-spread-(?:left|right|center)$/.test(property)) {
+          findings.push(at(itemref, "OPF-100", property));
+        }
+      }
     }
     seen.add(idref);
   }

@@ -594,14 +594,24 @@ epub3/05-package-document/vocabularies-association.feature:57 Report syntax erro
 epub3/05-package-document/vocabularies-association.feature:67 Allow declared prefixes used in the XHTML `epub:type` attribute
 epub3/05-package-document/vocabularies-association.feature:78 Report undeclared prefixes used in package metadata properties
 epub3/06-layouts/layouts.feature:101 'page-spread-*' properties can be used on pre-paginated content of a reflowable publication
+epub3/06-layouts/layouts.feature:110 'page-spread-*' properties used on content of reflowable publications are reported
+epub3/06-layouts/layouts.feature:117 'page-spread-*' properties used on reflowable content of a pre-paginated publications is reported
+epub3/06-layouts/layouts.feature:124 'page-spread-*' properties used on content of reflowable publications are reported
 epub3/06-layouts/layouts.feature:136 Verify a minimal roll publication
+epub3/06-layouts/layouts.feature:143 Report a roll publication item that is not a fixed layout document
 epub3/06-layouts/layouts.feature:149 Verify a roll publication item with a fixed layout document in its fallback chain
+epub3/06-layouts/layouts.feature:154 Report a roll item that has no fixed layout document in its fallback chain
 epub3/06-layouts/layouts.feature:18 Verify a minimal reflowable publication
 epub3/06-layouts/layouts.feature:25 Verify a reflowable overriden item in a pre-paginated publication
 epub3/06-layouts/layouts.feature:36 Verify a minimal pre-paginated publication
+epub3/06-layouts/layouts.feature:41 Verify that fixed layout constraints apply to pre-paginated publication content
 epub3/06-layouts/layouts.feature:49 Verify a pre-paginated overriden item in a reflowable publication
+epub3/06-layouts/layouts.feature:54 Verify that fixed layout constraints apply to pre-paginated overridden content
+epub3/06-layouts/layouts.feature:62 Report a pre-paginated publication item that is not a fixed layout document
+epub3/06-layouts/layouts.feature:68 Report a pre-paginated overridden item that is not a fixed layout document
 epub3/06-layouts/layouts.feature:74 Verify a pre-paginated publication item with a fixed layout document in its fallback chain
 epub3/06-layouts/layouts.feature:79 Verify a pre-paginated overridden item with a fixed layout document in its fallback chain
+epub3/06-layouts/layouts.feature:84 Report a pre-paginated item that has no fixed layout document in its fallback chain
 epub3/06-layouts/layouts.feature:94 'page-spread-*' properties can be used on content of a pre-paginated publication
 epub3/07-content-documents/content-documents-css.feature:102 Do not check invalid CSS `font-size` values
 epub3/07-content-documents/content-documents-css.feature:108 Verify valid CSS font-size declarations
@@ -613,11 +623,23 @@ epub3/07-content-documents/content-documents-css.feature:70 Report an attempt to
 epub3/07-content-documents/content-documents-css.feature:76 Report an attempt to `@import` a CSS file that is not declared in the manifest but is present in the container
 epub3/07-content-documents/content-documents-css.feature:83 Verify valid CSS Selectors syntax
 epub3/07-content-documents/content-documents-fixed-layout.feature:103 Verify that the initial containing block rules are not checked on embedded svg elements
+epub3/07-content-documents/content-documents-fixed-layout.feature:108 Report a fixed-layout SVG without a `viewbox` declaration
+epub3/07-content-documents/content-documents-fixed-layout.feature:114 Report a fixed-layout SVG without a `viewbox` declaration (only `width`/`height` in units)
+epub3/07-content-documents/content-documents-fixed-layout.feature:120 Report a fixed-layout SVG without a `viewbox` declaration (only `width`/`height` in percent)
 epub3/07-content-documents/content-documents-fixed-layout.feature:15 Verify a fixed-layout SVG
 epub3/07-content-documents/content-documents-fixed-layout.feature:24 Verify a fixed-layout XHTML document with a valid viewport
 epub3/07-content-documents/content-documents-fixed-layout.feature:29 Verify a fixed-layout XHTML document with non-integer viewport dimensions
 epub3/07-content-documents/content-documents-fixed-layout.feature:34 Verify a fixed-layout XHTML document with a valid viewport with whitespace
 epub3/07-content-documents/content-documents-fixed-layout.feature:39 Verify a fixed-layout XHTML document with a valid viewport using keywords value
+epub3/07-content-documents/content-documents-fixed-layout.feature:44 Report a fixed-layout XHTML document with no viewport
+epub3/07-content-documents/content-documents-fixed-layout.feature:50 Report a fixed-layout XHTML document with a syntactically invalid viewport
+epub3/07-content-documents/content-documents-fixed-layout.feature:56 Report a fixed-layout XHTML document with a viewport with no height
+epub3/07-content-documents/content-documents-fixed-layout.feature:62 Report a fixed-layout XHTML document with a viewport with no width
+epub3/07-content-documents/content-documents-fixed-layout.feature:68 Report a fixed-layout XHTML document with a viewport with an empty height value
+epub3/07-content-documents/content-documents-fixed-layout.feature:74 Report a fixed-layout XHTML document with a viewport using units
+epub3/07-content-documents/content-documents-fixed-layout.feature:80 Report a fixed-layout XHTML document with duplicate width/height in a single viewport meta tag
+epub3/07-content-documents/content-documents-fixed-layout.feature:86 Do not check more than one viewport meta tag in a fixed-layout document (but report as usage)
+epub3/07-content-documents/content-documents-fixed-layout.feature:94 Do not check viewport metadata in reflowable content documents (but report as usage)
 epub3/07-content-documents/content-documents-svg.feature:102 Report duplicate `id` attribute values
 epub3/07-content-documents/content-documents-svg.feature:108 Report invalid `id` attribute values
 epub3/07-content-documents/content-documents-svg.feature:116 Verify `style` element without explicit `type` (issue 688)
