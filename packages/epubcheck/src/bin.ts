@@ -7,7 +7,13 @@ import * as Layer from "effect/Layer";
 import * as Cli from "./cli/Cli.ts";
 import * as EpubCheck from "./EpubCheck.ts";
 
-Cli.main(process.argv.slice(2)).pipe(
-  Effect.provide(EpubCheck.layer.pipe(Layer.provideMerge(NodeServices.layer))),
+Cli.main(process.argv.slice(2), {
+  cwd: process.cwd(),
+  defaultLocale: Intl.DateTimeFormat().resolvedOptions().locale,
+}).pipe(
+  Effect.tap((outcome) => Effect.sync(() => void (process.exitCode = outcome.exitCode))),
+  Effect.provide(
+    Layer.mergeAll(EpubCheck.layer, Cli.terminalLayer).pipe(Layer.provideMerge(NodeServices.layer)),
+  ),
   NodeRuntime.runMain,
 );

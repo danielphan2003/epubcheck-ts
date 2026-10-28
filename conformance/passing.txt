@@ -1,3 +1,54 @@
+cli/cli.feature:108 Option `-version` is used to display the version
+cli/cli.feature:117 Option `--version` is used to display the version
+cli/cli.feature:126 Option `--version` is used when checking file
+cli/cli.feature:136 no command argument
+cli/cli.feature:14 Option `-h` is used to display the usage message
+cli/cli.feature:141 unknown option
+cli/cli.feature:150 check a valid packaged EPUB
+cli/cli.feature:155 check a packaged EPUB with warnings
+cli/cli.feature:160 information about the EPUB version comes first
+cli/cli.feature:166 check a packaged EPUB with poorly cased extension
+cli/cli.feature:172 check a packaged EPUB with non-epub extension
+cli/cli.feature:178 check a packaged EPUB with no extension
+cli/cli.feature:187 check a single valid navigation document
+cli/cli.feature:191 check a single invalid navigation document
+cli/cli.feature:195 check an unreadable file
+cli/cli.feature:205 save the resulting EPUB
+cli/cli.feature:215 quiet mode prevents extra output
+cli/cli.feature:220 quiet mode does not conflict with saving a report
+cli/cli.feature:226 USAGE messages are not reported by default
+cli/cli.feature:234 WARNING messages are reported with option `-w`
+cli/cli.feature:241 WARNING messages are silenced with option `-e`
+cli/cli.feature:248 ERROR messages are silenced with option `-f`
+cli/cli.feature:259 option `--faileonwarnings` make the command fail when a WARNING is reported
+cli/cli.feature:269 save an XML report with the `-out` option
+cli/cli.feature:276 save an XML report with the `-o` option
+cli/cli.feature:283 save an XMP report with the `-x` option
+cli/cli.feature:290 save a JSON report with the `-j` option
+cli/cli.feature:297 output a JSON report to the standard output
+cli/cli.feature:305 conflicting report formats are rejected
+cli/cli.feature:317 the default number of maximum unique messages is 25
+cli/cli.feature:322 option `--maxOfEachMessage` configures the number of maximum unique messages
+cli/cli.feature:327 option `--maxOfEachMessage` is case insensitive
+cli/cli.feature:332 option `--maxOfEachMessage` can be set to a negative value
+cli/cli.feature:337 option `--maxOfEachMessage` can be set to the keyword 'unlimited'
+cli/cli.feature:342 option `--maxOfEachMessage` applies to JSON reports
+cli/cli.feature:347 option `--maxOfEachMessage` applies to XMP reports
+cli/cli.feature:352 option `--maxOfEachMessage` unrecognized value is rejected
+cli/cli.feature:358 option `--maxOfEachMessage` unrecognized value is rejected
+cli/cli.feature:366 `--locale` option can be used to localize messages
+cli/cli.feature:371 unsupported locale falls back to the default locale
+cli/cli.feature:376 invalid locale falls back to the default locale
+cli/cli.feature:381 missing locale argument makes the command fail
+cli/cli.feature:386 missing locale argument when last option makes the command fail
+cli/cli.feature:403 messages and severities overridden with the `-c` option
+cli/cli.feature:408 report an error when overriding an unknown message ID
+cli/cli.feature:413 report an error when overriding to an unknown severity
+cli/cli.feature:418 report an error when overriding to a message with parameters mismatch
+cli/cli.feature:423 report an error when overriding to a message suggestion with parameters mismatch
+cli/cli.feature:89 Option `-?` is used to display the usage message
+cli/cli.feature:94 Option `-help` is used to display the usage message
+cli/cli.feature:99 Option `--help` is used to display the usage message
 epub-accessibility/accessibility.feature:14 Verify an 'a11y' prefix used in metadata properties without being declared
 epub-accessibility/accessibility.feature:18 Report unknown 'a11y' metadata
 epub-accessibility/accessibility.feature:23 Verify an 'a11y:certifierCredential' property can be defined as a link
@@ -882,6 +933,16 @@ localization/localization.feature:16 The reporting locale can be configured
 localization/localization.feature:22 The reporting locale overrides the default locale
 localization/localization.feature:43 Jing locale is properly reset (after the previous scenario)
 localization/localization.feature:50 Case-conversion is locale-dependent
+reporting/json-report.feature:27 the default maximum number of each message is 25
+reporting/json-report.feature:33 the maximum number can be configured to a limit
+reporting/json-report.feature:40 the maximum number can be configured to 0
+reporting/json-report.feature:47 the maximum number can be unlimited
+reporting/xml-report.feature:16 the report is well-formed and has content
+reporting/xml-report.feature:21 the creation date is set
+reporting/xml-report.feature:30 the default maximum number of each message is 25
+reporting/xml-report.feature:34 the maximum number can be configured to a limit
+reporting/xml-report.feature:39 the maximum number can be configured to 0
+reporting/xml-report.feature:44 the maximum number can be unlimited
 unit-tests/url-fragment.feature:102 SVG invalid fragments "foo=bar"
 unit-tests/url-fragment.feature:103 SVG invalid fragments "foo="
 unit-tests/url-fragment.feature:104 SVG invalid fragments "=foo"

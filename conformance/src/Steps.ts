@@ -5,9 +5,10 @@ import {
 } from "@cucumber/cucumber-expressions";
 import type { PickleStep } from "@cucumber/messages";
 import * as Effect from "effect/Effect";
-import * as Path from "effect/Path";
 import * as FileSystem from "effect/FileSystem";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import type * as Scope from "effect/Scope";
 import { EpubCheck, FilenameChecker, Report, UrlFragment, Viewport } from "epubcheck-ts";
 
 export class StepFailed extends Schema.TaggedError<StepFailed>()("StepFailed", {
@@ -52,6 +53,23 @@ export interface World {
   lastAsserted: Report.Message | undefined;
   viewport: Viewport.Viewport | undefined;
   fragment: UrlFragment.UrlFragment | undefined;
+  // The last check's full result, for the report steps.
+  lastResult: EpubCheck.CheckResult | undefined;
+  // CLI steps: a scratch directory holding copied inputs and outputs, and the last run.
+  scratchDir: string | undefined;
+  redirectStderr: boolean;
+  run: CliRun | undefined;
+  // Report steps: the parsed report and the XPath default namespace.
+  json: unknown;
+  xml: string | undefined;
+  defaultNamespace: string | undefined;
+}
+
+export interface CliRun {
+  readonly exitCode: number;
+  readonly stdout: string;
+  readonly stderr: string;
+  readonly maxOfEachMessage: number | undefined;
 }
 
 export const makeWorld = (resourcesDir: string): World => ({
@@ -70,9 +88,16 @@ export const makeWorld = (resourcesDir: string): World => ({
   lastAsserted: undefined,
   viewport: undefined,
   fragment: undefined,
+  lastResult: undefined,
+  scratchDir: undefined,
+  redirectStderr: false,
+  run: undefined,
+  json: undefined,
+  xml: undefined,
+  defaultNamespace: undefined,
 });
 
-const fail = (reason: string) => Effect.fail(new StepFailed({ reason }));
+export const fail = (reason: string) => Effect.fail(new StepFailed({ reason }));
 
 // Parameter types copied from upstream's ParameterTypes.java so step text matches identically.
 const registry = new ParameterTypeRegistry();
@@ -132,6 +157,7 @@ defineType("multimap", /".*?"/, (text) =>
     }),
 );
 defineType("error", /.*/, (error) => error);
+defineType("stream", /stdout|stderr/, (stream) => stream);
 defineType("version", /\d(?:\.\d)?(?:\.\d)?/, (version) =>
   (version ?? "").startsWith("2") ? "2" : (version ?? "").startsWith("3") ? "3" : "unknown",
 );
@@ -139,7 +165,7 @@ defineType("version", /\d(?:\.\d)?(?:\.\d)?/, (version) =>
 const SeverityArg = Schema.Literals(["FATAL", "ERROR", "WARNING", "USAGE", "INFO"]);
 const Any = Schema.Unknown;
 
-type Requirements = EpubCheck.EpubCheck | FileSystem.FileSystem | Path.Path;
+export type Requirements = EpubCheck.EpubCheck | FileSystem.FileSystem | Path.Path | Scope.Scope;
 
 export interface StepDefinition {
   readonly expression: CucumberExpression;
@@ -150,7 +176,7 @@ export interface StepDefinition {
   ) => Effect.Effect<void, StepFailed, Requirements>;
 }
 
-const define = <S extends Schema.Decoder<unknown>>(
+export const define = <S extends Schema.Decoder<unknown>>(
   text: string,
   args: S,
   run: (
@@ -170,7 +196,7 @@ const define = <S extends Schema.Decoder<unknown>>(
     ),
 });
 
-const noop = Effect.void;
+export const noop = Effect.void;
 
 // Upstream's TestReport collapses Java `\s` whitespace, which excludes NBSP and other spaces.
 const normalize = (text: string) => text.replace(/[ \t\n\v\f\r]+/g, " ");
@@ -193,6 +219,7 @@ const check = Effect.fn("Steps.check")(function* (world: World, file: string) {
   };
   const result = yield* checker.check(invocation);
   world.checks.push({ invocation, messages: result.messages });
+  world.lastResult = result;
   // Upstream's TestReport accumulates messages across every check in a scenario.
   world.messages.push(...result.messages);
 });

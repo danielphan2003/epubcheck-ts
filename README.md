@@ -56,11 +56,11 @@ epubcheck-ts detects.
 
 <!-- conformance:start -->
 
-Upstream suite: EPUBCheck v5.4.0. Passing **926 / 1251** scenarios (74.0%); scenarios that expect reported messages: **472 / 720** (65.6%).
+Upstream suite: EPUBCheck v5.4.0. Passing **943 / 1251** scenarios (75.4%); scenarios that expect reported messages: **428 / 720** (59.4%).
 
 | Area                                    | Passing | Total |      % |
 | --------------------------------------- | ------: | ----: | -----: |
-| `cli`                                   |       0 |    53 |   0.0% |
+| `cli`                                   |      51 |    53 |  96.2% |
 | `epub-accessibility`                    |       5 |     5 | 100.0% |
 | `epub-dictionaries`                     |      12 |    34 |  35.3% |
 | `epub-distributable-objects`            |       2 |     2 | 100.0% |
@@ -69,24 +69,24 @@ Upstream suite: EPUBCheck v5.4.0. Passing **926 / 1251** scenarios (74.0%); scen
 | `epub-multiple-renditions`              |      10 |    13 |  76.9% |
 | `epub-previews`                         |       5 |    10 |  50.0% |
 | `epub-region-nav`                       |       5 |    10 |  50.0% |
-| `epub-scriptable-components`            |       2 |     2 | 100.0% |
-| `epub2`                                 |      77 |    99 |  77.8% |
+| `epub-scriptable-components`            |       1 |     2 |  50.0% |
+| `epub2`                                 |      71 |    99 |  71.7% |
 | `epub3/00-minimal`                      |       5 |     5 | 100.0% |
 | `epub3/02-epub-publication-conformance` |       2 |     2 | 100.0% |
-| `epub3/03-resources`                    |      85 |   129 |  65.9% |
-| `epub3/04-ocf`                          |      89 |   100 |  89.0% |
-| `epub3/05-package-document`             |     119 |   130 |  91.5% |
+| `epub3/03-resources`                    |      78 |   129 |  60.5% |
+| `epub3/04-ocf`                          |      85 |   100 |  85.0% |
+| `epub3/05-package-document`             |     117 |   130 |  90.0% |
 | `epub3/06-layouts`                      |      10 |    20 |  50.0% |
-| `epub3/07-content-documents`            |     188 |   235 |  80.0% |
-| `epub3/08-navigation-document`          |      36 |    40 |  90.0% |
+| `epub3/07-content-documents`            |     171 |   235 |  72.8% |
+| `epub3/08-navigation-document`          |      35 |    40 |  87.5% |
 | `epub3/09-media-overlays`               |      32 |    50 |  64.0% |
 | `epub3/B-external-identifiers`          |       1 |     3 |  33.3% |
 | `epub3/C-viewport-meta-tag`             |      34 |    34 | 100.0% |
 | `epub3/D-vocabularies`                  |      79 |    79 | 100.0% |
-| `epub3/E-obsolete-features`             |      57 |    72 |  79.2% |
+| `epub3/E-obsolete-features`             |      51 |    72 |  70.8% |
 | `epub3/G-media-type-registrations`      |       1 |     1 | 100.0% |
 | `localization`                          |       5 |     7 |  71.4% |
-| `reporting`                             |       0 |    24 |   0.0% |
+| `reporting`                             |      10 |    24 |  41.7% |
 | `unit-tests`                            |      42 |    42 | 100.0% |
 
 <!-- conformance:end -->

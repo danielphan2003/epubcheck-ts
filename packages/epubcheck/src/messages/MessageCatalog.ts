@@ -48,11 +48,11 @@ const lookup = (key: string, locale: string | undefined) => {
 
 // Java `String.format` subset used by the bundles: `%n$s`, `%s`, `%n`, and `%%`. Like upstream,
 // a specifier without an argument yields the raw pattern plus " !!! Format specifier '...'".
-const formatJava = (pattern: string, args: ReadonlyArray<string>) => {
+export const formatJava = (pattern: string, args: ReadonlyArray<string>) => {
   let sequential = 0;
   let missing: string | undefined;
   const formatted = pattern.replace(
-    /%(?:(\d+)\$)?([sn%])/g,
+    /%(?:(\d+)\$)?([sdn%])/g,
     (match, index: string | undefined, kind: string) => {
       if (kind === "%") return "%";
       if (kind === "n") return "\n";
@@ -69,9 +69,10 @@ export const formatMessage = (
   id: MessageId,
   args: ReadonlyArray<string>,
   locale?: string | undefined,
+  override?: string | undefined,
 ) => {
   const key = bundleKey(id);
-  const pattern = lookup(key, locale);
+  const pattern = override ?? lookup(key, locale);
   if (pattern === undefined) return "";
   let effectiveArgs = args;
   // A localized argument is a bundle key `ID.keyword`; later arguments format that value.
@@ -98,3 +99,20 @@ export const keyedSuggestion = (id: MessageId, key: string, locale?: string | un
   lookup(`${bundleKey(id)}_SUG.${key}`, locale) ??
   lookup(`${bundleKey(id)}_SUG.default`, locale) ??
   "";
+
+// The highest positional argument a pattern uses (`%3$s` is 3), to validate overrides.
+export const argumentCount = (pattern: string) =>
+  Math.max(0, ...[...pattern.matchAll(/%(\d+)\$[sd]/g)].map((match) => Number(match[1])));
+
+export const rawMessage = (id: MessageId, locale?: string | undefined) =>
+  lookup(bundleKey(id), locale) ?? "";
+
+export const isSeverity = (value: string): value is Severity =>
+  value === "FATAL" ||
+  value === "ERROR" ||
+  value === "WARNING" ||
+  value === "USAGE" ||
+  value === "INFO" ||
+  value === "SUPPRESSED";
+
+export const messageIds = Object.keys(defaultSeverities).filter(isMessageId);
