@@ -76,7 +76,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     (itemrefsOf.get(item.id)?.every((itemref) => itemref.linear) ?? false);
   const nfc = (path: string) => path.normalize("NFC");
   const byId = new Map(opf.items.map((item) => [item.id, item] as const));
-  const ids = new Map<string, ReadonlySet<string>>();
+  const ids = new Map<string, ReturnType<typeof Collect.idTypes>>();
   const unparsed = new Set<string>();
   const publication: ReferenceChecker.Publication = {
     version: opf.version,
@@ -262,6 +262,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     yield* reportFindings(ContentRules.schemeFindings(document.value, item.path, opf.version));
     if (opf.version === "3") {
       yield* reportFindings(ContentRules.check(document.value, item.path));
+      yield* reportFindings(ContentRules.svgLinkNames(document.value, item.path, kind === "svg"));
       const fixed = fixedLayout.has(item.path);
       yield* reportFindings(
         kind === "svg"
@@ -282,11 +283,10 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       for (const child of element.children) if (child.kind === "text") count += child.text.length;
     }
     characters.push({ path: reportPath(item.path), count });
-    const found = Collect.idPositions(document.value);
-    ids.set(nfc(item.path), new Set(found.keys()));
+    ids.set(nfc(item.path), Collect.idTypes(document.value));
     yield* reportFindings(collected.findings);
     if (collected.features.scripts) scripts = true;
-    positions.set(nfc(item.path), found);
+    positions.set(nfc(item.path), Collect.idPositions(document.value));
     const { root } = document.value;
     const end = { line: root.endLine, column: root.endColumn };
     documents.push({ item, path: item.path, features: collected.features, end });
@@ -492,6 +492,7 @@ export const checkDocumentReferences = Effect.fn("Publication.checkDocumentRefer
   yield* reportFindings(ContentRules.schemeFindings(document.value, path, version));
   if (version === "3") {
     yield* reportFindings(ContentRules.check(document.value, path));
+    yield* reportFindings(ContentRules.svgLinkNames(document.value, path, kind === "svg"));
   }
   const context: Collect.Context = {
     version,

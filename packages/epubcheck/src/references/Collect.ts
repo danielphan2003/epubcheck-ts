@@ -27,6 +27,9 @@ export type ReferenceType =
   // CSS `url()` values outside `@font-face`, and `input` images.
   | "generic"
   | "svg-symbol"
+  // SVG `fill` and `stroke`, and `clip-path`, URL values.
+  | "svg-paint"
+  | "svg-clip-path"
   | "cite"
   // A Search Key Map's link to dictionary content.
   | "search-key"
@@ -216,6 +219,12 @@ const svgHrefs = (element: Xml.XmlElement, epub3: boolean) => {
 
 // Java's `\s`, which upstream splits `epub:type` values on: ASCII whitespace only.
 const JAVA_SPACE = /[ \t\n\v\f\r]+/;
+
+const SVG_URL_PROPERTIES = [
+  ["fill", "svg-paint"],
+  ["stroke", "svg-paint"],
+  ["clip-path", "svg-clip-path"],
+] as const;
 
 // The nav types upstream's NavHandler reads, in the order it tests them: the last one wins.
 const NAV_TYPES = ["toc", "page-list", "landmarks"] as const;
@@ -544,6 +553,15 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
         default:
           break;
       }
+      // Upstream reads a URL value only written exactly as `url(...)`, quoted or not.
+      for (const [property, type] of SVG_URL_PROPERTIES) {
+        const value = Xml.attribute(element, property);
+        if (value === undefined || !value.startsWith("url(") || !value.endsWith(")")) continue;
+        const inner = value.slice(4, -1);
+        const quoted = inner.length > 1 && /^(["']).*\1$/s.test(inner);
+        const url = quoted ? inner.slice(1, -1) : inner;
+        register(check(url, start(element)), type, element, start(element));
+      }
     } else if (element.ns === MATHML_NS && element.local === "math" && epub3) {
       mathml = true;
       register(
@@ -707,6 +725,28 @@ const EMBEDDED = new Set([
 const NOT_PALPABLE = new Set(["html", "head", "script", "link", "meta", "title", "style"]);
 
 // Each ID's position in document order.
+// What each ID names, as upstream registers it: an SVG paint server, clip path or symbol, or any
+// other element. The first element with an ID gives it its type.
+export const idTypes = (document: Xml.XmlDocument) => {
+  const types = new Map<string, "svg-paint" | "svg-clip-path" | "svg-symbol" | "generic">();
+  for (const element of [document.root, ...Xml.descendants(document.root)]) {
+    const id = Xml.attribute(element, "id");
+    if (id === undefined || types.has(id)) continue;
+    const name = element.ns === SVG_NS ? element.local.toLowerCase() : "";
+    types.set(
+      id,
+      name === "lineargradient" || name === "radialgradient" || name === "pattern"
+        ? "svg-paint"
+        : name === "clippath"
+          ? "svg-clip-path"
+          : name === "symbol"
+            ? "svg-symbol"
+            : "generic",
+    );
+  }
+  return types;
+};
+
 export const idPositions = (document: Xml.XmlDocument) => {
   const positions = new Map<string, number>();
   for (const element of [document.root, ...Xml.descendants(document.root)]) {
