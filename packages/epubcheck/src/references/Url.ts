@@ -139,9 +139,11 @@ const normalizeRemote = (url: URL) => {
 export const nameOf = (target: Target) =>
   target.kind === "local" ? encodePath(target.path) : target.url;
 
+// Galimatias shows the domains of special schemes in Unicode, and other hosts as written.
 const host = (url: URL) =>
-  (url.hostname.startsWith("[") ? url.hostname : domainToUnicode(url.hostname)) +
-  (url.port === "" ? "" : `:${url.port}`);
+  (SPECIAL.has(url.protocol.slice(0, -1)) && !url.hostname.startsWith("[")
+    ? domainToUnicode(url.hostname)
+    : url.hostname) + (url.port === "" ? "" : `:${url.port}`);
 
 // How upstream names a remote manifest item: galimatias's human form, percent-decoded, with
 // Unicode domains.

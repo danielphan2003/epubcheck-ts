@@ -142,6 +142,7 @@ describe("Url.humanName", () => {
     { href: "http://example.org:8080/x?", name: "http://example.org:8080/x?" },
     { href: "https://xn--bcher-kva.example/a%20b.png", name: "https://bücher.example/a b.png" },
     { href: "https://[::1]:8080/x.png", name: "https://[::1]:8080/x.png" },
+    { href: "foo://xn--bcher-kva.example/x.png", name: "foo://xn--bcher-kva.example/x.png" },
   ])("names $href", ({ href, name }) => {
     expect(Url.humanName(href)).toBe(name);
   });
