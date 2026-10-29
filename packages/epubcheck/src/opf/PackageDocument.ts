@@ -1,4 +1,5 @@
 import * as Xml from "../xml/Xml.ts";
+import { percentDecode } from "../util/UrlFragment.ts";
 
 // The parts of a package document that other checks need: manifest items and the spine.
 
@@ -28,7 +29,8 @@ export const resolve = (href: string, from: string) => {
   try {
     const url = new URL(href, new URL(from, BASE));
     if (url.origin !== new URL(BASE).origin) return undefined;
-    return decodeURIComponent(url.pathname.slice(1));
+    // Invalid UTF-8 decodes to U+FFFD, as in upstream's URL library.
+    return percentDecode(url.pathname.slice(1));
   } catch {
     return undefined;
   }

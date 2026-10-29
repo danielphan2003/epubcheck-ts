@@ -1,4 +1,6 @@
 import { keyedSuggestion, type MessageId } from "../messages/MessageCatalog.ts";
+import * as JavaText from "../util/JavaText.ts";
+import { percentDecode } from "../util/UrlFragment.ts";
 import * as Xml from "../xml/Xml.ts";
 import { checkLanguageTag } from "./LanguageTag.ts";
 import type { ManifestItem, PackageDocument } from "./PackageDocument.ts";
@@ -15,27 +17,41 @@ const XML_NS = "http://www.w3.org/XML/1998/namespace";
 // Container paths resolve against this base, so a URL's origin tells local from remote.
 const CONTAINER = new URL("https://container.invalid/");
 
-// Upstream compares URLs normalized: inside the container without the query, and with the path
-// decoded, in NFC and encoded again.
+// Upstream compares URLs normalized: the path percent-decoded (invalid UTF-8 as U+FFFD) and in
+// NFC, unreserved escapes in the fragment decoded, and no query inside the container.
 const normalizedUrl = (href: string, base: URL) => {
   const url = URL.parse(href, base);
   if (url === null) return undefined;
-  if (url.origin === CONTAINER.origin) url.search = "";
-  try {
-    url.pathname = decodeURIComponent(url.pathname).normalize("NFC");
-  } catch {
-    // A malformed escape stays as written.
-  }
-  return url.href;
+  const search = url.origin === CONTAINER.origin ? "" : url.search;
+  const hash = url.hash.replace(/%([0-9A-Fa-f]{2})/g, (escape, hex: string) => {
+    const char = String.fromCharCode(Number.parseInt(hex, 16));
+    return /[A-Za-z0-9._~-]/.test(char) ? char : escape;
+  });
+  const path = percentDecode(url.pathname).normalize("NFC");
+  return `${url.protocol}//${url.host}${path}${search}${hash}`;
 };
 
-// The media types upstream checks an item for: a MIME type its parser accepts, which also passes
-// its own pattern (where `+-^` is a range).
+// Upstream normalizes an item's media type (no space around `;`, parameters without a value
+// dropped, quotes removed from token values) and then tests a pattern in which `+-^` is a range.
 const TOKEN = "[!#$%&'*+.^_`|~0-9A-Za-z-]+";
-const MIME_TYPE = new RegExp(`^${TOKEN}/${TOKEN}(?:\\s*;\\s*${TOKEN}=(?:${TOKEN}|"[^"]*"))*$`);
 const ITEM_MEDIA_TYPE = /^[a-zA-Z0-9!#$&+-^_]+\/[a-zA-Z0-9!#$&+-^_]+$/;
-const isCheckedMediaType = (mediaType: string) =>
-  MIME_TYPE.test(mediaType) && ITEM_MEDIA_TYPE.test(mediaType);
+const normalizedMediaType = (value: string) => {
+  const [essence = "", ...parameters] = value.split(";");
+  const type = new RegExp(`^\\s*(${TOKEN}/${TOKEN})\\s*$`).exec(essence)?.[1];
+  if (type === undefined) return undefined;
+  const kept = parameters.flatMap((parameter) => {
+    const [, name, raw = ""] =
+      new RegExp(`^\\s*(${TOKEN})=(${TOKEN}|"[^"]*")\\s*$`).exec(parameter) ?? [];
+    if (name === undefined) return [];
+    const unquoted = raw.startsWith('"') ? raw.slice(1, -1) : raw;
+    return [`${name}=${new RegExp(`^${TOKEN}$`).test(unquoted) ? unquoted : raw}`];
+  });
+  return [type, ...kept].join(";");
+};
+const isCheckedMediaType = (mediaType: string) => {
+  const normalized = normalizedMediaType(mediaType);
+  return normalized !== undefined && ITEM_MEDIA_TYPE.test(normalized);
+};
 
 export interface Finding {
   readonly id: MessageId;
@@ -133,6 +149,7 @@ const manifestChecks = ({ opf, container }: Context) => {
   // Upstream identifies items by normalized URL, fragment included. The last item for a URL is
   // the one it keeps and checks; every other one is a duplicate. An item without one is skipped.
   const packageUrl = new URL(opf.path, CONTAINER);
+  const packageKey = normalizedUrl(packageUrl.href, packageUrl);
   const urlOf = (item: ManifestItem) =>
     Xml.attribute(item.element, "href") === undefined
       ? undefined
@@ -147,7 +164,7 @@ const manifestChecks = ({ opf, container }: Context) => {
       findings.push(at(item.element, "OPF-074", item.path ?? url ?? item.href));
       continue;
     }
-    if (url === packageUrl.href) {
+    if (url === packageKey) {
       findings.push(at(item.element, "OPF-099"));
       continue;
     }
@@ -167,10 +184,14 @@ const manifestChecks = ({ opf, container }: Context) => {
       findings.push({ id: "RSC-001", args: [item.path], line: -1, column: -1, path: item.path });
     }
   }
-  // Upstream checks item properties as it reads each `item`, duplicates included.
+  // Upstream checks properties as it reads each `item` that it registers (an `href`, and an `id`
+  // without surrounding whitespace), duplicates included; a repeated property counts once.
   if (opf.version === "3") {
     for (const item of opf.items) {
-      for (const property of item.properties) {
+      const id = Xml.attribute(item.element, "id");
+      if (id === undefined || id !== JavaText.trim(id)) continue;
+      if (Xml.attribute(item.element, "href") === undefined) continue;
+      for (const property of new Set(item.properties)) {
         if (!allowedFor(property, item.mediaType))
           findings.push(at(item.element, "OPF-012", property, item.mediaType));
       }
@@ -253,7 +274,6 @@ const isJavaUuid = (value: string) => {
 const metadataChecks = ({ document, opf, container }: Context) => {
   const findings: Array<Finding> = [];
   const root = document.root;
-  const metadata = opfChildren(root, "metadata")[0];
   const dcElements = (local: string) =>
     metadataElements(root)
       .flatMap((element) => [...Xml.descendants(element)])
@@ -264,11 +284,14 @@ const metadataChecks = ({ document, opf, container }: Context) => {
   // Upstream matches each identifier's trimmed `id` against the attribute as written.
   const uniques = dcElements("identifier").filter((element) => {
     const id = Xml.attribute(element, "id");
-    return id !== undefined && id !== "" && id.trim() === uniqueIdentifier;
+    return (
+      id !== undefined && id !== "" && uniqueIdentifier !== "" && id.trim() === uniqueIdentifier
+    );
   });
-  const declared = dcElements("identifier").some(
-    (element) => Xml.attribute(element, "id") === uniqueIdentifier,
-  );
+  const declared = dcElements("identifier").some((element) => {
+    const id = Xml.attribute(element, "id");
+    return id !== undefined && id !== "" && id === uniqueIdentifier;
+  });
   if (!declared && container !== undefined) {
     findings.push(
       nowhere(
@@ -290,15 +313,20 @@ const metadataChecks = ({ document, opf, container }: Context) => {
     }
   }
 
-  // EPUB 2: an empty title or language is OPF-055, any other empty Dublin Core element OPF-072.
+  // EPUB 2: an empty title or language is OPF-055, and any other empty Dublin Core element but
+  // an identifier or a date OPF-072. Upstream reads only the element's own text, Java-trimmed.
   if (opf.version === "2") {
     for (const element of metadataElements(root).flatMap((parent) => [
       ...Xml.descendants(parent),
     ])) {
-      if (element.ns !== DC_NS || Xml.textContent(element).trim() !== "") continue;
+      if (element.ns !== DC_NS || element.local === "identifier" || element.local === "date") {
+        continue;
+      }
+      const text = element.children.flatMap((child) => (child.kind === "text" ? [child.text] : []));
+      if (JavaText.trim(text.join("")) !== "") continue;
       if (element.local === "title" || element.local === "language") {
         findings.push(atEnd(element, "OPF-055", element.local));
-      } else findings.push(atEnd(element, "OPF-072", element.name));
+      } else findings.push(atEnd(element, "OPF-072", `dc:${element.local}`));
     }
   }
 
@@ -323,8 +351,9 @@ const metadataChecks = ({ document, opf, container }: Context) => {
         findings.push(at(element, "OPF-092", lang, problem));
     }
     const prefixes = Vocabularies.parsePrefixes(Xml.attribute(root, "prefix"));
-    if (metadata !== undefined && hasRefinesCycle(metadata, prefixes))
-      findings.push(atEnd(metadata, "OPF-065"));
+    for (const element of metadataElements(root)) {
+      if (hasRefinesCycle(element, prefixes)) findings.push(atEnd(element, "OPF-065"));
+    }
   }
   return findings;
 };
@@ -405,8 +434,12 @@ const vocabularyChecks = ({ document, opf }: Context) => {
     const properties = property(meta, "property", "meta", false, atEnd);
     property(meta, "scheme", "meta", false, atEnd);
     if (
-      properties.some((parsed) => parsed.token === "rendition:spread") &&
-      Xml.textContent(meta).trim() === "portrait"
+      properties.some(
+        (parsed) =>
+          parsed.name === "spread" &&
+          prefixes.vocabs.get(parsed.prefix)?.uri === Vocabularies.RESERVED.rendition?.uri,
+      ) &&
+      JavaText.trim(Xml.textContent(meta)) === "portrait"
     ) {
       findings.push(
         atEnd(meta, "OPF-086", "rendition:spread portrait", keyedSuggestion("OPF-086", "")),
@@ -416,10 +449,27 @@ const vocabularyChecks = ({ document, opf }: Context) => {
   // Upstream's link checks, in its order: a data URL or a link into the package document itself
   // stops there, and an unparsable URL skips to the language tag.
   const packageUrl = new URL(opf.path, CONTAINER);
-  const links = metadatas.flatMap((metadata, index) =>
-    opfChildren(metadata, "link").map((link) => ({ link, topLevel: index === 0 })),
+  const packageKey = normalizedUrl(packageUrl.href, packageUrl);
+  // Links in the package metadata, in collection metadata, and directly in collections.
+  const collections = [...Xml.descendants(root)].filter(
+    (element) => element.ns === OPF_NS && element.local === "collection",
   );
-  for (const { link, topLevel } of links) {
+  const links = [
+    ...opfChildren(opfChildren(root, "metadata")[0], "link").map((link) => ({
+      link,
+      place: "package",
+    })),
+    ...collections.flatMap((collection) =>
+      opfChildren(opfChildren(collection, "metadata")[0], "link").map((link) => ({
+        link,
+        place: "collection metadata",
+      })),
+    ),
+    ...collections.flatMap((collection) =>
+      opfChildren(collection, "link").map((link) => ({ link, place: "collection" })),
+    ),
+  ];
+  for (const { link, place } of links) {
     const href = Xml.attribute(link, "href");
     const url = href === undefined ? null : URL.parse(href, packageUrl);
     if (url?.protocol === "data:") continue;
@@ -427,7 +477,7 @@ const vocabularyChecks = ({ document, opf }: Context) => {
       href !== undefined &&
       url !== null &&
       url.hash.length > 1 &&
-      normalizedUrl(href.split("#")[0] ?? "", packageUrl) === packageUrl.href
+      normalizedUrl(href.split("#")[0] ?? "", packageUrl) === packageKey
     ) {
       findings.push(at(link, "OPF-098", href));
       continue;
@@ -442,11 +492,12 @@ const vocabularyChecks = ({ document, opf }: Context) => {
       if (rels.has("alternate") && relCount > 1) findings.push(at(link, "OPF-089"));
       const mediaType = Xml.attribute(link, "media-type");
       if (mediaType === undefined) {
-        // `file:` URLs count as local, as in upstream's isSameOrigin; collection links are not
-        // checked for a missing media type.
-        if (url.origin === CONTAINER.origin || url.protocol === "file:") {
-          if (topLevel) findings.push(at(link, "OPF-093"));
-        } else if (rels.has("record") || rels.has("voicing"))
+        // `file:` URLs count as local, as in upstream's isSameOrigin. Only the package metadata
+        // asks local links for a media type; links directly in a collection are always asked
+        // for one when they are records or voicings.
+        const local = url.origin === CONTAINER.origin || url.protocol === "file:";
+        if (local && place === "package") findings.push(at(link, "OPF-093"));
+        else if ((!local || place === "collection") && (rels.has("record") || rels.has("voicing")))
           findings.push(at(link, "OPF-094", Xml.attribute(link, "rel") ?? ""));
       } else if (rels.has("voicing") && !mediaType.startsWith("audio/")) {
         findings.push(at(link, "OPF-095", mediaType));
@@ -466,9 +517,8 @@ const vocabularyChecks = ({ document, opf }: Context) => {
   }
   const guide = opfChildren(root, "guide")[0];
   if (guide !== undefined) findings.push(at(guide, "OBS-001", "element", 'OPF 2 "guide"'));
-  for (const collection of [...Xml.descendants(root)].filter(
-    (element) => element.ns === OPF_NS && element.local === "collection",
-  )) {
+  // Only the outermost collections are reported.
+  for (const collection of opfChildren(root, "collection")) {
     findings.push(at(collection, "OBS-001", "element", '"collection"'));
   }
   return findings;
