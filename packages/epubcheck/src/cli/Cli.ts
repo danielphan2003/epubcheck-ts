@@ -279,9 +279,10 @@ const readCustomMessages = Effect.fn("Cli.readCustomMessages")(function* (file: 
   }
   for (const line of content.value.split(/\r?\n/).slice(1)) {
     if (line.trim() === "") continue;
-    const [id = "", severity = "", message = "", suggestion = ""] = line.split("\t");
-    if (!MessageCatalog.isMessageId(id)) {
-      yield* report.message("CHK-002", at, id, file);
+    const [written = "", severity = "", message = "", suggestion = ""] = line.split("\t");
+    const id = MessageCatalog.fromDisplayId(written);
+    if (id === undefined) {
+      yield* report.message("CHK-002", at, written, file);
       continue;
     }
     if (!MessageCatalog.isSeverity(severity)) {
@@ -326,7 +327,7 @@ const listChecks = () =>
     "ID\tSeverity\tMessage\tSuggestion",
     ...MessageCatalog.messageIds.map(
       (id) =>
-        `${id}\t${MessageCatalog.defaultSeverity(id)}\t${MessageCatalog.rawMessage(id)}\t${MessageCatalog.formatSuggestion(id)}`,
+        `${MessageCatalog.displayId(id)}\t${MessageCatalog.defaultSeverity(id)}\t${MessageCatalog.rawMessage(id)}\t${MessageCatalog.formatSuggestion(id)}`,
     ),
   ].join("\n");
 
@@ -414,7 +415,7 @@ export const run = Effect.fn("Cli.run")(function* (
   for (const message of result.messages) {
     const where = JsonReport.locationPath(result, message.location, displayPath);
     const file = where === displayPath ? displayPath : `${displayPath}/${where}`;
-    const line = `${message.severity}(${message.id}): ${file}(${message.location.line},${message.location.column}): ${message.message}`;
+    const line = `${message.severity}(${MessageCatalog.displayId(message.id)}): ${file}(${message.location.line},${message.location.column}): ${message.message}`;
     yield* message.severity === "USAGE" || message.severity === "INFO" ? out(line) : err(line);
   }
 

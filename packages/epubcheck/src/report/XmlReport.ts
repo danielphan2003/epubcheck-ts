@@ -1,4 +1,5 @@
 import { type CheckResult, VERSION } from "../EpubCheck.ts";
+import * as MessageCatalog from "../messages/MessageCatalog.ts";
 import * as Dates from "./Dates.ts";
 import * as Groups from "./Groups.ts";
 import { epubVersionLabel, locationPath } from "./JsonReport.ts";
@@ -83,12 +84,12 @@ const property = (indent: string, name: string, type: string, value: string) =>
 export const renderJhove = (result: CheckResult, options: ReportOptions) => {
   const metadata = result.publication?.metadata;
   const created = Dates.utcIso(options.checkedAt);
-  const messages = entries(result, options).map(
-    (entry) =>
-      `         <message id="${entry.message.id}" severity="${entry.label.level}">${escape(
-        `${entry.message.id}, ${entry.label.name}, [${entry.message.message}], ${entry.where}`,
-      )}</message>`,
-  );
+  const messages = entries(result, options).map((entry) => {
+    const id = MessageCatalog.displayId(entry.message.id);
+    return `         <message id="${id}" severity="${entry.label.level}">${escape(
+      `${id}, ${entry.label.name}, [${entry.message.message}], ${entry.where}`,
+    )}</message>`;
+  });
   const info = [
     metadata?.identifier === undefined
       ? []
@@ -173,7 +174,7 @@ export const renderXmp = (result: CheckResult, options: ReportOptions) => {
   const outcomes = Groups.group(result.messages, options.maxOfEachMessage).flatMap((group) => [
     '                  <rdf:li rdf:parseType="Resource">',
     `                     <premis:hasEventOutcome>${escape(
-      `${group.first.id}, ${LABEL[group.first.severity].name}, ${group.first.message}`,
+      `${MessageCatalog.displayId(group.first.id)}, ${LABEL[group.first.severity].name}, ${group.first.message}`,
     )}</premis:hasEventOutcome>`,
     "                     <premis:hasEventOutcomeDetail>",
     "                        <rdf:Seq>",

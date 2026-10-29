@@ -1,4 +1,5 @@
 import { type CheckResult, VERSION } from "../EpubCheck.ts";
+import * as MessageCatalog from "../messages/MessageCatalog.ts";
 import * as Dates from "./Dates.ts";
 import * as Groups from "./Groups.ts";
 import * as Jackson from "./Jackson.ts";
@@ -29,7 +30,7 @@ export const render = (result: CheckResult, options: ReportOptions) => {
   const metadata = result.publication?.metadata;
   return Jackson.stringify({
     messages: groups.map((group) => ({
-      ID: group.first.id,
+      ID: MessageCatalog.displayId(group.first.id),
       severity: group.first.severity,
       message: group.first.message,
       additionalLocations: group.additionalLocations,

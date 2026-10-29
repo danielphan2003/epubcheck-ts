@@ -9,6 +9,18 @@ export const isMessageId = (value: string): value is MessageId =>
 
 export const defaultSeverity = (id: MessageId): Severity => defaultSeverities[id];
 
+// Upstream's MessageId enum spells these IDs with an underscore, which its reports and command
+// line show (`HTM_058`); the catalog and the scenarios use hyphens.
+const UNDERSCORED = new Set<string>([
+  ..."053 054 055 056 057 058 059 060a 060b 061 062 063".split(" ").map((n) => `HTM-${n}`),
+  ..."006 007 010 011 012 013 014 015 016 017 018".split(" ").map((n) => `MED-${n}`),
+]);
+
+export const displayId = (id: MessageId) => (UNDERSCORED.has(id) ? id.replace("-", "_") : id);
+
+// A message ID as upstream spells it, for severity override files.
+export const fromDisplayId = (value: string) => messageIds.find((id) => displayId(id) === value);
+
 // Higher ranks are more severe; mirrors upstream ReportingLevel.
 export const severityRank = (severity: Severity) => {
   switch (severity) {
