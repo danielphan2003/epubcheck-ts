@@ -6,6 +6,8 @@ import * as Vocabularies from "./Vocabularies.ts";
 // The parts of a package document that other checks need: manifest items and the spine.
 
 const OPF_NS = "http://www.idpf.org/2007/opf";
+// Legacy OEBPS 1.2 package documents use their own namespace.
+export const OEB_PACKAGE_NS = "http://openebook.org/namespaces/oeb-package/1.0/";
 const DC_NS = "http://purl.org/dc/elements/1.1/";
 
 export interface ManifestItem {
@@ -66,6 +68,8 @@ export interface PackageDocument {
   // Item IDs in spine order; `spineItems` has each itemref's details.
   readonly spine: ReadonlyArray<string>;
   readonly spineItems: ReadonlyArray<SpineItem>;
+  // The NCX item the spine names (`toc`).
+  readonly toc: string | undefined;
   readonly metadata: Metadata;
   // The package metadata's links (EPUB 3).
   readonly links: Collection["links"];
@@ -106,11 +110,12 @@ export const read = (
   path: string,
   version: "2" | "3",
 ): PackageDocument => {
-  const children = Xml.childElements(document.root).filter((child) => child.ns === OPF_NS);
+  const ns = document.root.ns === OEB_PACKAGE_NS ? OEB_PACKAGE_NS : OPF_NS;
+  const children = Xml.childElements(document.root).filter((child) => child.ns === ns);
   const manifest = children.find((child) => child.local === "manifest");
   const spine = children.find((child) => child.local === "spine");
   const items = (manifest === undefined ? [] : Xml.childElements(manifest))
-    .filter((element) => element.ns === OPF_NS && element.local === "item")
+    .filter((element) => element.ns === ns && element.local === "item")
     .map((element) => {
       const href = (Xml.attribute(element, "href") ?? "").trim();
       return {
@@ -127,7 +132,7 @@ export const read = (
     });
   const prefixes = Vocabularies.parsePrefixes(Xml.attribute(document.root, "prefix"));
   const spineItems = (spine === undefined ? [] : Xml.childElements(spine))
-    .filter((element) => element.ns === OPF_NS && element.local === "itemref")
+    .filter((element) => element.ns === ns && element.local === "itemref")
     .map((element) => ({
       idref: (Xml.attribute(element, "idref") ?? "").trim(),
       padded: (Xml.attribute(element, "idref") ?? "").trim() !== Xml.attribute(element, "idref"),
@@ -165,6 +170,7 @@ export const read = (
     items,
     spine: itemrefs,
     spineItems,
+    toc: spine === undefined ? undefined : Xml.attribute(spine, "toc")?.trim(),
     metadata: readMetadata(document, children, prefixes),
     links: linksOf(children.find((child) => child.local === "metadata")),
     collections,

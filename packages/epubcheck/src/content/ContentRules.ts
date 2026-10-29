@@ -288,3 +288,23 @@ const linkFindings = (path: string, link: Xml.XmlElement) => {
   }
   return findings;
 };
+
+const XHTML11_PUBLIC_ID = "-//W3C//DTD XHTML 1.1//EN";
+const XHTML11_SYSTEM_ID = "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd";
+
+// EPUB 2 XHTML documents may only use the XHTML 1.1 DOCTYPE, if any (HTM-004).
+export const epub2Doctype = (document: Xml.XmlDocument, path: string): ReadonlyArray<Finding> => {
+  const doctype = document.doctype;
+  if (doctype === undefined) return [];
+  const found =
+    doctype.publicId !== XHTML11_PUBLIC_ID
+      ? (doctype.publicId ?? "")
+      : doctype.systemId !== XHTML11_SYSTEM_ID
+        ? (doctype.systemId ?? "")
+        : undefined;
+  if (found === undefined) return [];
+  const expected = `<!DOCTYPE html PUBLIC "${XHTML11_PUBLIC_ID}" \n"${XHTML11_SYSTEM_ID}">`;
+  return [
+    { id: "HTM-004", args: [found, expected], path, line: doctype.line, column: doctype.column },
+  ];
+};

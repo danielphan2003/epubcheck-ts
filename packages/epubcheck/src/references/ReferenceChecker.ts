@@ -33,12 +33,17 @@ const isRemoteMediaType = (mediaType: string) =>
 // Hyperlinks and citations are not publication resources.
 const NAVIGATION = new Set<ReferenceType>(["hyperlink", "cite"]);
 
-// What a hyperlink may point to; links to other types are reported as such by a later check.
+// What a hyperlink may point to; other types are reported as non-standard (RSC-010).
 const isLinkable = (mediaType: string, version: "2" | "3") =>
   mediaType === "application/xhtml+xml" ||
   mediaType === (version === "3" ? "image/svg+xml" : "application/x-dtbook+xml") ||
   mediaType === "text/x-oeb1-document" ||
   mediaType === "text/html";
+
+// The content documents of each version, which may be a fallback for what a hyperlink reaches.
+const isContentDocument = (mediaType: string, version: "2" | "3") =>
+  mediaType === "application/xhtml+xml" ||
+  mediaType === (version === "3" ? "image/svg+xml" : "application/x-dtbook+xml");
 
 const essence = (mediaType: string) => (mediaType.split(";")[0] ?? "").trim().toLowerCase();
 const isContent = (mediaType: string) =>
@@ -79,16 +84,18 @@ export const loadsSvg = (references: ReadonlyArray<Reference>, publication: Publ
 export const check = (references: ReadonlyArray<Reference>, publication: Publication) => {
   const findings: Array<Finding> = [];
   const epub3 = publication.version === "3";
-  const hasCoreFallback = (item: ManifestItem | undefined) => {
+  // Whether an item's manifest fallback chain reaches a resource of some type.
+  const hasFallback = (item: ManifestItem | undefined, accepts: (mediaType: string) => boolean) => {
     const seen = new Set<string>();
     let current = item;
     while (current?.fallback !== undefined && !seen.has(current.id)) {
       seen.add(current.id);
       current = publication.byId.get(current.fallback);
-      if (current !== undefined && MediaTypes.isCore(current.mediaType)) return true;
+      if (current !== undefined && accepts(current.mediaType)) return true;
     }
     return false;
   };
+  const hasCoreFallback = (item: ManifestItem | undefined) => hasFallback(item, MediaTypes.isCore);
   // A foreign resource needs a fallback (RSC-032), and a script must be JavaScript.
   const resourceFindings = (reference: Reference, mediaType: string, item?: ManifestItem) => {
     const name = Url.nameOf(reference.target);
@@ -119,9 +126,10 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
     // later).
     if (target.kind === "data") {
       const mediaType = MediaTypes.normalize(target.mediaType);
-      if (type === "hyperlink" && isLinkable(mediaType, publication.version)) {
-        findings.push(finding(reference, "RSC-011"));
-      } else if (type !== "hyperlink") resourceFindings(reference, mediaType);
+      if (type === "hyperlink") {
+        const linkable = isLinkable(mediaType, publication.version);
+        findings.push(finding(reference, linkable ? "RSC-011" : "RSC-010"));
+      } else resourceFindings(reference, mediaType);
       continue;
     }
     if (target.kind === "local" && target.path === publication.packagePath) continue;
@@ -182,7 +190,13 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
     }
     // Upstream does not check where EPUB CFIs lead.
     if (type === "hyperlink" && parsed.scheme !== "epubcfi") {
-      if (!isLinkable(item.mediaType, publication.version)) continue;
+      if (
+        !isLinkable(item.mediaType, publication.version) &&
+        !hasFallback(item, (fallback) => isContentDocument(fallback, publication.version))
+      ) {
+        findings.push(finding(reference, "RSC-010"));
+        continue;
+      }
       if (!publication.spine.has(item)) {
         findings.push(finding(reference, "RSC-011"));
         continue;

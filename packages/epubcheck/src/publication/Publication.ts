@@ -5,6 +5,7 @@ import * as ContentChecker from "../content/ContentChecker.ts";
 import * as ContentRules from "../content/ContentRules.ts";
 import * as EpubType from "../content/EpubType.ts";
 import * as FixedLayout from "../layout/FixedLayout.ts";
+import * as Ncx from "../ncx/Ncx.ts";
 import * as MediaOverlays from "../overlays/MediaOverlays.ts";
 import type * as Container from "../ocf/Container.ts";
 import * as OcfChecker from "../ocf/OcfChecker.ts";
@@ -118,6 +119,8 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     // An item for the package document itself is OPF-099, not a content document.
     if (item.path === undefined || item.path === opf.path) continue;
     const kind = ContentChecker.kindOf(item.mediaType, item.properties, opf.version);
+    // Upstream checks an NCX only as the spine's `toc`.
+    if (kind === "ncx" && item.id !== opf.toc) continue;
     const isCss = item.mediaType === "text/css";
     const isImage = MediaTypes.isBitmap(item.mediaType);
     if (kind === undefined && !isCss && !isImage) continue;
@@ -171,6 +174,12 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     if (Option.isSome(document) && typedAs !== undefined) {
       yield* reportFindings(EpubType.check(document.value, item.path, typedAs));
     }
+    if (Option.isSome(document) && kind === "ncx") {
+      yield* reportFindings(Ncx.check(document.value, item.path, opf.metadata.identifier));
+      const links = Ncx.references(document.value, item.path, context);
+      references.push(...links.references);
+      yield* reportFindings(links.findings);
+    }
     if (Option.isSome(document) && kind === "mo") {
       const read = MediaOverlays.read(document.value, item.path, {
         id: item.id,
@@ -182,6 +191,9 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       overlays.push({ item, path: item.path, overlay: read.overlay });
     }
     if (Option.isNone(document) || kind === "mo" || kind === "ncx" || kind === "skm") continue;
+    if (opf.version === "2" && kind === "xhtml") {
+      yield* reportFindings(ContentRules.epub2Doctype(document.value, item.path));
+    }
     yield* reportFindings(ContentRules.schemeFindings(document.value, item.path, opf.version));
     if (opf.version === "3") {
       yield* reportFindings(
@@ -326,6 +338,9 @@ export const checkDocumentReferences = Effect.fn("Publication.checkDocumentRefer
     yield* reportFindings(MediaOverlays.read(document.value, path).findings);
   }
   if (Option.isNone(document) || kind === "mo" || kind === "ncx" || kind === "skm") return;
+  if (version === "2" && kind === "xhtml") {
+    yield* reportFindings(ContentRules.epub2Doctype(document.value, path));
+  }
   yield* reportFindings(ContentRules.schemeFindings(document.value, path, version));
   if (version === "3") {
     yield* reportFindings(

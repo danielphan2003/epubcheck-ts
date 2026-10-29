@@ -63,14 +63,18 @@ export interface Context {
   readonly container: ReadonlySet<string> | undefined;
 }
 
-const at = (element: Xml.XmlElement, id: MessageId, ...args: ReadonlyArray<string>): Finding => ({
+export const at = (
+  element: Xml.XmlElement,
+  id: MessageId,
+  ...args: ReadonlyArray<string>
+): Finding => ({
   id,
   args,
   line: element.line,
   column: element.column,
 });
 
-const atEnd = (
+export const atEnd = (
   element: Xml.XmlElement,
   id: MessageId,
   ...args: ReadonlyArray<string>
@@ -81,7 +85,7 @@ const atEnd = (
   column: element.endColumn,
 });
 
-const nowhere = (id: MessageId, ...args: ReadonlyArray<string>): Finding => ({
+export const nowhere = (id: MessageId, ...args: ReadonlyArray<string>): Finding => ({
   id,
   args,
   line: -1,
@@ -138,7 +142,7 @@ const shared = (context: Context) => ({
 
 type Checks = Context & ReturnType<typeof shared>;
 
-const opfChildren = (element: Xml.XmlElement | undefined, local: string) =>
+export const opfChildren = (element: Xml.XmlElement | undefined, local: string) =>
   element === undefined
     ? []
     : Xml.childElements(element).filter((child) => child.ns === OPF_NS && child.local === local);
