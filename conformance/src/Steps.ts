@@ -125,7 +125,9 @@ defineType("multimap", /".*?"/, (text) =>
     .slice(1, -1)
     .split(";")
     .map((entry) => {
-      const [name = "", values = ""] = entry.split("=");
+      const separator = entry.indexOf("=");
+      const name = separator < 0 ? entry : entry.slice(0, separator);
+      const values = separator < 0 ? "" : entry.slice(separator + 1);
       return [name, values.split(",")] as const;
     }),
 );
@@ -220,6 +222,13 @@ const assertNone = (world: World, severities: ReadonlyArray<Severity>, label: st
   return remaining.length === 0
     ? noop
     : fail(`Unexpected ${label}: ${describeRemaining(remaining)}`);
+};
+
+// The media types upstream's fragment steps name; any other name parses as generic XML.
+const MEDIA_TYPES: Readonly<Record<string, string>> = {
+  HTML: "text/html",
+  SVG: "image/svg+xml",
+  XHTML: "application/xhtml+xml",
 };
 
 export const steps: ReadonlyArray<StepDefinition> = [
@@ -356,7 +365,7 @@ export const steps: ReadonlyArray<StepDefinition> = [
     "{string} is a {} {} fragment",
     Schema.Tuple([Schema.String, Schema.String, Schema.String]),
     (world, [fragment, validity, type]) => {
-      const mediaType = type === "SVG" ? "image/svg+xml" : type === "HTML" ? "text/html" : "";
+      const mediaType = MEDIA_TYPES[type] ?? "";
       const parsed = UrlFragment.parse(fragment, mediaType);
       world.fragment = parsed;
       const actual = parsed.isValid ? "valid" : "invalid";
