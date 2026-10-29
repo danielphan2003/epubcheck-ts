@@ -13,15 +13,24 @@
     "conformance:check": "node conformance/src/bin.ts check",
     "conformance:diff": "node conformance/src/bin.ts diff",
     "sync:upstream": "node scripts/sync-upstream.ts",
-    "fetch:epubcheck-jar": "node scripts/fetch-epubcheck-jar.ts"
+    "fetch:epubcheck-jar": "node scripts/fetch-epubcheck-jar.ts",
+    "generate:messages": "node scripts/generate-messages.ts",
+    "generate:schemas": "node scripts/generate-schemas.ts"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "26.13.0",
+      "onFail": "download"
+    }
+  },
   "engines": {
-    "node": ">=24.12.0"
+    "node": ">=26"
   },
   "packageManager": "pnpm@12.15.0"
 }

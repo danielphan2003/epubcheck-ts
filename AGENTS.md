@@ -16,7 +16,8 @@ good defaults; the developer's instructions override anything here.
   library, keeps the score, and diffs against the reference jar.
 - `scripts`: maintainer scripts (vendor sync, catalog generation, jar download).
 - `vendor/epubcheck`: a pinned, verbatim, sparse copy of upstream EPUBCheck. Read-only. Never edit
-  it by hand; run `pnpm sync:upstream [tag]`, then `node scripts/generate-messages.ts`.
+  it by hand; run `pnpm sync:upstream [tag]`, then `pnpm generate:messages` and
+  `pnpm generate:schemas`.
 
 ## The rewrite rule
 
@@ -28,7 +29,9 @@ Do not translate its Java classes. Write the TypeScript the way this codebase is
 The same choices as t3code: pnpm workspaces with a `catalog:` for shared versions, Vite+ (`vp`) for
 lint (oxlint), format (oxfmt) and tests (Vitest), and `@tsc-rs/typescript` as the `typescript`
 drop-in, which reports the Effect language-service diagnostics configured in `tsconfig.base.json`
-as type errors. Node runs the `.ts` sources directly; there is no build step.
+as type errors. Node runs the `.ts` sources directly; there is no build step. pnpm pins the Node
+runtime (`devEngines.runtime`, Node 26) and puts it first on the PATH of every script; outside a
+script, run `pnpm exec node`, since a bare `node` is whatever the machine has.
 
 - `pnpm install` installs. Add a dependency with `pnpm add <pkg>` in the owning package (`pnpm add
   -w -D` for root tools). Never hand-edit dependency fields in `package.json`.
