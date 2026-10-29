@@ -132,6 +132,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   const fonts: Array<{ readonly embedded: boolean; readonly name: string }> = [];
   // The `toc` links of the Navigation Documents, in the order they are read.
   const tocLinks: Array<ReadingOrder.TocLink> = [];
+  const regionLinks: Array<ReadingOrder.TocLink> = [];
   for (const item of opf.items) {
     // An item for the package document itself is OPF-099, not a content document.
     if (item.path === undefined || item.path === opf.path) continue;
@@ -291,8 +292,10 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     const collected = Collect.fromDocument(document.value, item.path, {
       ...context,
       navigation: kind === "nav",
+      dataNav: item.properties.includes("data-nav"),
     });
     tocLinks.push(...collected.tocLinks);
+    regionLinks.push(...collected.regionLinks);
     references.push(...collected.references);
     fonts.push(...collected.fonts);
     const elements = [document.value.root, ...Xml.descendants(document.value.root)];
@@ -326,6 +329,26 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   }
   const itemLocation = (item: ManifestItem) =>
     Report.location(opf.path, item.element.line, item.element.column);
+  // EDUPUB: page breaks need a page list and its source, and Microdata should come with RDFa.
+  // Upstream notes each feature once for the publication, where it first appears.
+  if (Profiles.isEdupub(selection)) {
+    if (documents.some((document) => document.features.pagebreak)) {
+      if (!documents.some((document) => document.features.pageList)) {
+        yield* report.message("NAV-003", Report.location(opf.path));
+      }
+      if (!opf.metadata.paginationSource) {
+        yield* report.message("OPF-066", Report.location(opf.path));
+      }
+    }
+    for (const document of documents) {
+      const at = document.features.microdata;
+      if (at === undefined) continue;
+      if (!documents.some((other) => other.features.rdfa)) {
+        yield* report.message("HTM-051", Report.location(document.path, at.line, at.column));
+      }
+      break;
+    }
+  }
   // EPUB 3 non-linear spine items must be reachable by a hyperlink, or perhaps by a script.
   // Upstream checks each item once, in manifest order; one non-linear itemref makes it non-linear.
   const hyperlinked = new Set(
@@ -386,6 +409,14 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     yield* report.message("OBS-001", itemLocation(item), "content-fallback", name);
   }
   yield* reportFindings(ReferenceChecker.check(references, publication));
+  // Upstream checks with the other references that region-based links point to fixed layouts.
+  for (const { resolved, path, line, column } of regionLinks) {
+    const { target } = resolved;
+    const item = target.kind === "local" ? publication.items.get(target.path) : undefined;
+    if (item === undefined || !fixedIds.has(item.id)) {
+      yield* report.message("NAV-009", Report.location(path, line, column));
+    }
+  }
   const order = {
     items: publication.items,
     spine: opf.spine.flatMap((idref) => byId.get(idref)?.path ?? []).map(nfc),

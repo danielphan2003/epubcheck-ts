@@ -43,6 +43,7 @@ const is = (selection: Selection, profile: Profile) =>
   TYPES.some(([type, implied]) => implied === profile && selection.types.has(type));
 
 export const isDictionary = (selection: Selection) => is(selection, "dict");
+export const isEdupub = (selection: Selection) => is(selection, "edupub");
 
 export const packageSchemas = (selection: Selection) => [
   ...(is(selection, "dict") ? ["30/dict/dict-opf.sch"] : []),

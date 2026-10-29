@@ -1,9 +1,9 @@
 {
   "upstream": "v5.4.0",
-  "passed": 1245,
+  "passed": 1250,
   "total": 1251,
   "expectsMessages": {
-    "passed": 714,
+    "passed": 719,
     "total": 720
   },
   "areas": {
@@ -24,7 +24,7 @@
       "total": 2
     },
     "epub-edupub": {
-      "passed": 29,
+      "passed": 32,
       "total": 32
     },
     "epub-indexes": {
@@ -40,7 +40,7 @@
       "total": 10
     },
     "epub-region-nav": {
-      "passed": 8,
+      "passed": 10,
       "total": 10
     },
     "epub-scriptable-components": {

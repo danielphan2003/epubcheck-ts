@@ -120,7 +120,10 @@ epub-edupub/edupub-publication.feature:33 Verify an edupub publication with mult
 epub-edupub/edupub-publication.feature:37 Report a missing publication-level 'dc:type' for edupub publication with multiple renditions
 epub-edupub/edupub-publication.feature:43 Report a missing rendition-level 'dc:type' for edupub publication with multiple renditions
 epub-edupub/edupub-publication.feature:54 Verify that non-linear content does not have to follow the sectioning rules
+epub-edupub/edupub-publication.feature:61 Report an edupub publication with microdata attributes
 epub-edupub/edupub-publication.feature:69 Verify an edupub publication with a page list
+epub-edupub/edupub-publication.feature:73 Report an edupub publication missing a page list
+epub-edupub/edupub-publication.feature:78 Report an edupub publication with a page list but the source of the pagination is not identified
 epub-indexes/indexes-content-document-xhtml.feature:19 Verify a minimal index
 epub-indexes/indexes-content-document-xhtml.feature:26 Report document without an index declaration
 epub-indexes/indexes-content-document-xhtml.feature:32 Report `index` semantic not declared on `body` element
@@ -168,6 +171,8 @@ epub-region-nav/region-nav-publication.feature:33 Report a data nav file include
 epub-region-nav/region-nav-publication.feature:38 Report a data nav with an unidentified `nav` element in it
 epub-region-nav/region-nav-publication.feature:47 Report the inclusion of more than one data nav file
 epub-region-nav/region-nav-publication.feature:56 Verify a data nav that defines region-based navgiation
+epub-region-nav/region-nav-publication.feature:65 Report region-based navigation not defined on a `nav` element
+epub-region-nav/region-nav-publication.feature:70 Report a region-based `nav` element that does not point to fixed-layout documents
 epub-region-nav/region-nav-publication.feature:75 Report a region-based `nav` element with an invalid content model
 epub-region-nav/region-nav-publication.feature:92 Verify subregion navigation using comics semantics
 epub-scriptable-components/scriptable-components-package-document.feature:19 A minimal embedded scriptable component is reported as valid
