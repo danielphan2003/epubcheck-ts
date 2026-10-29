@@ -26,6 +26,13 @@ describe("Collect.cssUrls", () => {
     },
     // Upstream's parser does not read `url (` as a URL, so there is nothing to import.
     { name: "a spaced import", css: '@import url ("a.css");', urls: [] },
+    // Only top-level values count, not those inside functions or conditions.
+    {
+      name: "an image set",
+      css: ".a { background-image: image-set(url(a.png) 1x, url(b.png) 2x); }",
+      urls: [],
+    },
+    { name: "a supports condition", css: "@supports (background: url(a.png)) { }", urls: [] },
     { name: "a namespace", css: "@namespace epub url(http://www.idpf.org/2007/ops);", urls: [] },
     { name: "a comment", css: "/* url(a.png) */ p { color: red }", urls: [] },
     { name: "a string", css: 'p::before { content: "see url(a.png)"; }', urls: [] },

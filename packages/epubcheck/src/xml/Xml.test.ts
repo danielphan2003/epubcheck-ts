@@ -134,6 +134,19 @@ describe("Xml.decodeDocument", () => {
       encoding: "UTF8",
       error: 'Invalid encoding name "UTF8".',
     },
+    // Xerces decodes ASCII strictly, under any of its names.
+    {
+      name: "non-ASCII bytes declared ASCII",
+      input: bytes(declaration('"us-ascii"'), 0xe9),
+      encoding: "US-ASCII",
+      error: 'Byte "233" is not a member of the (7-bit) ASCII character set.',
+    },
+    {
+      name: "an ASCII alias",
+      input: bytes(declaration('"ISO646-US"')),
+      encoding: "ISO646-US",
+      error: undefined,
+    },
     {
       name: "single-byte text declaring UTF-16",
       input: bytes(declaration('"UTF-16"')),

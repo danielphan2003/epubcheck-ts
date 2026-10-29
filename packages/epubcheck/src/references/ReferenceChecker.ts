@@ -19,6 +19,8 @@ export interface Publication {
   readonly remoteItems: ReadonlyMap<string, ManifestItem>;
   readonly spine: ReadonlySet<ManifestItem>;
   readonly ids: ReadonlyMap<string, ReadonlySet<string>>;
+  // Documents that failed to parse: upstream knows the IDs before the error, we know none.
+  readonly unparsed: ReadonlySet<string>;
 }
 
 // Remote audio, video and fonts are allowed in EPUB 3, by reference type or declared type.
@@ -109,17 +111,21 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
       }
       continue;
     }
-    if (type === "hyperlink" && !isLinkable(item.mediaType, publication.version)) continue;
-    if (type === "hyperlink" && !publication.spine.has(item)) {
-      findings.push(finding(reference, "RSC-011"));
-      continue;
-    }
     const fragment = reference.fragment;
+    const parsed = UrlFragment.parse(fragment ?? "", item.mediaType);
+    // Upstream does not check where EPUB CFIs lead.
+    if (type === "hyperlink" && parsed.scheme !== "epubcfi") {
+      if (!isLinkable(item.mediaType, publication.version)) continue;
+      if (!publication.spine.has(item)) {
+        findings.push(finding(reference, "RSC-011"));
+        continue;
+      }
+    }
     if (fragment === undefined || fragment === "" || target.kind === "remote") continue;
+    if (publication.unparsed.has(target.path)) continue;
     // Style sheets and non-SVG images must not have fragments at all; that is checked later.
     if (type === "stylesheet" || (type === "image" && essence(item.mediaType) !== "image/svg+xml"))
       continue;
-    const parsed = UrlFragment.parse(fragment, item.mediaType);
     if (
       parsed.id !== "" &&
       isContent(item.mediaType) &&

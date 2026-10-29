@@ -37,6 +37,23 @@ describe("Url.syntaxProblem", () => {
       problem: 'User or password contains an at symbol ("@") not percent-encoded',
     },
     { url: "http://x.org/a\\c", problem: 'Backslash ("\\") used as path segment delimiter' },
+    { url: "https:\\\\x.org/a", problem: 'Expected a slash ("/")' },
+    { url: "https://:80/", problem: "Invalid host: empty host" },
+    { url: "http://a:b@/", problem: "Invalid host: empty host" },
+    { url: "https:///x", problem: "Unexpected slash or backslash" },
+    { url: "http://[::1]x/", problem: "Invalid host: Unmatched '['" },
+    { url: "http://[::1]:80/", problem: undefined },
+    {
+      url: "http://e[x.com/",
+      problem: "Invalid host: Illegal character in domain: “[” is not allowed",
+    },
+    {
+      url: "http://ex%zzmple.com/",
+      problem: "Invalid host: Illegal character in domain: “%” is not allowed",
+    },
+    { url: "http://ex%41mple.com/", problem: undefined },
+    { url: "http://example.com:8a/", problem: "Illegal character in port: “a” is not allowed" },
+    { url: "http://example.com:/", problem: undefined },
   ])("checks $url", ({ url, problem }) => {
     expect(Url.syntaxProblem(url)).toBe(problem);
   });

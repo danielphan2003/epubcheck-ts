@@ -192,11 +192,15 @@ export const cssUrls = (css: string) => {
   let start: { readonly line: number; readonly column: number } | undefined;
   let prelude = "";
   let components = 0;
+  // Upstream reads URLs only among a declaration's or rule's top-level values, not inside
+  // functions such as `image-set()` or `@supports` conditions.
+  let depth = 0;
   const blocks: Array<boolean> = [];
   const reset = () => {
     start = undefined;
     prelude = "";
     components = 0;
+    depth = 0;
   };
   const statement = () => /^@[\w-]*/.exec(prelude)?.[0]?.toLowerCase() ?? "";
   const push = (url: string, position: { readonly line: number; readonly column: number }) => {
@@ -247,7 +251,7 @@ export const cssUrls = (css: string) => {
         advance((end < 0 ? css.length : end) - index);
       }
       advance();
-      push(url, position);
+      if (depth === 0) push(url, position);
       continue;
     }
     if (char === "{") {
@@ -257,7 +261,11 @@ export const cssUrls = (css: string) => {
       blocks.pop();
       reset();
     } else if (char === ";") reset();
-    else if (prelude.length < 16) prelude += char;
+    else {
+      if (char === "(") depth++;
+      else if (char === ")") depth = Math.max(depth - 1, 0);
+      if (prelude.length < 16) prelude += char;
+    }
     advance();
   }
   return urls;

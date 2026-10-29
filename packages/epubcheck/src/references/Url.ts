@@ -61,23 +61,42 @@ export const syntaxProblem = (input: string) => {
   let rest = scheme === undefined ? value : value.slice(scheme.length + 1);
   let part = "path segment";
   if (scheme !== undefined && !SPECIAL.has(scheme)) part = "scheme data";
-  else if (scheme !== undefined && !/^[/\\]{2}/.test(rest)) {
+  else if (scheme !== undefined && !rest.startsWith("//")) {
     if (scheme !== "file") return 'Expected a slash ("/")';
   }
-  if (part === "path segment" && rest.startsWith("//")) {
-    const end = rest.slice(2).search(/[/\\?#]/);
-    const authority = end < 0 ? rest.slice(2) : rest.slice(2, end + 2);
-    rest = end < 0 ? "" : rest.slice(end + 2);
+  // File URLs have hosts and paths of their own, which upstream accepts as written.
+  if (part === "path segment" && scheme !== "file" && rest.startsWith("//")) {
+    // Extra slashes before the host are skipped, with a complaint.
+    const slashes = /^[/\\]*/.exec(rest.slice(2))?.[0].length ?? 0;
+    const after = rest.slice(2 + slashes);
+    const end = after.search(/[/\\?#]/);
+    const authority = end < 0 ? after : after.slice(0, end);
+    rest = end < 0 ? "" : after.slice(end);
     const at = authority.lastIndexOf("@");
     if (authority.slice(0, Math.max(at, 0)).includes("@")) {
       return 'User or password contains an at symbol ("@") not percent-encoded';
     }
     const host = authority.slice(at + 1);
-    if (host.startsWith("[") && !host.includes("]")) return "Invalid host: Unmatched '['";
-    if (host.includes(" "))
-      return "Invalid host: Illegal character in domain: space is not allowed";
-    const port = /:(\d+)$/.exec(host)?.[1];
+    const close = host.startsWith("[") ? host.indexOf("]") : -1;
+    if (host.startsWith("[") && (close < 0 || !/^(?::|$)/.test(host.slice(close + 1)))) {
+      return "Invalid host: Unmatched '['";
+    }
+    const colon = host.startsWith("[") ? close + 1 : host.lastIndexOf(":");
+    const name = colon < 0 || colon >= host.length ? host : host.slice(0, colon);
+    const port = colon < 0 || colon >= host.length ? undefined : host.slice(colon + 1);
+    if (name === "") return "Invalid host: empty host";
+    if (!name.startsWith("[")) {
+      const decoded = name.replace(/%[0-9A-Fa-f]{2}/g, (escape) =>
+        String.fromCharCode(Number.parseInt(escape.slice(1), 16)),
+      );
+      const invalid = /[ #%/:?@[\\\]]/.exec(decoded)?.[0];
+      if (invalid !== undefined)
+        return `Invalid host: Illegal character in domain: ${describe(invalid)}`;
+    }
+    const portCharacter = /[^0-9]/.exec(port ?? "")?.[0];
+    if (portCharacter !== undefined) return `Illegal character in port: ${describe(portCharacter)}`;
     if (port !== undefined && Number(port) > 65535) return "Port number must be less than 65536";
+    if (slashes > 0) return "Unexpected slash or backslash";
   }
   for (let index = 0; index < rest.length;) {
     const code = rest.codePointAt(index) ?? 0;
@@ -173,8 +192,23 @@ export const checker = (documentPath: string, options: { readonly container: boo
   return {
     check: (input: string) => {
       const { problems, url } = resolve(input, false);
-      if (url === undefined) return { problems, resolved: undefined };
       const hash = input.indexOf("#");
+      const scheme = /^\s*([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(input)?.[1]?.toLowerCase();
+      // An absolute URL only the WHATWG parser rejects is still a remote URL upstream.
+      if (
+        url === undefined &&
+        scheme !== undefined &&
+        problems.every(({ id }) => id !== "RSC-020")
+      ) {
+        remoteBase = true;
+        const target: Target = { kind: "remote", url: input.trim().split("#")[0] ?? "", scheme };
+        const resolved: Resolved = {
+          target,
+          fragment: hash < 0 ? undefined : input.slice(hash + 1),
+        };
+        return { problems, resolved };
+      }
+      if (url === undefined) return { problems, resolved: undefined };
       const resolved: Resolved = {
         target: targetOf(url),
         fragment: hash < 0 ? undefined : input.slice(hash + 1),

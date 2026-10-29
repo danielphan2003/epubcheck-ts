@@ -33,6 +33,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   const context: Collect.Context = { version: opf.version, container: true };
   const byId = new Map(opf.items.map((item) => [item.id, item] as const));
   const ids = new Map<string, ReadonlySet<string>>();
+  const unparsed = new Set<string>();
   const publication: ReferenceChecker.Publication = {
     version: opf.version,
     packagePath: nfc(opf.path),
@@ -49,6 +50,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     ),
     spine: new Set(opf.spine.flatMap((idref) => byId.get(idref) ?? [])),
     ids,
+    unparsed,
   };
   const references: Array<Collect.Reference> = [];
   for (const item of opf.items) {
@@ -68,6 +70,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
     if (kind === undefined) continue;
     const document = yield* ContentChecker.check(bytes.value, item.path, kind, opf.version);
+    if (Option.isNone(document)) unparsed.add(nfc(item.path));
     if (Option.isNone(document) || kind === "mo" || kind === "ncx") continue;
     const collected = Collect.fromDocument(document.value, item.path, context);
     references.push(...collected.references);

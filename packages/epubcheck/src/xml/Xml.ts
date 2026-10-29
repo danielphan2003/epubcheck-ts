@@ -286,6 +286,13 @@ const XERCES_ENCODINGS = new Set(
   ).split(" "),
 );
 
+const ASCII_ENCODINGS = new Set(
+  (
+    "ANSI_X3.4-1968 ANSI_X3.4-1986 ASCII CP367 CSASCII IBM-367 IBM367 ISO-IR-6 ISO646-US " +
+    "ISO_646.IRV:1991 US US-ASCII"
+  ).split(" "),
+);
+
 const declaredEncoding = (prefix: string) =>
   /^<\?xml[^>]*?\sencoding\s*=\s*["']([^"']+)["']/.exec(prefix)?.[1];
 
@@ -363,6 +370,16 @@ const xerces = (bytes: Uint8Array) => {
   // Single-byte text cannot be UTF-16, whatever it declares.
   if (declared.toUpperCase().startsWith("UTF-16")) {
     return declarationError(prefix, "Content is not allowed in prolog.");
+  }
+  // Xerces decodes ASCII strictly.
+  if (ASCII_ENCODINGS.has(declared.toUpperCase())) {
+    const byte = bytes.find((value) => value > 0x7f);
+    return byte === undefined
+      ? { text: new TextDecoder("latin1").decode(bytes), error: undefined }
+      : declarationError(
+          prefix,
+          `Byte "${byte}" is not a member of the (7-bit) ASCII character set.`,
+        );
   }
   if (!XERCES_ENCODINGS.has(declared.toUpperCase())) {
     return declarationError(prefix, `Invalid encoding name "${declared}".`);
