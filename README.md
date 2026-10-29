@@ -9,7 +9,7 @@ This is early work. See the conformance score below for what it checks today.
 
 ## Usage
 
-The library and CLI run from source on Node.js 24 or later. There is no npm release yet.
+The library and CLI run from source on Node.js 26 or later. There is no npm release yet.
 
 ```sh
 pnpm install
