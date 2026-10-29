@@ -4,7 +4,7 @@ import * as Option from "effect/Option";
 import * as ContentChecker from "../content/ContentChecker.ts";
 import type * as Container from "../ocf/Container.ts";
 import * as OcfChecker from "../ocf/OcfChecker.ts";
-import type { ManifestItem, PackageDocument } from "../opf/PackageDocument.ts";
+import type { ManifestItem, PackageDocument, SpineItem } from "../opf/PackageDocument.ts";
 import * as Collect from "../references/Collect.ts";
 import * as Profiles from "../profiles/Profiles.ts";
 import * as ReferenceChecker from "../references/ReferenceChecker.ts";
@@ -45,15 +45,16 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
 ) {
   const report = yield* Report.Report;
   const inIndex = Profiles.indexPaths(opf.collections);
-  const spineItems = new Map(opf.spineItems.map((itemref) => [itemref.idref, itemref] as const));
+  // Upstream marks an item non-linear or fixed-layout if any of its itemrefs makes it so; items
+  // outside the spine are non-linear, and the legacy `roll` layout is fixed.
+  const isFixed = (itemref: SpineItem) =>
+    opf.metadata.layout === "roll" ||
+    (opf.metadata.layout === "pre-paginated" &&
+      !itemref.properties.includes("rendition:layout-reflowable")) ||
+    itemref.properties.includes("rendition:layout-pre-paginated");
   const isStructured = (item: ManifestItem) => {
-    const itemref = spineItems.get(item.id);
-    if (itemref === undefined || !itemref.linear) return false;
-    if (itemref.properties.includes("rendition:layout-pre-paginated")) return false;
-    return (
-      opf.metadata.layout !== "pre-paginated" ||
-      itemref.properties.includes("rendition:layout-reflowable")
-    );
+    const itemrefs = opf.spineItems.filter((itemref) => itemref.idref === item.id);
+    return itemrefs.length > 0 && itemrefs.every((itemref) => itemref.linear && !isFixed(itemref));
   };
   const nfc = (path: string) => path.normalize("NFC");
   const byId = new Map(opf.items.map((item) => [item.id, item] as const));

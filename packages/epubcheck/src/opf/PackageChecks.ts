@@ -2,6 +2,7 @@ import { keyedSuggestion, type MessageId } from "../messages/MessageCatalog.ts";
 import * as JavaText from "../util/JavaText.ts";
 import { parse as parseFragment, percentDecode } from "../util/UrlFragment.ts";
 import * as Xml from "../xml/Xml.ts";
+import * as Url from "../references/Url.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import { checkLanguageTag } from "./LanguageTag.ts";
 import type { Collection, ManifestItem, PackageDocument } from "./PackageDocument.ts";
@@ -562,7 +563,8 @@ const collectionChecks = ({ opf }: Context) => {
   );
   const resources = (collection: Collection) =>
     collection.links.map(({ href, path }) => ({
-      name: path ?? href,
+      // Messages quote the container URL, not the decoded path.
+      name: path === undefined ? href : Url.encodePath(path),
       href,
       item: path === undefined ? undefined : byPath.get(path),
     }));
