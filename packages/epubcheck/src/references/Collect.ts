@@ -757,6 +757,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
 
 // Upstream's palpable content: embedded content, text, and elements that contain either.
 const isPalpable = (element: Xml.XmlElement, palpable: ReadonlyMap<Xml.XmlElement, boolean>) => {
+  if (Xml.attribute(element, "hidden") !== undefined) return false;
   if (element.ns === SVG_NS) return element.local === "svg";
   if (element.ns === MATHML_NS) return element.local === "math";
   if (element.ns !== XHTML_NS) return false;

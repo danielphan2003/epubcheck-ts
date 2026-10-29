@@ -32,31 +32,11 @@ const normalizedUrl = (href: string, base: URL) => {
   return `${url.protocol}//${url.host}${path}${search}${hash}`;
 };
 
-// Upstream normalizes an item's media type like MIMEType.normalize (essence trimmed and in lower
-// case, parameters without a value dropped, a value quoted unless it is a token) and then tests
-// a pattern in which `+-^` is a range, so a quoted value fails it.
-const TOKEN = "[!#$%&'*+.^_`|~0-9A-Za-z-]+";
+// Upstream checks a normalized media type against a pattern in which `+-^` is a range, so a
+// quoted parameter value fails it.
 const ITEM_MEDIA_TYPE = /^[a-zA-Z0-9!#$&+-^_]+\/[a-zA-Z0-9!#$&+-^_]+$/;
-const normalizedMediaType = (value: string) => {
-  const [essence = "", ...parameters] = value.split(";");
-  const type = new RegExp(`^\\s*(${TOKEN}/${TOKEN})\\s*$`).exec(essence)?.[1];
-  if (type === undefined) return undefined;
-  const kept = parameters.flatMap((parameter) => {
-    const separator = parameter.indexOf("=");
-    const name = parameter.slice(0, separator).trim();
-    const raw = parameter.slice(separator + 1).trim();
-    if (separator < 0 || !new RegExp(`^${TOKEN}$`).test(name) || raw === "") return [];
-    const quoted = raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"');
-    const text = quoted ? raw.slice(1, -1) : raw;
-    const written = text !== "" && new RegExp(`^${TOKEN}$`).test(text) ? text : `"${text}"`;
-    return [`${name.toLowerCase()}=${written}`];
-  });
-  return [type.toLowerCase(), ...kept].join(";");
-};
-const isCheckedMediaType = (mediaType: string) => {
-  const normalized = normalizedMediaType(mediaType);
-  return normalized !== undefined && ITEM_MEDIA_TYPE.test(normalized);
-};
+const isCheckedMediaType = (mediaType: string) =>
+  ITEM_MEDIA_TYPE.test(MediaTypes.normalize(mediaType));
 
 export interface Finding {
   readonly id: MessageId;
@@ -202,7 +182,9 @@ const manifestChecks = ({ opf, container }: Context) => {
       if (isCheckedMediaType(item.mediaType)) {
         const preferred = MediaTypes.preferred(item.mediaType, item.href);
         if (preferred !== undefined) {
-          findings.push(at(item.element, "OPF-090", preferred, item.mediaType));
+          findings.push(
+            at(item.element, "OPF-090", preferred, MediaTypes.normalize(item.mediaType)),
+          );
         }
         if (!isRemote(item.href) && item.href.includes("#")) {
           findings.push(at(item.element, "OPF-091"));
@@ -260,14 +242,12 @@ const manifestChecks = ({ opf, container }: Context) => {
 
 const CONTENT_DOCUMENT_TYPES = new Set(["application/xhtml+xml", "image/svg+xml"]);
 
-// An EPUB 3 spine item that is not a content document needs a fallback chain to one.
-const spineFallbackFinding = (
-  itemref: Xml.XmlElement,
-  item: ManifestItem,
-  byId: ReadonlyMap<string, ManifestItem>,
-) => {
-  if (CONTENT_DOCUMENT_TYPES.has(MediaTypes.parse(item.mediaType).essence)) return [];
-  if (item.fallback === undefined) return [at(itemref, "OPF-043", item.mediaType)];
+// An EPUB 3 spine item that is not a content document needs a fallback chain to one; upstream
+// reports it at the manifest item.
+const spineFallbackFinding = (item: ManifestItem, byId: ReadonlyMap<string, ManifestItem>) => {
+  const type = MediaTypes.normalize(item.mediaType);
+  if (CONTENT_DOCUMENT_TYPES.has(type)) return [];
+  if (item.fallback === undefined) return [at(item.element, "OPF-043", type)];
   const seen = new Set<string>();
   let current: ManifestItem | undefined = item;
   while (current?.fallback !== undefined && !seen.has(current.id)) {
@@ -275,12 +255,12 @@ const spineFallbackFinding = (
     current = byId.get(current.fallback);
     if (
       current !== undefined &&
-      CONTENT_DOCUMENT_TYPES.has(MediaTypes.parse(current.mediaType).essence)
+      CONTENT_DOCUMENT_TYPES.has(MediaTypes.normalize(current.mediaType))
     ) {
       return [];
     }
   }
-  return [at(itemref, "OPF-044", item.mediaType)];
+  return [at(item.element, "OPF-044", type)];
 };
 
 const spineChecks = ({ document, opf }: Context) => {
@@ -305,8 +285,9 @@ const spineChecks = ({ document, opf }: Context) => {
     linear.set(idref, isLinear && linear.get(idref) !== false);
     // Upstream reports a repeated reference at the manifest item.
     if (opf.version === "2" && seen.has(idref)) findings.push(at(item.element, "OPF-034", idref));
-    if (opf.version === "3" && !/^https?:/i.test(item.href)) {
-      findings.push(...spineFallbackFinding(itemref, item, items));
+    // Data URLs are reported elsewhere (RSC-029); remote items are checked too.
+    if (opf.version === "3" && !/^data:/i.test(item.href)) {
+      findings.push(...spineFallbackFinding(item, items));
     }
     seen.add(idref);
   }

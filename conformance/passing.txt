@@ -461,6 +461,7 @@ epub3/05-package-document/package-document.feature:383 the 'link' 'hreflang' lan
 epub3/05-package-document/package-document.feature:389 the 'link' 'hreflang' language tag must be well-formed
 epub3/05-package-document/package-document.feature:395 Allow a link to a resource referenced from the spine
 epub3/05-package-document/package-document.feature:400 Allow a link to a resource embedded in a content document
+epub3/05-package-document/package-document.feature:410 Report a remote image declared in the package document when it is referenced from an HTML `a` element
 epub3/05-package-document/package-document.feature:416 Report remote audio resources not declared in the package document
 epub3/05-package-document/package-document.feature:422 Report remote audio resources defined in `sources` elements but not declared in the package document
 epub3/05-package-document/package-document.feature:428 Report a remote font not declared in the package document

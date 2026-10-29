@@ -24,30 +24,15 @@ const reportFindings = Effect.fn("Publication.reportFindings")(function* (
   }
 });
 
-// Compares an image's leading bytes with its declared media type and file extension.
+// Compares an image's leading bytes with its declared media type and file name.
 const checkImage = Effect.fn("Publication.checkImage")(function* (
   item: ManifestItem,
   path: string,
   bytes: Uint8Array,
 ) {
   const report = yield* Report.Report;
-  const declared = MediaTypes.SNIFFED_TYPES[MediaTypes.parse(item.mediaType).essence];
-  if (declared === undefined) return;
-  const at = Report.location(path);
-  if (bytes.length === 0) {
-    yield* report.message("MED-004", at);
-    return yield* report.message("PKG-021", at);
-  }
-  const actual = MediaTypes.sniffImage(bytes);
-  if (actual !== declared) return yield* report.message("OPF-029", at, path, item.mediaType);
-  const extension = /\.([^./]+)$/.exec(path)?.[1]?.toLowerCase();
-  const knownElsewhere = Object.entries(MediaTypes.EXTENSIONS).some(
-    ([format, extensions]) =>
-      format !== actual && extension !== undefined && extensions.includes(extension),
-  );
-  if (extension !== undefined && knownElsewhere) {
-    yield* report.message("PKG-022", at, actual, extension);
-  }
+  const problems = MediaTypes.imageProblems(bytes, path, MediaTypes.normalize(item.mediaType));
+  for (const { id, args } of problems) yield* report.message(id, Report.location(path), ...args);
 });
 
 // Checks every resource a package document declares, in manifest order, then the references
@@ -96,8 +81,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     if (item.path === undefined || item.path === opf.path) continue;
     const kind = ContentChecker.kindOf(item.mediaType, item.properties, opf.version);
     const isCss = item.mediaType === "text/css";
-    const isImage =
-      MediaTypes.SNIFFED_TYPES[MediaTypes.parse(item.mediaType).essence] !== undefined;
+    const isImage = MediaTypes.isBitmap(item.mediaType);
     if (kind === undefined && !isCss && !isImage) continue;
     // A missing image is reported once, from the manifest (RSC-001).
     if (isImage && !publication.files.has(nfc(item.path))) continue;
@@ -140,24 +124,28 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   const report = yield* Report.Report;
   const itemLocation = (item: ManifestItem) =>
     Report.location(opf.path, item.element.line, item.element.column);
-  // XHTML content documents must be in the container; a remote SVG may still be an image.
-  for (const item of opf.items) {
-    if (item.path !== undefined || !/^https?:/i.test(item.href)) continue;
-    if (MediaTypes.parse(item.mediaType).essence === "application/xhtml+xml") {
-      yield* report.message("RSC-006", itemLocation(item), item.href);
-    }
-  }
-  // A remote resource no document references may still be fetched by a script.
-  if (opf.version === "3" && scripted) {
+  // Upstream's rule for remote items: only audio, video, Flash and fonts may be remote. A remote
+  // spine item is an error, and so is any other remote item no reference loads, unless a script
+  // might fetch it.
+  if (opf.version === "3") {
     const referenced = new Set(
       references.flatMap(({ target }) => (target.kind === "remote" ? [target.url] : [])),
     );
+    const spine = new Set(opf.spine);
     for (const item of opf.items) {
-      const url = item.href.split("#")[0] ?? item.href;
-      if (item.path !== undefined || !/^https?:/i.test(url)) continue;
-      if (MediaTypes.parse(item.mediaType).essence === "application/xhtml+xml") continue;
-      if (!referenced.has(Url.remoteKey(url))) {
-        yield* report.message("RSC-006b", itemLocation(item), url);
+      const href = item.href.trim();
+      if (item.path !== undefined || href === "" || /^data:/i.test(href)) continue;
+      const type = MediaTypes.normalize(item.mediaType);
+      if (
+        /^(?:audio|video|font)\/|^application\/font-/.test(type) ||
+        type === "application/x-shockwave-flash" ||
+        type === "application/vnd.ms-opentype"
+      ) {
+        continue;
+      }
+      if (spine.has(item.id)) yield* report.message("RSC-006", itemLocation(item), href);
+      else if (!referenced.has(Url.remoteKey(href))) {
+        yield* report.message(scripted ? "RSC-006b" : "RSC-006", itemLocation(item), href);
       }
     }
   }

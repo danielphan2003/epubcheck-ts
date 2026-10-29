@@ -13,4 +13,4 @@ reported message, which a checker that reports nothing cannot pass.
 | [#6](https://github.com/danielphan2003/epubcheck-ts/pull/6) | Package documents: metadata, manifest, spine, vocabularies     |  854 / 1251 | 400 / 720 |
 | [#7](https://github.com/danielphan2003/epubcheck-ts/pull/7) | References: links between resources, encodings                 |  926 / 1251 | 472 / 720 |
 | [#8](https://github.com/danielphan2003/epubcheck-ts/pull/8) | CLI: upstream command line, JSON and XML reports               |  987 / 1251 | 472 / 720 |
-| [#9](https://github.com/danielphan2003/epubcheck-ts/pull/9) | Resources: fallbacks, core media types, resource types         | 1032 / 1251 | 517 / 720 |
+| [#9](https://github.com/danielphan2003/epubcheck-ts/pull/9) | Resources: fallbacks, core media types, resource types         | 1033 / 1251 | 518 / 720 |
