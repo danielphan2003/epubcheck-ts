@@ -328,7 +328,11 @@ export const fromCss = (css: string, path: string, context: Context, offset = 0)
     const type = found.kind === "import" ? "stylesheet" : found.fontFace ? "font" : "generic";
     // A remote style sheet is reported anyway (RSC-006); it does not need the property.
     if (type !== "stylesheet" && resolved.target.kind === "remote") remote = true;
-    const mediaType = type === "font" ? context.mediaTypeOf?.(resolved.target) : undefined;
+    // Upstream looks the font up with its fragment, so a font with one is never checked.
+    const mediaType =
+      type === "font" && resolved.fragment === undefined
+        ? context.mediaTypeOf?.(resolved.target)
+        : undefined;
     if (mediaType !== undefined && !isFontType(mediaType, context.version)) {
       findings.push({
         id: "CSS-007",
