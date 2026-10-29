@@ -6,6 +6,7 @@ import * as CssChecker from "../css/CssChecker.ts";
 import * as ContentRules from "../content/ContentRules.ts";
 import * as EpubType from "../content/EpubType.ts";
 import * as FixedLayout from "../layout/FixedLayout.ts";
+import * as Navigation from "../nav/Navigation.ts";
 import * as Ncx from "../ncx/Ncx.ts";
 import * as MediaOverlays from "../overlays/MediaOverlays.ts";
 import type * as Container from "../ocf/Container.ts";
@@ -123,8 +124,9 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     readonly features: Collect.Features;
     readonly end: { readonly line: number; readonly column: number };
   }> = [];
-  // Style sheets, for the fonts the reports list.
+  // The fonts style sheets declare, which the reports list.
   const fonts: Array<{ readonly embedded: boolean; readonly name: string }> = [];
+  const navigation: Array<{ readonly path: string; readonly document: Xml.XmlDocument }> = [];
   for (const item of opf.items) {
     // An item for the package document itself is OPF-099, not a content document.
     if (item.path === undefined || item.path === opf.path) continue;
@@ -253,6 +255,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     yield* reportFindings(collected.findings);
     if (collected.features.scripts) scripts = true;
     positions.set(nfc(item.path), Collect.idPositions(document.value));
+    if (kind === "nav") navigation.push({ path: item.path, document: document.value });
     const { root } = document.value;
     const end = { line: root.endLine, column: root.endColumn };
     documents.push({ item, path: item.path, features: collected.features, end });
@@ -324,6 +327,14 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
   }
   yield* reportFindings(ReferenceChecker.check(references, publication));
+  for (const nav of navigation) {
+    yield* reportFindings(
+      Navigation.check(nav.document, nav.path, {
+        spine: opf.spine.flatMap((idref) => byId.get(idref)?.path ?? []).map(nfc),
+        ids: positions,
+      }),
+    );
+  }
   if (opf.version === "3") {
     yield* reportFindings(MediaOverlays.styleFindings(opf.metadata, documents));
     yield* reportFindings(
