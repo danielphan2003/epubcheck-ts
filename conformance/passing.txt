@@ -17,6 +17,7 @@ cli/cli.feature:205 save the resulting EPUB
 cli/cli.feature:215 quiet mode prevents extra output
 cli/cli.feature:220 quiet mode does not conflict with saving a report
 cli/cli.feature:226 USAGE messages are not reported by default
+cli/cli.feature:230 USAGE messages are reported with option `-u`
 cli/cli.feature:234 WARNING messages are reported with option `-w`
 cli/cli.feature:241 WARNING messages are silenced with option `-e`
 cli/cli.feature:248 ERROR messages are silenced with option `-f`
@@ -193,6 +194,8 @@ epub2/opf-package-document.feature:103 an identifier with a "uuid" scheme should
 epub2/opf-package-document.feature:108 report an empty 'dc:date' metadata
 epub2/opf-package-document.feature:113 report a 'dc:date' value not conforming to ISO-8601
 epub2/opf-package-document.feature:118 report an empty 'dc:title' metadata
+epub2/opf-package-document.feature:130 item paths should not contain spaces (even when properly encoded)
+epub2/opf-package-document.feature:135 item paths should not contain spaces
 epub2/opf-package-document.feature:143 Verify conforming fallbacks
 epub2/opf-package-document.feature:147 Report a 'fallback-style' attribute pointing to a non-existing ID
 epub2/opf-package-document.feature:159 Report a spine with only non-linear resources
@@ -223,6 +226,7 @@ epub2/opf-publication.feature:48 Verify that package IDs with leading/trailing s
 epub2/opf-publication.feature:52 the unique identifier must not be empty
 epub2/opf-publication.feature:60 Report a reference to a resource that is not listed in the manifest
 epub2/opf-publication.feature:65 Report a resource declared in the manifest but missing from the container
+epub2/opf-publication.feature:75 Report (usage) a resource that is not listed in the manifest
 epub2/opf-publication.feature:82 Verify that operating system files (`.DS_STORE`, `thumbs.db`) are ignored (issue 256)
 epub2/opf-publication.feature:86 Report a reference to a remote resource from an `object` element when the resource is not declared in package document
 epub2/opf-publication.feature:96 Report a manifest fallback that does not resolve to a resource in the publication
@@ -420,11 +424,17 @@ epub3/04-ocf/filename-checker.feature:78 disallowed character U+F0001 is reporte
 epub3/04-ocf/filename-checker.feature:79 disallowed character U+100000 is reported
 epub3/04-ocf/filename-checker.feature:81 VERTICAL LINE (|) is not disallowed in EPUB 2.0.1
 epub3/04-ocf/ocf.feature:102 Warn about spaces in file names (full-publication check)
+epub3/04-ocf/ocf.feature:108 Warn about spaces in file names (single package doc check)
 epub3/04-ocf/ocf.feature:118 Allow valid container URLs in XHTML
 epub3/04-ocf/ocf.feature:123 Allow percent-encoded URLs
+epub3/04-ocf/ocf.feature:131 Report leaking URLs in the package document
+epub3/04-ocf/ocf.feature:137 Report path-absolute URLs in the package document
+epub3/04-ocf/ocf.feature:145 Report a URL query string found in a manifest item
+epub3/04-ocf/ocf.feature:151 Report a URL query string found in a package link
 epub3/04-ocf/ocf.feature:157 Report a URL query string found in a manifest item
 epub3/04-ocf/ocf.feature:169 Report a relative `cite` URL when the resource is not found in the manifest
 epub3/04-ocf/ocf.feature:175 Report a reference from an XHTML `iframe` not declared in the manifest
+epub3/04-ocf/ocf.feature:18 Report publication resources found in META-INF
 epub3/04-ocf/ocf.feature:181 Report a reference from an XHTML doc to a resource not declared in the manifest
 epub3/04-ocf/ocf.feature:187 Report a hyperlink to a resource missing from the publication
 epub3/04-ocf/ocf.feature:193 Report a MathML formula with an alternative image that cannot be found
@@ -439,6 +449,7 @@ epub3/04-ocf/ocf.feature:240 an SVG image with 'xlink:href' and 'href' referenci
 epub3/04-ocf/ocf.feature:245 an SVG image 'xlink:href' referencing a missing resource but 'href' referencing and existing resource is reported
 epub3/04-ocf/ocf.feature:255 Report a CSS `url` that is not declared in the package document or present in the container
 epub3/04-ocf/ocf.feature:27 Verify a file name containing a `+` character is allowed (issue 188)
+epub3/04-ocf/ocf.feature:270 Report a package metadata link to a missing resource
 epub3/04-ocf/ocf.feature:280 Report an unknown element in the `container.xml` file
 epub3/04-ocf/ocf.feature:287 Report a missing 'container.xml' file
 epub3/04-ocf/ocf.feature:293 Report a fatal error when checking an archive that is not an OCF
@@ -472,7 +483,9 @@ epub3/04-ocf/ocf.feature:60 Verify a file name containing a diacritic (ü) can b
 epub3/04-ocf/ocf.feature:65 Report forbidden characters in file names
 epub3/04-ocf/ocf.feature:71 Report forbidden characters in file names even for non-publication resources
 epub3/04-ocf/ocf.feature:77 Allow forbidden characters in remote resource URLs
+epub3/04-ocf/ocf.feature:82 Report forbidden characters in file names (single package doc check)
 epub3/04-ocf/ocf.feature:88 Inform about non-ASCII characters in file names (full-publication check)
+epub3/04-ocf/ocf.feature:95 Inform about non-ASCII characters in file names (single package doc check)
 epub3/05-package-document/package-document.feature:105 the 'xml:lang' language tag must be well-formed
 epub3/05-package-document/package-document.feature:111 Verify that three-character language codes are allowed (issue 615)
 epub3/05-package-document/package-document.feature:119 the 'package' 'unique-identifier' attribute must be a known ID
@@ -525,7 +538,9 @@ epub3/05-package-document/package-document.feature:428 Report a remote font not 
 epub3/05-package-document/package-document.feature:434 Report a self-referencing manifest (full publication check)
 epub3/05-package-document/package-document.feature:44 'id' attributes can have leading or trailing space
 epub3/05-package-document/package-document.feature:440 Report a self-referencing manifest (single file check)
+epub3/05-package-document/package-document.feature:445 Report (usage) a container resource that is not listed in the manifest
 epub3/05-package-document/package-document.feature:456 a manifest item must declare a media type
+epub3/05-package-document/package-document.feature:462 item URLs must be properly encoded
 epub3/05-package-document/package-document.feature:469 item URLs must not have a fragment identifier
 epub3/05-package-document/package-document.feature:475 two manifest items cannot represent the same resource
 epub3/05-package-document/package-document.feature:481 Report duplicate declarations of a resource in the package document manifest
@@ -574,7 +589,9 @@ epub3/05-package-document/package-document.feature:750 Two spine 'itemref' eleme
 epub3/05-package-document/package-document.feature:757 Report a spine that does not contain at least one linear itemref
 epub3/05-package-document/package-document.feature:763 Verify an EPUB where non-linear content is reachable via the navigation document
 epub3/05-package-document/package-document.feature:768 Verify an EPUB where non-linear content is reachable via a hyperlink
+epub3/05-package-document/package-document.feature:773 Report an EPUB where non-linear content is unreachable
 epub3/05-package-document/package-document.feature:78 'refines' attribute, when using fragment ID, must target an existing ID
+epub3/05-package-document/package-document.feature:780 Report an EPUB where non-linear content is unreachable
 epub3/05-package-document/package-document.feature:85 'refines' references cycles are not allowed
 epub3/05-package-document/package-document.feature:94 the 'xml:lang' attribute can be empty
 epub3/05-package-document/package-document.feature:99 the 'xml:lang' language tag must not have leading/trailing whitespace

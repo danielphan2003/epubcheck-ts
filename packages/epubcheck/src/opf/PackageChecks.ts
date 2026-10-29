@@ -4,10 +4,16 @@ import { parse as parseFragment, percentDecode } from "../util/UrlFragment.ts";
 import * as Xml from "../xml/Xml.ts";
 import * as Url from "../references/Url.ts";
 import * as FixedLayout from "../layout/FixedLayout.ts";
+import * as FilenameChecker from "../ocf/FilenameChecker.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as ClockValue from "../util/ClockValue.ts";
 import { checkLanguageTag } from "./LanguageTag.ts";
-import type { Collection, ManifestItem, PackageDocument } from "./PackageDocument.ts";
+import {
+  type Collection,
+  type ManifestItem,
+  type PackageDocument,
+  resolve,
+} from "./PackageDocument.ts";
 import * as JavaDigits from "./JavaDigits.ts";
 import * as Vocabularies from "./Vocabularies.ts";
 import * as W3cDate from "./W3cDate.ts";
@@ -99,6 +105,46 @@ const urlSchemeFindings = (element: Xml.XmlElement, href: string, version: "2" |
   return [];
 };
 
+// Relative URLs in the package document follow the container URL rules (OCF 4.2.5): no
+// spaces, no query, and no path that is absolute or climbs out of the container.
+const relativeUrlFindings = (
+  element: Xml.XmlElement,
+  href: string,
+  opf: PackageDocument,
+  inContainer: boolean,
+) => {
+  if (href === "" || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) return [];
+  const findings: Array<Finding> = [];
+  if (/\s/.test(href)) {
+    findings.push(
+      at(element, "RSC-020", href, "Illegal character in path segment: space is not allowed"),
+    );
+  }
+  const path = href.split("#")[0] ?? href;
+  if (path.includes("?")) findings.push(at(element, "RSC-033", href));
+  if (href.startsWith("/")) findings.push(at(element, "RSC-026", href));
+  else if (inContainer) {
+    let depth = opf.path.split("/").length - 1;
+    for (const segment of path.split("?")[0]?.split("/") ?? []) {
+      if (segment === "..") depth--;
+      else if (segment !== "." && segment !== "") depth++;
+      if (depth < 0) {
+        findings.push(at(element, "RSC-026", href));
+        break;
+      }
+    }
+  }
+  return findings;
+};
+
+const decoded = (value: string) => {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+};
+
 const opfChildren = (element: Xml.XmlElement | undefined, local: string) =>
   element === undefined
     ? []
@@ -179,6 +225,15 @@ const manifestChecks = ({ opf, container }: Context) => {
     // for a preferred type (OPF-090) and, locally, a fragment (OPF-091).
     const schemeFindings = urlSchemeFindings(item.element, item.href, opf.version);
     findings.push(...schemeFindings);
+    findings.push(...relativeUrlFindings(item.element, item.href, opf, container !== undefined));
+    if (item.path?.startsWith("META-INF/") === true) findings.push(at(item.element, "PKG-025"));
+    // A full check reports file names from the container; a package document alone, from hrefs.
+    if (container === undefined && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(item.href)) {
+      const name = decoded(item.href.split(/[?#]/)[0] ?? item.href);
+      for (const finding of FilenameChecker.checkFilename(name, opf.version)) {
+        findings.push(at(item.element, finding.id, ...finding.args));
+      }
+    }
     if (opf.version === "3" && schemeFindings.every((finding) => finding.id !== "RSC-029")) {
       if (ITEM_MEDIA_TYPE.test(item.mediaType)) {
         const preferred = MediaTypes.preferred(item.mediaType, item.href);
@@ -467,7 +522,7 @@ const problemsAt = (
   );
 
 // Property attributes, prefixes, links and outdated features (EPUB 3 only).
-const vocabularyChecks = ({ document, opf }: Context) => {
+const vocabularyChecks = ({ document, opf, container }: Context) => {
   const findings: Array<Finding> = [];
   const root = document.root;
   const prefixes = Vocabularies.parsePrefixes(Xml.attribute(root, "prefix"));
@@ -536,7 +591,10 @@ const vocabularyChecks = ({ document, opf }: Context) => {
   for (const { link, place } of links) {
     const href = Xml.attribute(link, "href");
     const url = href === undefined ? null : URL.parse(href, packageUrl);
-    if (href !== undefined) findings.push(...urlSchemeFindings(link, href, opf.version));
+    if (href !== undefined) {
+      findings.push(...urlSchemeFindings(link, href, opf.version));
+      findings.push(...relativeUrlFindings(link, href, opf, container !== undefined));
+    }
     if (url?.protocol === "data:") continue;
     if (
       href !== undefined &&
@@ -548,6 +606,19 @@ const vocabularyChecks = ({ document, opf }: Context) => {
       continue;
     }
     if (url !== null) {
+      // A local link target must be in the container.
+      const trimmed = (href ?? "").trim();
+      const target =
+        trimmed === "" || trimmed.startsWith("#") || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)
+          ? undefined
+          : resolve(trimmed.split("#")[0] ?? trimmed, opf.path);
+      if (
+        target !== undefined &&
+        container !== undefined &&
+        ![...container].some((file) => file.normalize("NFC") === target.normalize("NFC"))
+      ) {
+        findings.push(at(link, "RSC-007w", target));
+      }
       const parsedRels = property(link, "rel", "link-rel", true);
       const rels = new Set(
         parsedRels.filter((parsed) => parsed.prefix === "").map((parsed) => parsed.name),

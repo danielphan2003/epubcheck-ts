@@ -117,6 +117,7 @@ const make = Effect.gen(function* () {
     const { created } = ocf.value.container;
     const { formatName } = ocf.value;
     let metadata: PackageDocument.Metadata | undefined;
+    const declared = new Set<string>(ocf.value.packageDocuments.map((document) => document.path));
     for (const packageDocument of ocf.value.packageDocuments) {
       const bytes = yield* OcfChecker.readResource(ocf.value.container, packageDocument.path);
       if (Option.isNone(bytes)) continue;
@@ -129,11 +130,25 @@ const make = Effect.gen(function* () {
       );
       if (Option.isNone(opfResult)) continue;
       metadata ??= opfResult.value.metadata;
+      for (const item of opfResult.value.items) {
+        if (item.path !== undefined) declared.add(item.path.normalize("NFC"));
+      }
       yield* Publication.checkResources(
         ocf.value.container,
         opfResult.value,
         packageDocument.profile,
       );
+    }
+    // Container files no package document declares (OCF files aside) are reported as usages.
+    for (const file of ocf.value.container.files) {
+      if (
+        file === "mimetype" ||
+        file.startsWith("META-INF/") ||
+        declared.has(file.normalize("NFC"))
+      ) {
+        continue;
+      }
+      yield* report.message("OPF-003", Report.location(path.basename(target)), encodeURI(file));
     }
     const first = ocf.value.packageDocuments[0];
     const publication =
