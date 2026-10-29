@@ -11,6 +11,13 @@ describe("MediaTypes", () => {
     { value: 'text/css;charset="a b"', normalized: 'text/css;charset="a b"' },
     { value: "text/css;charset", normalized: "text/css" },
     { value: "audio/mp4;codecs=aac;Codecs=x", normalized: "audio/mp4;codecs=aac" },
+    { value: 'image/png;x="a;b"', normalized: 'image/png;x="a;b"' },
+    { value: 'text/css;x="a\\"b\\\\"', normalized: 'text/css;x="a\\"b\\\\"' },
+    { value: 'text/css;x="abc', normalized: "text/css;x=abc" },
+    { value: "audio/mpeg;x=a b ;y=c", normalized: 'audio/mpeg;x="a b";y=c' },
+    { value: "text/css;x=€;y=c", normalized: "text/css;y=c" },
+    { value: "text /css", normalized: "" },
+    { value: "text/css x", normalized: "" },
     { value: "not a type", normalized: "" },
   ])("normalizes $value", ({ value, normalized }) => {
     expect(MediaTypes.normalize(value)).toBe(normalized);

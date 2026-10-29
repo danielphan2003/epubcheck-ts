@@ -72,7 +72,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
         ? publication.items.get(target.path)?.mediaType
         : target.kind === "remote"
           ? publication.remoteItems.get(target.url)?.mediaType
-          : undefined,
+          : target.mediaType,
   };
   const references: Array<Collect.Reference> = [];
   let scripts = false;

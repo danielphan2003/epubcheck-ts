@@ -56,7 +56,7 @@ export interface Context {
   readonly version: "2" | "3";
   // False for a single document, which has no container to resolve references in.
   readonly container: boolean;
-  // The manifest media type of a resource, in a publication.
+  // The media type of a resource in a publication: its manifest item's, or a data URL's own.
   readonly mediaTypeOf?: ((target: Url.Target) => string | undefined) | undefined;
 }
 
@@ -301,15 +301,21 @@ const BLESSED_IMAGES = new Set([
 // What a `type` attribute must agree with: the codecs of MP4 and Ogg audio, and no other
 // parameters.
 const declaredType = (value: string) => {
-  const { essence, parameters } = MediaTypes.parse(value);
-  const codecs = parameters.get("codecs");
-  const keep = (essence === "audio/mp4" || essence === "audio/ogg") && codecs !== undefined;
-  return keep ? `${essence}; codecs=${codecs}` : essence;
+  const parsed = MediaTypes.parse(value);
+  if (parsed === undefined) return "";
+  const codecs = parsed.parameters.get("codecs");
+  const audio = parsed.essence === "audio/mp4" || parsed.essence === "audio/ogg";
+  return MediaTypes.serialize({
+    essence: parsed.essence,
+    parameters: new Map<string, string>(audio && codecs !== undefined ? [["codecs", codecs]] : []),
+  });
 };
+// Upstream compares parsed types, whose parameters are unordered.
 const canonical = (value: string) => {
-  const { essence, parameters } = MediaTypes.parse(value);
-  const sorted = [...parameters].sort(([left], [right]) => (left < right ? -1 : 1));
-  return [essence, ...sorted.map(([name, value]) => `${name}=${value}`)].join("; ");
+  const parsed = MediaTypes.parse(value);
+  if (parsed === undefined) return "";
+  const sorted = [...parsed.parameters].sort(([left], [right]) => (left < right ? -1 : 1));
+  return JSON.stringify([parsed.essence, sorted]);
 };
 
 // A style sheet, or the CSS of a `style` element or attribute (`offset` lines into its document).
@@ -429,10 +435,11 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
   };
   let inPicture = false;
   // Upstream's checks of `picture` images: `img` must be a core image type, and `source` too
-  // unless it declares its type.
+  // unless it declares its type. Only manifest items are checked, not data URLs.
   const pictureImage = (element: Xml.XmlElement, resolved: Url.Resolved | undefined) => {
     const actual = mediaTypeOf(resolved);
     if (!inPicture || actual === undefined || resolved === undefined) return;
+    if (resolved.target.kind === "data") return;
     const args = [Url.nameOf(resolved.target), actual];
     const type = (Xml.attribute(element, "type") ?? "").trim();
     if (element.local === "img") {

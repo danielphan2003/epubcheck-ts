@@ -3,46 +3,82 @@
 
 import type { MessageId } from "../messages/MessageCatalog.ts";
 
-export interface MediaType {
-  // `type/subtype`, lowercased.
-  readonly essence: string;
-  // Parameter names lowercased, values as written; the first of repeated names wins.
-  readonly parameters: ReadonlyMap<string, string>;
-}
+const isToken = (char: string) => /^[!#$%&'*+.^_`|~0-9A-Za-z-]$/.test(char);
+const isWhitespace = (char: string) => /^[ \t\n\r]$/.test(char);
+const isQuotable = (char: string) => /^[\t\x20-\x7e\x80-\xff]$/.test(char);
 
-export const parse = (value: string): MediaType => {
-  const [essence = "", ...rest] = value.split(";");
+// Upstream's MIMETypeParser, laxer than the MIME Sniffing standard: an unquoted value keeps
+// stray characters, and a quoted one its missing end quote. The essence and parameter names are
+// lowercased, and the first of repeated names wins. Undefined without a `type/subtype`.
+export const parse = (value: string) => {
+  const chars = [...value];
+  let index = 0;
+  const take = (test: (char: string) => boolean) => {
+    let taken = "";
+    while (index < chars.length && test(chars[index] ?? "")) taken += chars[index++];
+    return taken;
+  };
+  const skip = () => take((char) => char !== ";");
+  take(isWhitespace);
+  const type = take(isToken).toLowerCase();
+  if (type === "" || chars[index] !== "/") return undefined;
+  index++;
+  const subtype = take(isToken).toLowerCase();
+  take(isWhitespace);
+  if (subtype === "" || (index < chars.length && chars[index] !== ";")) return undefined;
   const parameters = new Map<string, string>();
-  for (const parameter of rest) {
-    const separator = parameter.indexOf("=");
-    if (separator < 0) continue;
-    const name = parameter.slice(0, separator).trim().toLowerCase();
-    const raw = parameter.slice(separator + 1).trim();
-    if (!parameters.has(name)) parameters.set(name, raw.replace(/^"(.*)"$/, "$1"));
+  while (index < chars.length) {
+    index++;
+    take(isWhitespace);
+    const name = take(isToken).toLowerCase();
+    if (name === "" || chars[index] !== "=") {
+      skip();
+      continue;
+    }
+    index++;
+    let text: string | undefined = "";
+    if (chars[index] === '"') {
+      index++;
+      while (text !== undefined && index < chars.length && chars[index] !== '"') {
+        const char = chars[index++] ?? "";
+        const escaped = char === "\\" ? chars[index++] : char;
+        if (escaped === undefined) text += "\\";
+        else text = isQuotable(escaped) ? text + escaped : undefined;
+      }
+      skip();
+    } else {
+      const raw = take((char) => char !== ";" && (isQuotable(char) || isWhitespace(char)));
+      if (index < chars.length && chars[index] !== ";") {
+        skip();
+        continue;
+      }
+      if (raw === "") continue;
+      text = raw.replace(/[ \t\n\r]+$/, "");
+    }
+    if (text !== undefined && !parameters.has(name)) parameters.set(name, text);
   }
-  return { essence: essence.trim().toLowerCase(), parameters };
+  return { essence: `${type}/${subtype}`, parameters };
 };
 
-// Upstream's MIMEType.normalize, which items' media types go through: the essence trimmed and in
-// lower case, parameters without a value dropped, a value quoted unless it is a token; "" when
-// the value cannot be parsed.
-const TOKEN = "[!#$%&'*+.^_`|~0-9A-Za-z-]+";
+// Upstream's MIMETypeSerializer: a value is quoted unless it is a token.
+export const serialize = (type: {
+  readonly essence: string;
+  readonly parameters: ReadonlyMap<string, string>;
+}) =>
+  [
+    type.essence,
+    ...[...type.parameters].map(([name, text]) =>
+      text !== "" && [...text].every(isToken)
+        ? `${name}=${text}`
+        : `${name}="${text.replace(/["\\]/g, "\\$&")}"`,
+    ),
+  ].join(";");
+
+// Upstream's MIMEType.normalize, which items' media types go through; "" when the value cannot be
+// parsed.
 export const normalize = (value: string) => {
-  const [essence = "", ...parameters] = value.split(";");
-  const type = new RegExp(`^\\s*(${TOKEN}/${TOKEN})\\s*$`).exec(essence)?.[1];
-  if (type === undefined) return "";
-  const kept = new Map<string, string>();
-  for (const parameter of parameters) {
-    const separator = parameter.indexOf("=");
-    const name = parameter.slice(0, separator).trim().toLowerCase();
-    const raw = parameter.slice(separator + 1).trim();
-    if (separator < 0 || !new RegExp(`^${TOKEN}$`).test(name) || raw === "") continue;
-    if (kept.has(name)) continue;
-    const quoted = raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"');
-    const text = quoted ? raw.slice(1, -1) : raw;
-    kept.set(name, text !== "" && new RegExp(`^${TOKEN}$`).test(text) ? text : `"${text}"`);
-  }
-  return [type.toLowerCase(), ...[...kept].map(([name, text]) => `${name}=${text}`)].join(";");
+  const parsed = parse(value);
+  return parsed === undefined ? "" : serialize(parsed);
 };
 
 // Upstream compares normalized media types with exact strings, so any other parameter makes a
@@ -139,9 +175,6 @@ export const preferred = (value: string, path: string) => {
       return undefined;
   }
 };
-
-export const sameEssence = (left: string, right: string) =>
-  parse(left).essence === parse(right).essence;
 
 // Bitmaps upstream checks (BitmapChecker); WebP and others are not.
 export const isBitmap = (value: string) =>
