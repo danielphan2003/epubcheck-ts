@@ -103,7 +103,12 @@ export const check = Effect.fn("XmlChecker.check")(function* (
     yield* report.message("RSC-028", Report.location(path), decoded.encoding);
   }
   if (decoded.text === undefined) {
-    yield* report.message("RSC-016", Report.location(path, 1, 1), decoded.error ?? "");
+    const error = decoded.error;
+    yield* report.message(
+      "RSC-016",
+      Report.location(path, error?.line ?? 1, error?.column ?? 1),
+      error?.message ?? "",
+    );
     return Option.none<Xml.XmlDocument>();
   }
   const parsed = Xml.parse(decoded.text, {

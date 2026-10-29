@@ -1,43 +1,39 @@
 import type { MessageId } from "../messages/MessageCatalog.ts";
 import type { ManifestItem } from "../opf/PackageDocument.ts";
 import * as UrlFragment from "../util/UrlFragment.ts";
-import type { Features, Reference, ReferenceType } from "./Collect.ts";
+import type { Features, Finding, Reference, ReferenceType } from "./Collect.ts";
+import * as Url from "./Url.ts";
 
-// Checks every reference once all documents are read: the target must be in the container and
-// the manifest, remote resources are allowed only for audio, video and fonts, and fragments
-// must point at existing IDs.
+// Checks the collected references once all documents are read, in upstream's order: a remote
+// resource must be allowed, a target must be in the container and the manifest, a hyperlink
+// must reach a spine item, and a fragment must name an existing ID. The first problem found
+// for a reference is the only one reported.
 
-export interface Finding {
-  readonly id: MessageId;
-  readonly args: ReadonlyArray<string>;
-  readonly path: string;
-  readonly line: number;
-  readonly column: number;
-}
-
-// Paths are NFC-normalized: an href and a container name may use different normalization forms.
 export interface Publication {
+  readonly version: "2" | "3";
   readonly packagePath: string;
+  // Container paths, NFC-normalized like the targets of references.
   readonly files: ReadonlySet<string>;
   readonly items: ReadonlyMap<string, ManifestItem>;
-  // Remote manifest items by URL without fragment.
+  // Remote manifest items, by `Url.remoteKey`.
   readonly remoteItems: ReadonlyMap<string, ManifestItem>;
-  readonly spine: ReadonlySet<string>;
+  readonly spine: ReadonlySet<ManifestItem>;
   readonly ids: ReadonlyMap<string, ReadonlySet<string>>;
 }
 
-const REMOTE_ALLOWED = new Set<ReferenceType>(["audio", "video", "font"]);
-// Hyperlinks, citations and non-stylesheet `link` elements are not fetched as publication resources.
-const NAVIGATION = new Set<ReferenceType>(["hyperlink", "cite", "link"]);
+// Remote audio, video and fonts are allowed in EPUB 3, by reference type or declared type.
+const REMOTE_TYPES = new Set<ReferenceType>(["audio", "video", "font"]);
+const isRemoteMediaType = (mediaType: string) =>
+  /^(?:audio|video|font)\/|^application\/font-/.test(mediaType) ||
+  mediaType === "application/vnd.ms-opentype";
+// Hyperlinks and citations are not publication resources.
+const NAVIGATION = new Set<ReferenceType>(["hyperlink", "cite"]);
 
-const isRemoteMediaType = (mediaType: string | undefined) =>
-  mediaType !== undefined &&
-  /^(?:audio|video|font)\/|^application\/(?:font|x-font|vnd\.ms-opentype)/.test(mediaType);
-const SCHEME = /^([a-zA-Z][a-zA-Z0-9+.-]*):/;
-const SPECIAL = new Set(["http", "https", "ftp", "ws", "wss"]);
-const CONTENT_TYPES = new Set(["application/xhtml+xml", "image/svg+xml"]);
+const essence = (mediaType: string) => (mediaType.split(";")[0] ?? "").trim().toLowerCase();
+const isContent = (mediaType: string) =>
+  essence(mediaType) === "application/xhtml+xml" || essence(mediaType) === "image/svg+xml";
 
-const finding = (reference: Reference, id: MessageId, ...args: ReadonlyArray<string>): Finding => ({
+const finding = (reference: Reference, id: MessageId, ...args: ReadonlyArray<string>) => ({
   id,
   args,
   path: reference.path,
@@ -45,169 +41,150 @@ const finding = (reference: Reference, id: MessageId, ...args: ReadonlyArray<str
   column: reference.column,
 });
 
-const decode = (value: string) => {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
+const itemOf = (reference: Reference, publication: Publication) => {
+  const { target } = reference;
+  if (target.kind === "local") return publication.items.get(target.path);
+  if (target.kind === "remote") return publication.remoteItems.get(target.url);
+  return undefined;
 };
 
-// Resolves a relative URL against the referencing document's container path; undefined when it
-// climbs out of the container.
-const resolve = (url: string, from: string) => {
-  const segments = from.split("/").slice(0, -1);
-  for (const segment of url.split("/")) {
-    if (segment === "..") {
-      if (segments.length === 0) return undefined;
-      segments.pop();
-    } else if (segment !== "." && segment !== "") segments.push(segment);
-  }
-  return decode(segments.join("/"));
-};
+// Whether a document loads an SVG image, which allows its `svg` property.
+export const loadsSvg = (references: ReadonlyArray<Reference>, publication: Publication) =>
+  references.some((reference) => {
+    const item = reference.resource ? itemOf(reference, publication) : undefined;
+    return item !== undefined && essence(item.mediaType) === "image/svg+xml";
+  });
 
-// Without a publication (a single document check), only the URL syntax rules apply.
-export const check = (
-  references: ReadonlyArray<Reference>,
-  publication: Publication | undefined,
-) => {
+export const check = (references: ReadonlyArray<Reference>, publication: Publication) => {
   const findings: Array<Finding> = [];
-  const remoteUsers = new Set<string>();
+  const epub3 = publication.version === "3";
+  // Undeclared resources are reported once each.
+  const undeclared = new Set<string>();
   for (const reference of references) {
-    const url = reference.url.trim();
-    if (url === "") continue;
-    const scheme = SCHEME.exec(url)?.[1]?.toLowerCase();
-    if (scheme === "file") {
-      findings.push(finding(reference, "RSC-030", url));
-      continue;
-    }
-    if (scheme === "data") {
-      if (reference.type === "hyperlink") findings.push(finding(reference, "RSC-029"));
-      continue;
-    }
-    if (scheme !== undefined) {
-      if (SPECIAL.has(scheme) && !url.slice(scheme.length + 1).startsWith("//")) {
-        findings.push(finding(reference, "RSC-020", url, 'Expected a slash ("/")'));
-        continue;
-      }
-      if (scheme !== "http" && scheme !== "https") continue;
-      if (NAVIGATION.has(reference.type)) continue;
-      const withoutFragment = url.split("#")[0] ?? url;
-      const declared = publication?.remoteItems.get(withoutFragment);
+    const { target, type } = reference;
+    // Data URLs are resources of their own, with no manifest entry to check. The package
+    // document is a resource too, of a type no reference may point to (checked later).
+    if (target.kind === "data") continue;
+    if (target.kind === "local" && target.path === publication.packagePath) continue;
+    const item = itemOf(reference, publication);
+    if (target.kind === "remote") {
+      const url = target.url + (reference.fragment === undefined ? "" : `#${reference.fragment}`);
       const allowed =
-        REMOTE_ALLOWED.has(reference.type) ||
-        isRemoteMediaType(declared?.mediaType) ||
-        isRemoteMediaType(reference.mediaType);
-      if (!allowed) {
+        epub3 &&
+        ((item !== undefined &&
+          (publication.spine.has(item) || isRemoteMediaType(item.mediaType))) ||
+          REMOTE_TYPES.has(type));
+      if (!NAVIGATION.has(type) && !allowed) {
         findings.push(finding(reference, "RSC-006", url));
         continue;
       }
-      remoteUsers.add(reference.path);
-      // Upstream warns about plain HTTP only for media and font references proper.
-      if (scheme === "http" && REMOTE_ALLOWED.has(reference.type))
+      if (epub3 && type !== "hyperlink" && target.scheme !== "https" && target.scheme !== "file") {
         findings.push(finding(reference, "RSC-031", url));
-      if (publication !== undefined && declared === undefined) {
-        findings.push(finding(reference, "RSC-008", url));
       }
-      continue;
-    }
-    if (/\s/.test(url)) {
-      findings.push(
-        finding(
-          reference,
-          "RSC-020",
-          url,
-          "Illegal character in path segment: space is not allowed",
-        ),
-      );
-      continue;
-    }
-    const hash = url.indexOf("#");
-    const fragment = hash < 0 ? undefined : url.slice(hash + 1);
-    let target = hash < 0 ? url : url.slice(0, hash);
-    const query = target.indexOf("?");
-    if (query >= 0) {
-      findings.push(finding(reference, "RSC-033", url));
-      target = target.slice(0, query);
-    }
-    if (target.startsWith("/")) {
-      findings.push(finding(reference, "RSC-026", url));
-      continue;
-    }
-    // A single document's position in a container is unknown, so climbing out cannot be judged.
-    if (publication === undefined) continue;
-    const resolved = target === "" ? reference.path : resolve(target, reference.path);
-    if (resolved === undefined) {
-      findings.push(finding(reference, "RSC-026", url));
-      continue;
-    }
-    const path = resolved.normalize("NFC");
-    const item = publication.items.get(path);
-    if (!publication.files.has(path)) {
-      // A declared but missing resource is reported once, from the manifest (RSC-001).
-      if (item === undefined) {
-        findings.push(finding(reference, reference.type === "link" ? "RSC-007w" : "RSC-007", path));
-      }
-      continue;
     }
     if (item === undefined) {
-      if (!path.startsWith("META-INF/") && path !== publication.packagePath) {
-        findings.push(finding(reference, "RSC-008", path));
+      const name = target.kind === "remote" ? target.url : Url.encodePath(target.path);
+      // Upstream looks the URL up with its fragment, so an undeclared file referenced with a
+      // fragment is reported as missing.
+      if (
+        target.kind === "local" &&
+        (reference.fragment !== undefined || !publication.files.has(target.path))
+      ) {
+        findings.push(finding(reference, "RSC-007", name));
+      } else if (!undeclared.has(name) && !(target.kind === "remote" && NAVIGATION.has(type))) {
+        undeclared.add(name);
+        findings.push(finding(reference, "RSC-008", name));
       }
       continue;
     }
-    const isContent = CONTENT_TYPES.has(item.mediaType);
-    if (
-      reference.type === "hyperlink" &&
-      isContent &&
-      target !== "" &&
-      !publication.spine.has(path)
-    ) {
-      findings.push(finding(reference, "RSC-011"));
+    if (type === "hyperlink" && !publication.spine.has(item)) {
+      // Links to other media types are reported as such instead, by a later check.
+      if (isContent(item.mediaType)) findings.push(finding(reference, "RSC-011"));
+      continue;
     }
-    if (fragment !== undefined && fragment !== "" && isContent && reference.type === "hyperlink") {
-      const parsed = UrlFragment.parse(fragment, item.mediaType);
-      if (parsed.id !== "" && publication.ids.get(path)?.has(parsed.id) !== true) {
-        findings.push(finding(reference, "RSC-012"));
-      }
+    const fragment = reference.fragment;
+    if (fragment === undefined || fragment === "" || target.kind === "remote") continue;
+    // Style sheets and non-SVG images must not have fragments at all; that is checked later.
+    if (type === "stylesheet" || (type === "image" && essence(item.mediaType) !== "image/svg+xml"))
+      continue;
+    const parsed = UrlFragment.parse(fragment, item.mediaType);
+    if (
+      parsed.id !== "" &&
+      isContent(item.mediaType) &&
+      publication.ids.get(target.path)?.has(parsed.id) !== true
+    ) {
+      findings.push(finding(reference, "RSC-012"));
     }
   }
-  return { findings, remoteUsers };
+  return findings;
 };
 
-const PROPERTY_FEATURES: ReadonlyArray<readonly [string, keyof Features]> = [
-  ["scripted", "scripted"],
-  ["svg", "svg"],
-  ["mathml", "mathml"],
-  ["switch", "switch"],
+// The item vocabulary, in upstream's order.
+const ITEM_PROPERTIES = [
+  "cover-image",
+  "data-nav",
+  "dictionary",
+  "glossary",
+  "index",
+  "mathml",
+  "nav",
+  "remote-resources",
+  "scripted",
+  "search-key-map",
+  "svg",
+  "switch",
 ];
 
-// Manifest properties that describe content (EPUB 3): OPF-014 when missing, OPF-015 or OPF-018
-// when declared without the matching content.
+// Manifest properties that describe an EPUB 3 content document: OPF-014 when the content needs
+// one, OPF-018 or OPF-015 when it is declared without such content.
 export const propertyFindings = (
   item: ManifestItem,
   path: string,
   features: Features,
-  usesRemoteResources: boolean,
+  end: { readonly line: number; readonly column: number },
+  svgAllowed: boolean,
 ) => {
   const findings: Array<Finding> = [];
-  const at = (id: MessageId, property: string): Finding => ({
-    id,
-    args: [property],
-    path,
-    line: -1,
-    column: -1,
-  });
-  for (const [property, feature] of PROPERTY_FEATURES) {
-    const declared = item.properties.includes(property);
-    if (features[feature] && !declared) findings.push(at("OPF-014", property));
-    else if (!features[feature] && declared && property !== "switch")
-      findings.push(at("OPF-015", property));
+  const at = (id: MessageId, args: ReadonlyArray<string>, line = -1, column = -1) =>
+    findings.push({ id, args, path, line, column });
+  const declared = ITEM_PROPERTIES.filter((property) => item.properties.includes(property));
+  // The CSS of `style` elements and attributes checks its own remote resources.
+  if (!declared.includes("remote-resources")) {
+    for (const line of features.remoteStyles) at("OPF-014", ["remote-resources"], line, 0);
   }
-  const declaresRemote = item.properties.includes("remote-resources");
-  if (usesRemoteResources && !declaresRemote) findings.push(at("OPF-014", "remote-resources"));
-  else if (!usesRemoteResources && declaresRemote) {
-    findings.push(at(features.scripted ? "OPF-018b" : "OPF-018", "remote-resources"));
+  const required = new Set<string>();
+  if (features.mathml) required.add("mathml");
+  if (features.remoteResources) required.add("remote-resources");
+  if (features.scripted) required.add("scripted");
+  if (features.svg) required.add("svg");
+  if (features.switch) required.add("switch");
+  for (const property of ITEM_PROPERTIES) {
+    if (required.has(property) && !declared.includes(property)) at("OPF-014", [property]);
   }
+  const allowed = new Set(["nav", "data-nav", "cover-image", ...required]);
+  if (svgAllowed) allowed.add("svg");
+  if (features.index) allowed.add("index");
+  if (features.glossary) allowed.add("glossary");
+  const unchecked = declared.filter((property) => !allowed.has(property));
+  if (unchecked.includes("remote-resources")) {
+    at(features.scripted ? "OPF-018b" : "OPF-018", [], end.line, end.column);
+  }
+  const others = unchecked.filter((property) => property !== "remote-resources");
+  if (others.length > 0) at("OPF-015", [others.join(", ")]);
   return findings;
+};
+
+// A style sheet's `remote-resources` property: it must match the remote resources it uses.
+export const styleSheetFindings = (item: ManifestItem, path: string, usesRemote: boolean) => {
+  const declared = item.properties.includes("remote-resources");
+  const at = (id: MessageId, args: ReadonlyArray<string>) => ({
+    id,
+    args,
+    path,
+    line: 0,
+    column: 0,
+  });
+  if (usesRemote && !declared) return [at("OPF-014", ["remote-resources"])];
+  if (!usesRemote && declared) return [at("OPF-018", [])];
+  return [];
 };

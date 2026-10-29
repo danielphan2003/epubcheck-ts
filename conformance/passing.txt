@@ -185,11 +185,18 @@ epub3/03-resources/resources.feature:461 Verify that remote audio resources defi
 epub3/03-resources/resources.feature:466 Verify that remote video resources are allowed
 epub3/03-resources/resources.feature:47 Verify AAC/MP4 audio with explicit OPUS codec  is allowed
 epub3/03-resources/resources.feature:471 Verify that remote video resources are allowed anywhere
+epub3/03-resources/resources.feature:477 Report a reference to a remote resource from an `iframe` element when the resource is declared in the package document (issue 852)
+epub3/03-resources/resources.feature:483 Report a reference to a remote resource from an `iframe` element when the resource is not declared in package document
+epub3/03-resources/resources.feature:489 Report a remote image that is declared in the packaged document
+epub3/03-resources/resources.feature:495 Report a remote image that is not declared in the package document
 epub3/03-resources/resources.feature:501 Report a remote image declared in the package document when it is referenced from an `img` tag and also retrieved by a script
 epub3/03-resources/resources.feature:507 Verify that remote fonts are allowed
 epub3/03-resources/resources.feature:512 Verify that remote SVG fonts are allowed
 epub3/03-resources/resources.feature:517 Verify that remote fonts of unknown type declared in CSS `@font-face` are allowed
 epub3/03-resources/resources.feature:522 Verify that remote fonts of unknown type declared in SVG `font-face-uri` are allowed
+epub3/03-resources/resources.feature:527 Report a remote SVG font when it is referenced from an HTML `img` element
+epub3/03-resources/resources.feature:533 Report a reference to a remote resource from an `object` element when the resource is not declared in package document
+epub3/03-resources/resources.feature:539 Report a remote SVG Content Document
 epub3/03-resources/resources.feature:567 Report a remote script
 epub3/03-resources/resources.feature:573 Report a remote stylesheet
 epub3/03-resources/resources.feature:58 Verify OPUS audio in OGG container is allowed
@@ -272,9 +279,11 @@ epub3/04-ocf/ocf.feature:199 Report a reference from an XHTML `track` not declar
 epub3/04-ocf/ocf.feature:207 an SVG hyperlink 'href' referencing a missing resource is reported
 epub3/04-ocf/ocf.feature:213 an SVG hyperlink 'xlink:href' referencing a missing resource is reported
 epub3/04-ocf/ocf.feature:218 an SVG hyperlink with 'xlink:href' and 'href' referencing the same missing resource is reported once
+epub3/04-ocf/ocf.feature:223 an SVG hyperlink 'xlink:href' referencing a missing resource but 'href' referencing and existing resource is reported
 epub3/04-ocf/ocf.feature:229 an SVG image 'href' referencing a missing resource is reported
 epub3/04-ocf/ocf.feature:235 an SVG image 'xlink:href' referencing a missing resource is reported
 epub3/04-ocf/ocf.feature:240 an SVG image with 'xlink:href' and 'href' referencing the same missing resource is reported once
+epub3/04-ocf/ocf.feature:245 an SVG image 'xlink:href' referencing a missing resource but 'href' referencing and existing resource is reported
 epub3/04-ocf/ocf.feature:255 Report a CSS `url` that is not declared in the package document or present in the container
 epub3/04-ocf/ocf.feature:27 Verify a file name containing a `+` character is allowed (issue 188)
 epub3/04-ocf/ocf.feature:280 Report an unknown element in the `container.xml` file
@@ -381,6 +390,7 @@ epub3/05-package-document/package-document.feature:55 'id' attributes must be un
 epub3/05-package-document/package-document.feature:555 Report an unknown manifest item property
 epub3/05-package-document/package-document.feature:563 Verify content documents are identified as containing mathml
 epub3/05-package-document/package-document.feature:570 Report an XHTML document with remote audio but without the `remote-resources` property set in the package document
+epub3/05-package-document/package-document.feature:576 Report remote fonts in CSS without the `remote-resource` property set in the package document
 epub3/05-package-document/package-document.feature:582 Report a missing `remote-resources` property when inline CSS has remote references
 epub3/05-package-document/package-document.feature:588 Report an SVG using remote fonts without the `remote-resource` property set in the package document
 epub3/05-package-document/package-document.feature:594 Report an XHTML document using remote fonts in `style` without the `remote-resource` property set in the package document
@@ -505,6 +515,8 @@ epub3/07-content-documents/content-documents-xhtml.feature:206 'doc-pageheader' 
 epub3/07-content-documents/content-documents-xhtml.feature:215 Verify the value of HTML boolean attributes and enumerated attributes are parsed in a case-insensitive manner
 epub3/07-content-documents/content-documents-xhtml.feature:22 Minimal Content Document
 epub3/07-content-documents/content-documents-xhtml.feature:221 Verify that a base url can be set
+epub3/07-content-documents/content-documents-xhtml.feature:225 Report relative paths as remote resources when HTML `base` is set to an extenal URL (issue 155)
+epub3/07-content-documents/content-documents-xhtml.feature:230 Report relative paths as remote resources when `xml:base` is set to an extenal URL (issue 155)
 epub3/07-content-documents/content-documents-xhtml.feature:237 Verify canvas element with a fallback
 epub3/07-content-documents/content-documents-xhtml.feature:243 Verify custom elements are not rejected
 epub3/07-content-documents/content-documents-xhtml.feature:249 Verify `data-*` attributes are allowed
@@ -579,6 +591,7 @@ epub3/07-content-documents/content-documents-xhtml.feature:682 Report various in
 epub3/07-content-documents/content-documents-xhtml.feature:688 Report a `time` element nested inside another
 epub3/07-content-documents/content-documents-xhtml.feature:69 Verify `doctype` with legacy string
 epub3/07-content-documents/content-documents-xhtml.feature:698 Verify valid URLs
+epub3/07-content-documents/content-documents-xhtml.feature:703 Report non-conforming URLs
 epub3/07-content-documents/content-documents-xhtml.feature:709 Report a URL host that cannot be parsed
 epub3/07-content-documents/content-documents-xhtml.feature:733 Verify `epub:type` attribute on allowed content
 epub3/07-content-documents/content-documents-xhtml.feature:740 Report `epub:type` attribute on 'head' or metadata content
