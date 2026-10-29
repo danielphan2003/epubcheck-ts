@@ -1,3 +1,5 @@
+import { domainToUnicode } from "node:url";
+
 import { percentDecode } from "../util/UrlFragment.ts";
 
 // URL parsing as upstream does it while it reads a document: each URL string is resolved against
@@ -13,7 +15,7 @@ export interface Problem {
 export type Target =
   | { readonly kind: "local"; readonly path: string }
   | { readonly kind: "remote"; readonly url: string; readonly scheme: string }
-  | { readonly kind: "data"; readonly mediaType: string };
+  | { readonly kind: "data"; readonly url: string; readonly mediaType: string };
 
 export interface Resolved {
   readonly target: Target;
@@ -133,6 +135,37 @@ const normalizeRemote = (url: URL) => {
   return copy.href;
 };
 
+// How upstream's messages name a resource: its container path, or its URL.
+export const nameOf = (target: Target) =>
+  target.kind === "local" ? encodePath(target.path) : target.url;
+
+// Galimatias shows the domains of special schemes in Unicode, and other hosts as written.
+const host = (url: URL) =>
+  (SPECIAL.has(url.protocol.slice(0, -1)) && !url.hostname.startsWith("[")
+    ? domainToUnicode(url.hostname)
+    : url.hostname) + (url.port === "" ? "" : `:${url.port}`);
+
+// How upstream names a remote manifest item: galimatias's human form, percent-decoded, with
+// Unicode domains.
+export const humanName = (href: string) => {
+  const url = parse(href.trim(), CONTAINER);
+  if (url === undefined) return href;
+  const user = url.username + (url.password === "" ? "" : `:${url.password}`);
+  const authority =
+    url.host === "" && !url.href.startsWith(`${url.protocol}//`)
+      ? ""
+      : `//${user === "" ? "" : `${percentDecode(user)}@`}${host(url)}`;
+  const part = (prefix: string, value: string) =>
+    value === "" && !url.href.includes(prefix) ? "" : prefix + percentDecode(value.slice(1));
+  return (
+    url.protocol +
+    authority +
+    percentDecode(url.pathname) +
+    part("?", url.search) +
+    part("#", url.hash)
+  );
+};
+
 // A remote manifest item's key, as references to it resolve.
 export const remoteKey = (href: string) => {
   const url = parse(href.trim(), CONTAINER);
@@ -144,7 +177,7 @@ export const remoteKey = (href: string) => {
 const targetOf = (url: URL): Target => {
   if (url.protocol === "data:") {
     const header = url.href.slice("data:".length).split(",")[0] ?? "";
-    return { kind: "data", mediaType: header.split(";")[0] ?? "" };
+    return { kind: "data", url: url.href, mediaType: header.split(";")[0] ?? "" };
   }
   if (url.origin === new URL(CONTAINER).origin) {
     return { kind: "local", path: percentDecode(url.pathname.slice(1)).normalize("NFC") };

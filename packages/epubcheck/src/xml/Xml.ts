@@ -40,11 +40,19 @@ export interface XmlDoctype {
   readonly internalSubset: string | undefined;
 }
 
+export interface ProcessingInstruction {
+  readonly target: string;
+  readonly body: string;
+  readonly line: number;
+  readonly column: number;
+}
+
 export interface XmlDocument {
   readonly root: XmlElement;
   readonly doctype: XmlDoctype | undefined;
   readonly encoding: string | undefined;
   readonly version: string | undefined;
+  readonly processingInstructions: ReadonlyArray<ProcessingInstruction>;
 }
 
 export interface XmlError {
@@ -408,6 +416,7 @@ export const parse = (source: string, options: ParseOptions = {}) => {
     readonly version?: string | undefined;
   } = {};
   let error: XmlError | undefined;
+  const processingInstructions: Array<ProcessingInstruction> = [];
 
   const appendText = (text: string) => {
     const parent = stack.at(-1);
@@ -484,6 +493,14 @@ export const parse = (source: string, options: ParseOptions = {}) => {
   });
   parser.on("text", appendText);
   parser.on("cdata", appendText);
+  parser.on("processinginstruction", (instruction) => {
+    processingInstructions.push({
+      target: instruction.target,
+      body: instruction.body,
+      line: parser.line,
+      column: parser.column + 1,
+    });
+  });
   parser.on("error", (cause) => {
     if (error !== undefined) return;
     const line = parser.line;
@@ -516,6 +533,7 @@ export const parse = (source: string, options: ParseOptions = {}) => {
     doctype,
     encoding: declaration.encoding,
     version: declaration.version,
+    processingInstructions,
   } satisfies XmlDocument);
 };
 

@@ -168,6 +168,7 @@ epub2/opf-publication.feature:60 Report a reference to a resource that is not li
 epub2/opf-publication.feature:65 Report a resource declared in the manifest but missing from the container
 epub2/opf-publication.feature:82 Verify that operating system files (`.DS_STORE`, `thumbs.db`) are ignored (issue 256)
 epub2/opf-publication.feature:86 Report a reference to a remote resource from an `object` element when the resource is not declared in package document
+epub2/opf-publication.feature:96 Report a manifest fallback that does not resolve to a resource in the publication
 epub2/ops-content-document-svg.feature:21 Verify that namespaced extensions are allowed
 epub2/ops-content-document-svg.feature:26 Verify `font-face-src` is allowed (issue 196)
 epub2/ops-content-document-xhtml.feature:102 Report nested `a` tags (issue 287)
@@ -198,32 +199,59 @@ epub3/00-minimal/minimal.feature:27 Verify a minimal SVG content document
 epub3/02-epub-publication-conformance/epub-publication-conformance.feature:16 the minimal Package Document is reported as valid
 epub3/02-epub-publication-conformance/epub-publication-conformance.feature:21 Verify a minimal packaged EPUB
 epub3/03-resources/resources.feature:101 Verify that JPEG file is not corrupt (issue 567)
+epub3/03-resources/resources.feature:105 Report a corrupt image
+epub3/03-resources/resources.feature:111 Report a JPEG image declared as 'image/gif'
+epub3/03-resources/resources.feature:116 Report a JPEG image with a '.gif' extension
+epub3/03-resources/resources.feature:125 Verify TrueType fonts core media types
 epub3/03-resources/resources.feature:133 Verify Open Type fonts are allowed
 epub3/03-resources/resources.feature:138 Verify SVG fonts are allowed
+epub3/03-resources/resources.feature:145 Report a foreign resource in HTML `audio` with no fallbacks
+epub3/03-resources/resources.feature:151 Report a foreign resource in HTML `audio` `source` with no fallback
+epub3/03-resources/resources.feature:157 Report a foreign resource in HTML `embed` with no fallback
 epub3/03-resources/resources.feature:16 items with Core Media Types do not require fallbacks
+epub3/03-resources/resources.feature:163 Report a foreign resource in HTML video `input` with no fallack
+epub3/03-resources/resources.feature:169 Report a foreign resource in HTML video `poster` with no fallack
+epub3/03-resources/resources.feature:175 Report a foreign resource in MathML `altimg` attribute with no fallack
+epub3/03-resources/resources.feature:186 Allow foreign font media types without fallbacks
 epub3/03-resources/resources.feature:194 Allow foreign linked resources without fallbacks
 epub3/03-resources/resources.feature:199 Allow XPGT style sheets without fallbacks
 epub3/03-resources/resources.feature:204 Allow an xpgt style sheet to have an explicit manifest fallback
+epub3/03-resources/resources.feature:212 a classic script resource with no type attribute and a foreign JavaScript MIME type is exempt
+epub3/03-resources/resources.feature:219 a classic script resource with no type attribute and that is not JavaScript is reported
+epub3/03-resources/resources.feature:225 a classic script resource with a type attribute and a foreign JavaScript MIME type is exempt
+epub3/03-resources/resources.feature:232 a classic script resource with a type attribute and that is not JavaScript is reported
+epub3/03-resources/resources.feature:239 a module script resource with a foreign JavaScript MIME type is exempt
+epub3/03-resources/resources.feature:24 items with Core Media Types that are not preferred types are reported as usage
+epub3/03-resources/resources.feature:246 a module script resource that is not JavaScript is reported
 epub3/03-resources/resources.feature:252 a Wasm module fetched in a script is exempt
 epub3/03-resources/resources.feature:259 Allow foreign text tracks without fallbacks
 epub3/03-resources/resources.feature:266 foreign video in an HTML`video` element is exempt
 epub3/03-resources/resources.feature:271 foreign video in an HTML `source` child of a `video` element is exempt
 epub3/03-resources/resources.feature:276 foreign video with a media type not starting with 'video/' is exempt
+epub3/03-resources/resources.feature:281 foreign video referenced from an HTML `img` element is not exempt
 epub3/03-resources/resources.feature:289 Allow unreferenced foreign resources without fallbacks
 epub3/03-resources/resources.feature:298 Allow non-CMT file to be in the spine if they have an XHTML Content Document fallback
 epub3/03-resources/resources.feature:304 Allow an SVG Content Document to be used as a fallback
+epub3/03-resources/resources.feature:310 Report files that aren't Content Documents (like audio) in spine when they don't have a fallback
 epub3/03-resources/resources.feature:317 Allow valid manifest fallback chain (single doc)
 epub3/03-resources/resources.feature:32 Verify MP3 audio is allowed
 epub3/03-resources/resources.feature:322 Allow valid manifest fallback chain (waterfall)
 epub3/03-resources/resources.feature:327 Allow valid manifest fallback chain (n-to-1)
 epub3/03-resources/resources.feature:332 Report a circular manifest fallback chain (single doc)
 epub3/03-resources/resources.feature:338 Report a circular manifest fallback chain (full publication)
+epub3/03-resources/resources.feature:349 Report foreign HTML `audio` without fallbacks even with inner flow content
 epub3/03-resources/resources.feature:355 Allow foreign HTML `audio` with a `source` fallback
 epub3/03-resources/resources.feature:360 Allow remote foreign HTML `audio` with a remote `source` fallback
+epub3/03-resources/resources.feature:365 Report foreign audio in HTML `video` element without fallback
 epub3/03-resources/resources.feature:37 Verify AAC/MP4 audio is allowed
 epub3/03-resources/resources.feature:373 Verify that an `img` element can reference a foreign resource so long as it has a manifest fallback (and is not in a `picture` element)
 epub3/03-resources/resources.feature:378 Verify that an `img srcset` can reference foreign resources when they have manifest fallbacks
+epub3/03-resources/resources.feature:383 Report an `img src` with a foreign resource and no manifest fallback (when the `img` is not in a `picture` element)
+epub3/03-resources/resources.feature:389 Report an `img` element with a video resource
+epub3/03-resources/resources.feature:395 Report a `picture` element with a foreign resource in its `img src` fallback
+epub3/03-resources/resources.feature:401 Report a `picture` element with a foreign resource in its `img srcset` fallback
 epub3/03-resources/resources.feature:407 Verify the `picture source` element can reference foreign resources so long as the `type` attribute is declared
+epub3/03-resources/resources.feature:412 Report a `picture source` element that does not include a `type` attribute for a foreign resource
 epub3/03-resources/resources.feature:42 Verify AAC/MP4 audio with explicit AAC codec is allowed
 epub3/03-resources/resources.feature:420 Verify a script data block does not require a fallback
 epub3/03-resources/resources.feature:425 Verify an "importmap" JSON script content
@@ -244,25 +272,38 @@ epub3/03-resources/resources.feature:501 Report a remote image declared in the p
 epub3/03-resources/resources.feature:507 Verify that remote fonts are allowed
 epub3/03-resources/resources.feature:512 Verify that remote SVG fonts are allowed
 epub3/03-resources/resources.feature:517 Verify that remote fonts of unknown type declared in CSS `@font-face` are allowed
+epub3/03-resources/resources.feature:52 Report AAC/MP4 audio with a non-supported declared codec
 epub3/03-resources/resources.feature:522 Verify that remote fonts of unknown type declared in SVG `font-face-uri` are allowed
 epub3/03-resources/resources.feature:527 Report a remote SVG font when it is referenced from an HTML `img` element
 epub3/03-resources/resources.feature:533 Report a reference to a remote resource from an `object` element when the resource is not declared in package document
 epub3/03-resources/resources.feature:539 Report a remote SVG Content Document
+epub3/03-resources/resources.feature:545 Verify that a remote foreign resource is allowed when used by a script
+epub3/03-resources/resources.feature:553 Verify that a remote core media type resource is allowed when used by a script
+epub3/03-resources/resources.feature:561 Report a remote top-level Content Documents
 epub3/03-resources/resources.feature:567 Report a remote script
 epub3/03-resources/resources.feature:573 Report a remote stylesheet
+epub3/03-resources/resources.feature:579 Report a remote stylesheet declared in SVG XML processing instruction
 epub3/03-resources/resources.feature:58 Verify OPUS audio in OGG container is allowed
 epub3/03-resources/resources.feature:585 Report a remote stylesheet declared in SVG inline style import
 epub3/03-resources/resources.feature:591 Warn about a remote resource with a non `https` URL
 epub3/03-resources/resources.feature:596 do not process a `mailto` URL as a resource
 epub3/03-resources/resources.feature:600 do not process an absolute `cite` URL as a resource
+epub3/03-resources/resources.feature:607 Report a data URL in a manifest item href (not in the spine)
+epub3/03-resources/resources.feature:613 Report a data URL in a manifest item href (referenced in the spine)
+epub3/03-resources/resources.feature:619 Report a data URL in a package link href
 epub3/03-resources/resources.feature:625 Report a data URL in the `href` attribute of an HTML `a` element
+epub3/03-resources/resources.feature:63 Report OPUS audio with the media type 'audio/opus'
 epub3/03-resources/resources.feature:631 Report a data URL in the `href` attribute of an SVG `a` element
 epub3/03-resources/resources.feature:637 Report a data URL in the `href` attribute of an HTML `area` element
 epub3/03-resources/resources.feature:643 Allow a data URL defining an exmpt resource (in an HTML `link` element)
 epub3/03-resources/resources.feature:648 Allow a data URL defining a CMT resource (in an HTML `img` element)
 epub3/03-resources/resources.feature:653 Allow a data URL defining a foreign resource with intrinsic fallback (in an HTML `img` element)
+epub3/03-resources/resources.feature:658 Report a data URL defining a foreign resource with no fallback (in an HTML `img` element)
 epub3/03-resources/resources.feature:664 Verify a data URL having unesapced query-like component
+epub3/03-resources/resources.feature:672 Report a file URL used in the package document
 epub3/03-resources/resources.feature:678 Report a file URL used in an XHTML content document
+epub3/03-resources/resources.feature:684 Report a file URL used in an SVG content document
+epub3/03-resources/resources.feature:690 Report a file URL used in a CSS document
 epub3/03-resources/resources.feature:699 an XML document encoded as UTF-8 with an encoding declaration is valid
 epub3/03-resources/resources.feature:704 an XML document encoded as UTF-8 with a BOM is valid
 epub3/03-resources/resources.feature:709 an XML document encoded as UTF-8 with no encoding declaration is valid
@@ -278,6 +319,10 @@ epub3/03-resources/resources.feature:758 using a not-declared namespace is not a
 epub3/03-resources/resources.feature:764 Verify an attribute value with leading/trailing whitespace is allowed (issue 332)
 epub3/03-resources/resources.feature:77 Verify JPEG images are allowed
 epub3/03-resources/resources.feature:772 Verify MP3 audio source type may have a `codecs` parameter
+epub3/03-resources/resources.feature:776 Report an audio `source` element `type` attribute not matching the publication resource type
+epub3/03-resources/resources.feature:781 Report an `embed` element with a `type` attribute not matching the publication resource type
+epub3/03-resources/resources.feature:786 Report an `object` element with a `type` attribute not matching the publication resource type
+epub3/03-resources/resources.feature:791 Report a picture `source` element `type` attribute not matching the publication resource type
 epub3/03-resources/resources.feature:82 Verify PNG images are allowed
 epub3/03-resources/resources.feature:87 Verify WebP images are allowed
 epub3/03-resources/resources.feature:92 Verify AVIF images are allowed
@@ -416,6 +461,7 @@ epub3/05-package-document/package-document.feature:383 the 'link' 'hreflang' lan
 epub3/05-package-document/package-document.feature:389 the 'link' 'hreflang' language tag must be well-formed
 epub3/05-package-document/package-document.feature:395 Allow a link to a resource referenced from the spine
 epub3/05-package-document/package-document.feature:400 Allow a link to a resource embedded in a content document
+epub3/05-package-document/package-document.feature:410 Report a remote image declared in the package document when it is referenced from an HTML `a` element
 epub3/05-package-document/package-document.feature:416 Report remote audio resources not declared in the package document
 epub3/05-package-document/package-document.feature:422 Report remote audio resources defined in `sources` elements but not declared in the package document
 epub3/05-package-document/package-document.feature:428 Report a remote font not declared in the package document

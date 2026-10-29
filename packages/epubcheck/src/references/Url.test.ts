@@ -83,7 +83,11 @@ describe("Url.checker", () => {
       target: { kind: "remote", url: "file:///etc/a.png", scheme: "file" },
       ids: ["RSC-030"],
     },
-    { url: "data:text/plain,x", target: { kind: "data", mediaType: "text/plain" }, ids: [] },
+    {
+      url: "data:text/plain,x",
+      target: { kind: "data", url: "data:text/plain,x", mediaType: "text/plain" },
+      ids: [],
+    },
   ])("resolves $url", ({ url, target, ids }) => {
     const { problems, resolved } = Url.checker("EPUB/content.xhtml", container).check(url);
     expect(resolved?.target).toEqual(target);
@@ -123,5 +127,23 @@ describe("Url.encodePath", () => {
     { path: "EPUB/(a)+b~c.png", encoded: "EPUB/(a)+b~c.png" },
   ])("encodes $path", ({ path, encoded }) => {
     expect(Url.encodePath(path)).toBe(encoded);
+  });
+});
+
+// Each name is EPUBCheck 5.4.0's for a remote manifest item.
+describe("Url.humanName", () => {
+  it.each([
+    {
+      href: "HTTPS://Example.ORG:443/a%20b.css?q%20r#f%20g",
+      name: "https://example.org/a b.css?q r#f g",
+    },
+    { href: "https://u%20s:p@example.org/x.css", name: "https://u s:p@example.org/x.css" },
+    { href: "https://example.org/%E2%82%AC.css", name: "https://example.org/€.css" },
+    { href: "http://example.org:8080/x?", name: "http://example.org:8080/x?" },
+    { href: "https://xn--bcher-kva.example/a%20b.png", name: "https://bücher.example/a b.png" },
+    { href: "https://[::1]:8080/x.png", name: "https://[::1]:8080/x.png" },
+    { href: "foo://xn--bcher-kva.example/x.png", name: "foo://xn--bcher-kva.example/x.png" },
+  ])("names $href", ({ href, name }) => {
+    expect(Url.humanName(href)).toBe(name);
   });
 });

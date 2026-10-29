@@ -4,11 +4,12 @@ import * as Option from "effect/Option";
 import * as ContentChecker from "../content/ContentChecker.ts";
 import type * as Container from "../ocf/Container.ts";
 import * as OcfChecker from "../ocf/OcfChecker.ts";
-import type { PackageDocument } from "../opf/PackageDocument.ts";
+import type { ManifestItem, PackageDocument } from "../opf/PackageDocument.ts";
 import * as Collect from "../references/Collect.ts";
 import * as ReferenceChecker from "../references/ReferenceChecker.ts";
 import * as Url from "../references/Url.ts";
 import * as Report from "../report/Report.ts";
+import * as MediaTypes from "../resources/MediaTypes.ts";
 
 const reportFindings = Effect.fn("Publication.reportFindings")(function* (
   findings: ReadonlyArray<Collect.Finding>,
@@ -23,6 +24,17 @@ const reportFindings = Effect.fn("Publication.reportFindings")(function* (
   }
 });
 
+// Compares an image's leading bytes with its declared media type and file name.
+const checkImage = Effect.fn("Publication.checkImage")(function* (
+  item: ManifestItem,
+  path: string,
+  bytes: Uint8Array,
+) {
+  const report = yield* Report.Report;
+  const problems = MediaTypes.imageProblems(bytes, path, item.mediaType);
+  for (const { id, args } of problems) yield* report.message(id, Report.location(path), ...args);
+});
+
 // Checks every resource a package document declares, in manifest order, then the references
 // between them. Like upstream, each document's own findings come as it is read.
 export const checkResources = Effect.fn("Publication.checkResources")(function* (
@@ -30,7 +42,6 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   opf: PackageDocument,
 ) {
   const nfc = (path: string) => path.normalize("NFC");
-  const context: Collect.Context = { version: opf.version, container: true };
   const byId = new Map(opf.items.map((item) => [item.id, item] as const));
   const ids = new Map<string, ReadonlySet<string>>();
   const unparsed = new Set<string>();
@@ -48,19 +59,38 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
         .filter((item) => item.path === undefined)
         .map((item) => [Url.remoteKey(item.href), item] as const),
     ),
+    byId,
     spine: new Set(opf.spine.flatMap((idref) => byId.get(idref) ?? [])),
     ids,
     unparsed,
   };
+  const context: Collect.Context = {
+    version: opf.version,
+    container: true,
+    mediaTypeOf: (target) =>
+      target.kind === "local"
+        ? publication.items.get(target.path)?.mediaType
+        : target.kind === "remote"
+          ? publication.remoteItems.get(target.url)?.mediaType
+          : target.mediaType,
+  };
   const references: Array<Collect.Reference> = [];
+  let scripts = false;
   for (const item of opf.items) {
     // An item for the package document itself is OPF-099, not a content document.
     if (item.path === undefined || item.path === opf.path) continue;
     const kind = ContentChecker.kindOf(item.mediaType, item.properties, opf.version);
     const isCss = item.mediaType === "text/css";
-    if (kind === undefined && !isCss) continue;
+    const isImage = MediaTypes.isBitmap(item.mediaType);
+    if (kind === undefined && !isCss && !isImage) continue;
+    // A missing image is reported once, from the manifest (RSC-001).
+    if (isImage && !publication.files.has(nfc(item.path))) continue;
     const bytes = yield* OcfChecker.readResource(container, item.path);
     if (Option.isNone(bytes)) continue;
+    if (isImage) {
+      yield* checkImage(item, item.path, bytes.value);
+      continue;
+    }
     if (isCss) {
       const css = Collect.fromCss(new TextDecoder().decode(bytes.value), item.path, context);
       references.push(...css.references);
@@ -76,6 +106,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     references.push(...collected.references);
     ids.set(nfc(item.path), Collect.ids(document.value));
     yield* reportFindings(collected.findings);
+    if (collected.features.scripts) scripts = true;
     if (opf.version === "3") {
       const { root } = document.value;
       yield* reportFindings(
@@ -87,6 +118,35 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
           kind !== "svg" && ReferenceChecker.loadsSvg(collected.references, publication),
         ),
       );
+    }
+  }
+  const report = yield* Report.Report;
+  const itemLocation = (item: ManifestItem) =>
+    Report.location(opf.path, item.element.line, item.element.column);
+  // Upstream's rule for remote items: only audio, video, Flash and fonts may be remote. A remote
+  // spine item is an error, and so is any other remote item no reference loads, unless a script
+  // might fetch it.
+  if (opf.version === "3") {
+    const referenced = new Set(
+      references.flatMap(({ target }) => (target.kind === "remote" ? [target.url] : [])),
+    );
+    const spine = new Set(opf.spine);
+    for (const item of opf.items) {
+      const href = item.href.trim();
+      if (item.path !== undefined || href === "" || /^data:/i.test(href)) continue;
+      const type = item.mediaType;
+      if (
+        /^(?:audio|video|font)\/|^application\/font-/.test(type) ||
+        type === "application/x-shockwave-flash" ||
+        type === "application/vnd.ms-opentype"
+      ) {
+        continue;
+      }
+      const name = Url.humanName(href);
+      if (spine.has(item.id)) yield* report.message("RSC-006", itemLocation(item), name);
+      else if (!referenced.has(Url.remoteKey(href))) {
+        yield* report.message(scripts ? "RSC-006b" : "RSC-006", itemLocation(item), name);
+      }
     }
   }
   yield* reportFindings(ReferenceChecker.check(references, publication));
