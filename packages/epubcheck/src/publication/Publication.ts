@@ -52,10 +52,9 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     (opf.metadata.layout === "pre-paginated" &&
       !itemref.properties.includes("rendition:layout-reflowable")) ||
     itemref.properties.includes("rendition:layout-pre-paginated");
-  const isStructured = (item: ManifestItem) => {
-    const itemrefs = opf.spineItems.filter((itemref) => itemref.idref === item.id);
-    return itemrefs.length > 0 && itemrefs.every((itemref) => itemref.linear && !isFixed(itemref));
-  };
+  const itemrefsOf = Map.groupBy(opf.spineItems, (itemref) => itemref.idref);
+  const isStructured = (item: ManifestItem) =>
+    itemrefsOf.get(item.id)?.every((itemref) => itemref.linear && !isFixed(itemref)) ?? false;
   const nfc = (path: string) => path.normalize("NFC");
   const byId = new Map(opf.items.map((item) => [item.id, item] as const));
   const ids = new Map<string, ReadonlySet<string>>();
