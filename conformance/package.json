@@ -12,7 +12,10 @@
     "@cucumber/messages": "^34.2.1",
     "@effect/platform-node": "catalog:",
     "effect": "catalog:",
-    "epubcheck-ts": "workspace:*"
+    "epubcheck-ts": "workspace:*",
+    "fontoxpath": "^3.34.0",
+    "jsonpath-plus": "^11.2.2",
+    "slimdom": "^4.3.5"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",

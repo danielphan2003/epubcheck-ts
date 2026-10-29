@@ -1,7 +1,11 @@
 import * as Effect from "effect/Effect";
 
+import { cliSteps } from "./CliSteps.ts";
 import type { Scenario } from "./Features.ts";
-import { makeWorld, steps, type Check, type StepDefinition } from "./Steps.ts";
+import { reportSteps } from "./ReportSteps.ts";
+import { makeWorld, steps as coreSteps, type Check, type StepDefinition } from "./Steps.ts";
+
+const steps = [...coreSteps, ...cliSteps, ...reportSteps];
 
 export type ScenarioStatus = "passed" | "failed" | "undefined";
 
@@ -24,7 +28,8 @@ const matchStep = (text: string) => {
   return matches;
 };
 
-// One fiber per scenario; scenarios share nothing, so they can run concurrently.
+// One fiber per scenario; scenarios share nothing, so they can run concurrently. The scope holds
+// a scenario's scratch files.
 export const runScenario = Effect.fn("Runner.runScenario")(function* (
   scenario: Scenario,
   resourcesDir: string,
@@ -65,7 +70,7 @@ export const runScenario = Effect.fn("Runner.runScenario")(function* (
     }
   }
   return { scenario, status: "passed", checks: world.checks } satisfies ScenarioResult;
-});
+}, Effect.scoped);
 
 export const runScenarios = Effect.fn("Runner.runScenarios")(function* (
   scenarios: ReadonlyArray<Scenario>,

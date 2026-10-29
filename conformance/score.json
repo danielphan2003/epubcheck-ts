@@ -1,6 +1,6 @@
 {
   "upstream": "v5.4.0",
-  "passed": 926,
+  "passed": 987,
   "total": 1251,
   "expectsMessages": {
     "passed": 472,
@@ -8,7 +8,7 @@
   },
   "areas": {
     "cli": {
-      "passed": 0,
+      "passed": 51,
       "total": 53
     },
     "epub-accessibility": {
@@ -112,7 +112,7 @@
       "total": 7
     },
     "reporting": {
-      "passed": 0,
+      "passed": 10,
       "total": 24
     },
     "unit-tests": {

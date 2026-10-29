@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -25,6 +27,8 @@ export interface PackageDocument {
 export interface OcfResult {
   readonly container: Container.Container;
   readonly packageDocuments: ReadonlyArray<PackageDocument>;
+  // The `mimetype` file's content, trimmed, which upstream's reports give as the format.
+  readonly formatName: string | undefined;
 }
 
 // Upstream ICU canonicalCaseFold: NFD, then full case folding. Lower-upper-lower approximates
@@ -153,12 +157,13 @@ const checkMimetype = Effect.fn("OcfChecker.checkMimetype")(function* (
     if (!container.packaged && !container.files.includes("mimetype")) {
       yield* report.message("PKG-006", Report.location("mimetype"));
     }
-    return;
+    return undefined;
   }
   // Keep a byte order mark: upstream reads it as content.
   const content = new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes.value);
   if (JavaText.trim(content) !== "application/epub+zip") yield* report.message("PKG-007", at, "");
   else if (content !== "application/epub+zip") yield* report.message("PKG-007", at, "whitespace");
+  return JavaText.trim(content);
 });
 
 const parseXml = Effect.fn("OcfChecker.parseXml")(function* (
@@ -239,7 +244,7 @@ export const check = Effect.fn("OcfChecker.check")(function* (target: string) {
   const container = loaded.value;
 
   yield* checkStructure(container, at);
-  yield* checkMimetype(container, at);
+  const formatName = yield* checkMimetype(container, at);
   const hadFatal = (yield* report.messages).some((message) => message.severity === "FATAL");
   const rootfiles = yield* checkContainerFile(container, at, hadFatal);
   if (Option.isNone(rootfiles)) return Option.none<OcfResult>();
@@ -296,14 +301,16 @@ export const check = Effect.fn("OcfChecker.check")(function* (target: string) {
     const dot = name.lastIndexOf(".");
     const extension = dot > 0 ? name.slice(dot + 1) : undefined;
     if (extension !== undefined && extension !== "epub") {
-      if (/^epub$/i.test(extension)) yield* report.message("PKG-016", at);
+      // Upstream locates these at the archive's file URL.
+      const url = { ...at, path: pathToFileURL(target).href };
+      if (/^epub$/i.test(extension)) yield* report.message("PKG-016", url);
       else {
         yield* report.message(version === "3" ? "PKG-024" : "PKG-017", {
-          ...at,
+          ...url,
           context: extension,
         });
       }
     }
   }
-  return Option.some<OcfResult>({ container, packageDocuments });
+  return Option.some<OcfResult>({ container, packageDocuments, formatName });
 });

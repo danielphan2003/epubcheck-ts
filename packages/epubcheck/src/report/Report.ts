@@ -27,10 +27,18 @@ export interface Message {
   readonly location: Location;
 }
 
+export interface Override {
+  readonly severity: Severity;
+  readonly message?: string | undefined;
+  readonly suggestion?: string | undefined;
+}
+
 export interface ReportOptions {
   readonly locale?: string | undefined;
   // Messages less severe than this are dropped, like upstream's `-e`, `-w`, `-u` flags. Default: INFO.
   readonly reportingLevel?: Severity | undefined;
+  // Upstream's `--customMessages`: per-ID severity and text overrides.
+  readonly overrides?: ReadonlyMap<MessageId, Override> | undefined;
 }
 
 export const location = (path: string, line = -1, column = -1, context?: string): Location => ({
@@ -63,13 +71,14 @@ export const make = (options: ReportOptions = {}) =>
       at: Location,
       ...args: ReadonlyArray<string>
     ) {
-      const severity = defaultSeverity(id);
+      const override = options.overrides?.get(id);
+      const severity = override?.severity ?? defaultSeverity(id);
       if (severityRank(severity) < threshold) return;
       const entry: Message = {
         id,
         severity,
-        message: formatMessage(id, args, options.locale),
-        suggestion: formatSuggestion(id, options.locale),
+        message: formatMessage(id, args, options.locale, override?.message),
+        suggestion: override?.suggestion ?? formatSuggestion(id, options.locale),
         location: at,
       };
       yield* Effect.sync(() => reported.push(entry));

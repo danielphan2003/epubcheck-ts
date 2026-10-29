@@ -9,6 +9,7 @@ export const UPSTREAM_PATHS = [
   "src/test/resources",
   "src/main/resources/com/adobe/epubcheck/messages",
   "src/main/resources/com/adobe/epubcheck/schema",
+  "src/main/resources/com/adobe/epubcheck/util",
   "src/main/java/com/adobe/epubcheck/messages/DefaultSeverities.java",
 ];
 

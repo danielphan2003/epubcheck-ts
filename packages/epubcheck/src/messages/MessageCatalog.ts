@@ -9,6 +9,18 @@ export const isMessageId = (value: string): value is MessageId =>
 
 export const defaultSeverity = (id: MessageId): Severity => defaultSeverities[id];
 
+// Upstream's MessageId enum spells these IDs with an underscore, which its reports and command
+// line show (`HTM_058`); the catalog and the scenarios use hyphens.
+const UNDERSCORED = new Set<string>([
+  ..."053 054 055 056 057 058 059 060a 060b 061 062 063".split(" ").map((n) => `HTM-${n}`),
+  ..."006 007 010 011 012 013 014 015 016 017 018".split(" ").map((n) => `MED-${n}`),
+]);
+
+export const displayId = (id: MessageId) => (UNDERSCORED.has(id) ? id.replace("-", "_") : id);
+
+// A message ID as upstream spells it, for severity override files.
+export const fromDisplayId = (value: string) => messageIds.find((id) => displayId(id) === value);
+
 // Higher ranks are more severe; mirrors upstream ReportingLevel.
 export const severityRank = (severity: Severity) => {
   switch (severity) {
@@ -48,11 +60,11 @@ const lookup = (key: string, locale: string | undefined) => {
 
 // Java `String.format` subset used by the bundles: `%n$s`, `%s`, `%n`, and `%%`. Like upstream,
 // a specifier without an argument yields the raw pattern plus " !!! Format specifier '...'".
-const formatJava = (pattern: string, args: ReadonlyArray<string>) => {
+export const formatJava = (pattern: string, args: ReadonlyArray<string>) => {
   let sequential = 0;
   let missing: string | undefined;
   const formatted = pattern.replace(
-    /%(?:(\d+)\$)?([sn%])/g,
+    /%(?:(\d+)\$)?([sdn%])/g,
     (match, index: string | undefined, kind: string) => {
       if (kind === "%") return "%";
       if (kind === "n") return "\n";
@@ -69,9 +81,10 @@ export const formatMessage = (
   id: MessageId,
   args: ReadonlyArray<string>,
   locale?: string | undefined,
+  override?: string | undefined,
 ) => {
   const key = bundleKey(id);
-  const pattern = lookup(key, locale);
+  const pattern = override ?? lookup(key, locale);
   if (pattern === undefined) return "";
   let effectiveArgs = args;
   // A localized argument is a bundle key `ID.keyword`; later arguments format that value.
@@ -98,3 +111,20 @@ export const keyedSuggestion = (id: MessageId, key: string, locale?: string | un
   lookup(`${bundleKey(id)}_SUG.${key}`, locale) ??
   lookup(`${bundleKey(id)}_SUG.default`, locale) ??
   "";
+
+// The highest positional argument a pattern uses (`%3$s` is 3), to validate overrides.
+export const argumentCount = (pattern: string) =>
+  Math.max(0, ...[...pattern.matchAll(/%(\d+)\$[sd]/g)].map((match) => Number(match[1])));
+
+export const rawMessage = (id: MessageId, locale?: string | undefined) =>
+  lookup(bundleKey(id), locale) ?? "";
+
+export const isSeverity = (value: string): value is Severity =>
+  value === "FATAL" ||
+  value === "ERROR" ||
+  value === "WARNING" ||
+  value === "USAGE" ||
+  value === "INFO" ||
+  value === "SUPPRESSED";
+
+export const messageIds = Object.keys(defaultSeverities).filter(isMessageId);

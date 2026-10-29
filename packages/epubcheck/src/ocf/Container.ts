@@ -4,6 +4,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
+import * as Dates from "../report/Dates.ts";
 import * as Zip from "./Zip.ts";
 
 export class ResourceReadError extends Schema.TaggedError<ResourceReadError>()(
@@ -31,15 +32,29 @@ export interface Container {
   // Container-relative paths, in archive or directory-walk order.
   readonly files: ReadonlyArray<string>;
   readonly directories: ReadonlyArray<string>;
+  // When `META-INF/container.xml` was made, as upstream's reports state it.
+  readonly created: string | undefined;
   // None when the container has no such file; a failure when the file exists but cannot be read.
   readonly read: (path: string) => Effect.Effect<Option.Option<Uint8Array>, ResourceReadError>;
 }
 
+const pad = (value: number) => String(value).padStart(2, "0");
+
+// Java's ZipEntry.getTime, printed in local time: an extended timestamp, or the MS-DOS fields.
+const entryTime = (entry: Zip.ZipEntry) => {
+  if (entry.unixTime !== undefined) return Dates.localWithZ(entry.unixTime * 1000);
+  const { dosDate: date, dosTime: time } = entry;
+  const day = `${1980 + (date >> 9)}-${pad((date >> 5) & 15)}-${pad(date & 31)}`;
+  return `${day}T${pad(time >> 11)}:${pad((time >> 5) & 63)}:${pad((time & 31) * 2)}Z`;
+};
+
 export const fromZip = (archive: Zip.ZipArchive): Container => {
   // Look names up NFC-normalized: references may use another normalization form.
   const byName = new Map(archive.entries.map((entry) => [entry.name.normalize("NFC"), entry]));
+  const container = byName.get("META-INF/container.xml");
   return {
     packaged: true,
+    created: container === undefined ? undefined : entryTime(container),
     files: archive.entries.filter((entry) => !entry.isDirectory).map((entry) => entry.name),
     directories: archive.entries.filter((entry) => entry.isDirectory).map((entry) => entry.name),
     read: (path) => {
@@ -61,6 +76,7 @@ export const fromDirectory = Effect.fn("Container.fromDirectory")(function* (roo
   const files: Array<string> = [];
   const directories: Array<string> = [];
   const pending: Array<string> = [""];
+  let created: string | undefined;
   while (pending.length > 0) {
     const relative = pending.pop() ?? "";
     const names = yield* fs
@@ -77,6 +93,11 @@ export const fromDirectory = Effect.fn("Container.fromDirectory")(function* (roo
         children.push(child);
       } else {
         files.push(child);
+        if (child === "META-INF/container.xml") {
+          created = Option.getOrUndefined(
+            Option.map(info.value.birthtime, (time) => Dates.fileTime(time.getTime())),
+          );
+        }
       }
     }
     pending.push(...children.reverse());
@@ -84,6 +105,7 @@ export const fromDirectory = Effect.fn("Container.fromDirectory")(function* (roo
   const known = new Map(files.map((file) => [file.normalize("NFC"), file] as const));
   return {
     packaged: false,
+    created,
     files,
     directories,
     read: (relative: string) => {

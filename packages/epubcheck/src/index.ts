@@ -4,3 +4,6 @@ export * as MessageCatalog from "./messages/MessageCatalog.ts";
 export * as FilenameChecker from "./ocf/FilenameChecker.ts";
 export * as UrlFragment from "./util/UrlFragment.ts";
 export * as Viewport from "./util/Viewport.ts";
+export * as Cli from "./cli/Cli.ts";
+export * as JsonReport from "./report/JsonReport.ts";
+export * as XmlReport from "./report/XmlReport.ts";

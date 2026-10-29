@@ -12,3 +12,4 @@ reported message, which a checker that reports nothing cannot pass.
 | [#5](https://github.com/danielphan2003/epubcheck-ts/pull/5) | Toolchain: Node 26 runtime, CI and types                       | 760 / 1251 | 306 / 720 |
 | [#6](https://github.com/danielphan2003/epubcheck-ts/pull/6) | Package documents: metadata, manifest, spine, vocabularies     | 854 / 1251 | 400 / 720 |
 | [#7](https://github.com/danielphan2003/epubcheck-ts/pull/7) | References: links between resources, encodings                 | 926 / 1251 | 472 / 720 |
+| [#8](https://github.com/danielphan2003/epubcheck-ts/pull/8) | CLI: upstream command line, JSON and XML reports               | 987 / 1251 | 472 / 720 |
