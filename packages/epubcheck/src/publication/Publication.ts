@@ -61,6 +61,8 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   container: Container.Container,
   opf: PackageDocument,
   selection: Profiles.Selection = Profiles.DEFAULT,
+  // The resources `META-INF/encryption.xml` lists, which upstream cannot decrypt.
+  encrypted: ReadonlySet<string> = new Set(),
 ) {
   const report = yield* Report.Report;
   const inIndex = Profiles.indexPaths(opf.collections);
@@ -135,11 +137,16 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     // Upstream checks an NCX only as the spine's `toc`, the last item with its ID, and cannot
     // read anything else as one.
     const isToc = opf.toc !== undefined && byId.get(opf.toc) === item;
-    if (kind === "ncx" && !isToc) continue;
     if (isToc && item.mediaType !== "application/x-dtbncx+xml") {
       yield* report.message("CHK-008", Report.location(opf.path), item.path);
       continue;
     }
+    // Upstream checks each item it can read, whatever its type, and none it cannot decrypt.
+    if (encrypted.has(nfc(item.path))) {
+      yield* report.message("RSC-004", Report.location(item.path), item.path);
+      continue;
+    }
+    if (kind === "ncx" && !isToc) continue;
     const isCss = item.mediaType === "text/css";
     const isImage = MediaTypes.isBitmap(item.mediaType);
     if (kind === undefined && !isCss && !isImage) continue;
@@ -186,6 +193,10 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     // Upstream's Search Key Map checker wants an `.xml` name, as written.
     if (kind === "skm" && !item.path.endsWith(".xml")) {
       yield* report.message("OPF-080", Report.location(item.path));
+    }
+    // In EPUB 3, upstream reports an NCX as outdated before it reads it.
+    if (kind === "ncx" && opf.version === "3") {
+      yield* report.message("OBS-001", Report.location(item.path), "ncx");
     }
     const document = yield* ContentChecker.check(
       bytes.value,

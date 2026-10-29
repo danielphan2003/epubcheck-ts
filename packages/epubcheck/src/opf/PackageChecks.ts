@@ -680,6 +680,16 @@ const vocabularyChecks = ({ document, opf, urls, files }: Checks) => {
   for (const collection of opfChildren(root, "collection")) {
     findings.push(at(collection, "OBS-001", "element", '"collection"'));
   }
+  // A role with a scheme is a URL, which must parse; upstream stops at the first that does not.
+  for (const collection of Xml.descendants(root)) {
+    if (!PACKAGE_NAMESPACES.has(collection.ns) || collection.local !== "collection") continue;
+    const roles = (Xml.attribute(collection, "role") ?? "").split(/[ \t\n\v\f\r]+/);
+    const invalid = roles.find(
+      (role) =>
+        /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(JavaText.stripWhitespace(role)) && !URL.canParse(role),
+    );
+    if (invalid !== undefined) findings.push(at(collection, "OPF-070", invalid));
+  }
   return findings;
 };
 

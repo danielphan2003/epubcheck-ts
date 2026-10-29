@@ -221,3 +221,40 @@ describe("PackageChecks handler", () => {
     expect(findings.map((finding) => finding.id).filter((id) => ids.has(id))).toEqual(found);
   });
 });
+
+describe("PackageChecks collection roles", () => {
+  const pkg = (collections: string) =>
+    `<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="id"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:identifier id="id">x</dc:identifier></metadata><manifest><item id="c" href="c.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="c"/></spine>${collections}</package>`;
+  // Each row's roles are those EPUBCheck 5.4.0 reports (OPF-070): a role with a scheme that does
+  // not parse, the first in each collection, nested ones included.
+  it.each([
+    {
+      name: "an invalid URL",
+      collections: '<collection role="http://invalid%"><link href="c.xhtml"/></collection>',
+      roles: ["http://invalid%"],
+    },
+    {
+      name: "the first invalid role of a nested collection",
+      collections:
+        '<collection role="a:b"><collection role="x http://[x/ http://invalid%"><link href="c.xhtml"/></collection></collection>',
+      roles: ["http://[x/"],
+    },
+    // A role without a scheme is no URL, and a no-break space does not separate roles.
+    {
+      name: "roles without a scheme or separated by a no-break space",
+      collections: '<collection role="1a:b http://a\u00a0b/"><link href="c.xhtml"/></collection>',
+      roles: ["http://a\u00a0b/"],
+    },
+  ])("reports $name", ({ collections, roles }) => {
+    const document = Xml.parse(pkg(collections));
+    if (Result.isFailure(document)) throw new Error(document.failure.message);
+    const findings = PackageChecks.check({
+      document: document.success,
+      opf: PackageDocument.read(document.success, "package.opf", "3"),
+      container: undefined,
+    });
+    expect(
+      findings.filter((finding) => finding.id === "OPF-070").flatMap((finding) => finding.args),
+    ).toEqual(roles);
+  });
+});

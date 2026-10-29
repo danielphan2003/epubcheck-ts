@@ -70,6 +70,21 @@ const NEEDS_FALLBACK = new Set<ReferenceType>([
   "embed",
 ]);
 
+// What upstream counts as loading a publication resource, for outdated manifest fallbacks.
+const LOADS_RESOURCE = new Set<ReferenceType>([
+  "generic",
+  "iframe",
+  "object",
+  "embed",
+  "stylesheet",
+  "font",
+  "image",
+  "audio",
+  "video",
+  "track",
+  "script",
+]);
+
 // Whether a document loads an SVG image, which allows its `svg` property.
 export const loadsSvg = (references: ReadonlyArray<Reference>, publication: Publication) =>
   references.some((reference) => {
@@ -81,9 +96,13 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
   const findings: Array<Finding> = [];
   const epub3 = publication.version === "3";
   const fallbacks = Fallbacks.resolveFallbacks(publication.byId, publication.version);
-  // A foreign resource needs a fallback (RSC-032), and a script must be JavaScript.
+  // A foreign resource needs a fallback (RSC-032, OBS-001), and a script must be JavaScript.
   const resourceFindings = (reference: Reference, mediaType: string, item?: ManifestItem) => {
     const name = Url.nameOf(reference.target);
+    // Manifest fallbacks for content are an outdated mechanism.
+    if (LOADS_RESOURCE.has(reference.type) && item?.fallback !== undefined) {
+      findings.push(finding(reference, "OBS-001", "content-fallback", name));
+    }
     if (
       NEEDS_FALLBACK.has(reference.type) &&
       reference.intrinsicFallback !== true &&

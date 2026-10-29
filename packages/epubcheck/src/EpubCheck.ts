@@ -11,6 +11,7 @@ import * as OcfChecker from "./ocf/OcfChecker.ts";
 import * as OpfChecker from "./opf/OpfChecker.ts";
 import * as PackageDocument from "./opf/PackageDocument.ts";
 import * as Profiles from "./profiles/Profiles.ts";
+import * as MediaTypes from "./resources/MediaTypes.ts";
 import * as Publication from "./publication/Publication.ts";
 import * as Summary from "./publication/Summary.ts";
 import * as Url from "./references/Url.ts";
@@ -155,24 +156,33 @@ const make = Effect.gen(function* () {
         ocf.value.container,
         opfResult.value,
         packageDocument.profile,
+        ocf.value.encrypted,
       );
       renditions.push({ opf: opfResult.value, resources });
     }
     const summary = yield* Summary.summarize(ocf.value.container, renditions, ocf.value.complete);
-    // Container files no package document declares (OCF files aside) are reported as usages.
+    // Container files no package document declares (OCF files aside) are reported as usages, and
+    // obfuscation is for core font types, as the first package document declaring a file says.
     for (const file of ocf.value.complete ? ocf.value.container.files : []) {
-      if (
-        file === "mimetype" ||
-        file.startsWith("META-INF/") ||
-        declared.has(file.normalize("NFC"))
-      ) {
-        continue;
+      const name = file.normalize("NFC");
+      if (file !== "mimetype" && !file.startsWith("META-INF/") && !declared.has(name)) {
+        yield* report.message(
+          "OPF-003",
+          Report.location(path.basename(target)),
+          Url.encodePath(name),
+        );
       }
-      yield* report.message(
-        "OPF-003",
-        Report.location(path.basename(target)),
-        Url.encodePath(file.normalize("NFC")),
-      );
+      const at = ocf.value.obfuscated.get(name);
+      if (at === undefined) continue;
+      for (const { opf } of renditions) {
+        const item = opf.items.find((candidate) => candidate.path?.normalize("NFC") === name);
+        if (item === undefined) continue;
+        if (!MediaTypes.isCoreFont(item.mediaType)) {
+          const location = Report.location("META-INF/encryption.xml", at.line, at.column);
+          yield* report.message("PKG-026", location, item.mediaType, opf.path);
+        }
+        break;
+      }
     }
     const first = ocf.value.packageDocuments[0];
     const publication =
