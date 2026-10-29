@@ -38,15 +38,12 @@ export interface Metadata {
   readonly layout: string | undefined;
 }
 
-// A `collection` element (EPUB 3): its roles and the container paths its links point to,
-// including those of nested collections.
+// A `collection` element (EPUB 3): its roles, its own links, and the collections nested in it.
 export interface Collection {
   readonly roles: ReadonlyArray<string>;
-  // The collection's own links, and the container paths they point to.
-  readonly hrefs: ReadonlyArray<string>;
-  readonly paths: ReadonlyArray<string>;
-  // Paths linked from the collection or any collection nested in it.
-  readonly allPaths: ReadonlyArray<string>;
+  // Each link's `href`, and the container path it points to, if any.
+  readonly links: ReadonlyArray<{ readonly href: string; readonly path: string | undefined }>;
+  readonly collections: ReadonlyArray<Collection>;
 }
 
 export interface SpineItem {
@@ -114,24 +111,24 @@ export const read = (
         .filter((token) => token !== ""),
     }));
   const itemrefs = spineItems.map((itemref) => itemref.idref);
-  const collections = [...Xml.descendants(document.root)]
-    .filter((element) => element.ns === OPF_NS && element.local === "collection")
-    .map((element) => {
-      const hrefsOf = (links: ReadonlyArray<Xml.XmlElement>) =>
-        links
-          .filter((link) => link.ns === OPF_NS && link.local === "link")
-          .map((link) => (Xml.attribute(link, "href") ?? "").trim());
-      // Fragments name parts of a resource; the resource is what the collection includes.
-      const pathsOf = (hrefs: ReadonlyArray<string>) =>
-        hrefs.flatMap((href) => resolve(href.split("#")[0] ?? href, path) ?? []);
-      const hrefs = hrefsOf(Xml.childElements(element));
-      return {
-        roles: (Xml.attribute(element, "role") ?? "").split(/\s+/).filter((role) => role !== ""),
-        hrefs,
-        paths: pathsOf(hrefs),
-        allPaths: pathsOf(hrefsOf([...Xml.descendants(element)])),
-      };
-    });
+  // Annotated, as it is recursive.
+  const readCollection = (element: Xml.XmlElement): Collection => ({
+    roles: (Xml.attribute(element, "role") ?? "").split(/\s+/).filter((role) => role !== ""),
+    links: Xml.childElements(element)
+      .filter((link) => link.ns === OPF_NS && link.local === "link")
+      .map((link) => {
+        const href = (Xml.attribute(link, "href") ?? "").trim();
+        // Fragments name parts of a resource; the resource is what the collection includes.
+        return { href, path: resolve(href.split("#")[0] ?? href, path) };
+      }),
+    collections: Xml.childElements(element)
+      .filter((child) => child.ns === OPF_NS && child.local === "collection")
+      .map(readCollection),
+  });
+  // Top-level collections; nested ones are in their parents.
+  const collections = children
+    .filter((element) => element.local === "collection")
+    .map(readCollection);
   return {
     path,
     version,

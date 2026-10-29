@@ -15,21 +15,17 @@ export const check = Effect.fn("OpfChecker.check")(function* (
   path: string,
   version: "2" | "3",
   container?: ReadonlySet<string>,
-  profile: Profiles.Profile = "default",
+  profile: Profiles.Selection = Profiles.DEFAULT,
 ) {
   const report = yield* Report.Report;
   const document = yield* XmlChecker.check(
     bytes,
     path,
-    (parsed) =>
-      version === "2"
-        ? Schemas.PACKAGE_20
-        : [
-            ...Schemas.PACKAGE_30,
-            ...Profiles.packageSchemas(
-              Profiles.effective(profile, PackageDocument.read(parsed, path, version).metadata),
-            ),
-          ],
+    // Profile schemas follow `dc:type` in EPUB 2 too.
+    [
+      ...(version === "2" ? Schemas.PACKAGE_20 : Schemas.PACKAGE_30),
+      ...Profiles.packageSchemas(profile),
+    ],
     { version },
   );
   if (Option.isNone(document)) return Option.none<PackageDocument.PackageDocument>();

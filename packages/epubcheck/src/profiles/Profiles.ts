@@ -5,72 +5,105 @@ import type * as PackageDocument from "../opf/PackageDocument.ts";
 
 export type Profile = "default" | "edupub" | "dict" | "idx" | "preview";
 
-const DC_TYPES: Readonly<Record<string, Profile>> = {
-  dictionary: "dict",
-  edupub: "edupub",
-  index: "idx",
-  preview: "preview",
-};
+// The `dc:type` values upstream knows, by the profile each implies, in the order they win.
+const TYPES = [
+  ["DICTIONARY", "dict"],
+  ["EDUPUB", "edupub"],
+  ["INDEX", "idx"],
+  ["PREVIEW", "preview"],
+] as const;
 
-// The default profile defers to the publication's `dc:type`; an explicit profile wins.
-export const effective = (requested: Profile, metadata: PackageDocument.Metadata | undefined) => {
-  if (requested !== "default") return requested;
-  for (const type of metadata?.types ?? []) {
-    const profile = DC_TYPES[type];
-    if (profile !== undefined) return profile;
-  }
-  return requested;
-};
+// What a publication is checked as: its profile, and its known `dc:type` values, uppercased.
+export interface Selection {
+  readonly profile: Profile;
+  readonly types: ReadonlySet<string>;
+}
 
-export const packageSchemas = (profile: Profile) => {
-  switch (profile) {
-    case "dict":
-      return ["30/dict/dict-opf.sch"];
-    case "edupub":
-      return ["30/edupub/edu-opf.sch"];
-    case "preview":
-      return ["30/previews/preview-pub-opf.sch"];
-    default:
-      return [];
-  }
-};
+export const DEFAULT: Selection = { profile: "default", types: new Set() };
 
-// Where an XHTML content document sits in its publication; undefined in single-document mode.
+// Upstream's PublicationType: known values, matched case-insensitively.
+export const knownTypes = (types: ReadonlyArray<string>) =>
+  new Set(
+    types
+      .map((type) => type.toUpperCase())
+      .filter((type) => type === "EPUB" || TYPES.some(([known]) => known === type)),
+  );
+
+// EPUBProfile.makeTypeCompatible: a known `dc:type` overrides the requested profile.
+export const effective = (requested: Profile, types: ReadonlySet<string>) =>
+  TYPES.find(([type]) => types.has(type))?.[1] ?? requested;
+
+// EPUBProfile.matchingType, as OPF-064 names it.
+export const typeOf = (profile: Profile) =>
+  TYPES.find(([, implied]) => implied === profile)?.[0].toLowerCase() ?? "epub";
+
+// Upstream applies a profile's schemas for the profile or for its `dc:type`.
+const is = (selection: Selection, profile: Profile) =>
+  selection.profile === profile ||
+  TYPES.some(([type, implied]) => implied === profile && selection.types.has(type));
+
+export const isDictionary = (selection: Selection) => is(selection, "dict");
+
+export const packageSchemas = (selection: Selection) => [
+  ...(is(selection, "dict") ? ["30/dict/dict-opf.sch"] : []),
+  ...(is(selection, "edupub") ? ["30/edupub/edu-opf.sch"] : []),
+  ...(is(selection, "preview") ? ["30/previews/preview-pub-opf.sch"] : []),
+];
+
+// Where a content document sits in its publication; undefined in single-document mode.
 export interface ItemContext {
   readonly properties: ReadonlyArray<string>;
-  readonly collectionRoles: ReadonlySet<string>;
-  // A linear, reflowable spine item: EDUPUB's sectioning rules apply only to those.
+  // Linked from an index collection, or a nested index group.
+  readonly inIndex: boolean;
+  // Neither fixed-layout nor non-linear (outside the spine counts as non-linear).
   readonly structured: boolean;
 }
 
-export const xhtmlSchemas = (profile: Profile, item: ItemContext | undefined) => {
-  const properties = item?.properties ?? [];
-  const roles = item?.collectionRoles ?? new Set<string>();
-  const schemas: Array<string> = [];
-  if (profile === "dict" || properties.includes("dictionary") || roles.has("dictionary")) {
-    schemas.push("30/dict/dict-xhtml.sch");
-  }
-  if (profile === "edupub") {
-    if (item === undefined || item.structured) schemas.push("30/edupub/edu-structure.sch");
-    schemas.push("30/edupub/edu-semantics.sch");
-  }
-  // A whole-publication index (the idx profile) makes every content document an index.
-  if (profile === "idx" || properties.includes("index") || roles.has("index")) {
-    schemas.push("30/idx/idx-xhtml.sch", "30/idx/idx-xhtml-index.sch");
-  }
-  if (properties.includes("data-nav")) schemas.push("30/datanav/datanav-xhtml.sch");
-  return schemas;
+// Upstream's ValidatorMap: each schema once, where it was first listed, if any rule for it holds.
+const schemasOf = (rules: ReadonlyArray<readonly [string, boolean]>) => {
+  const applies = new Map<string, boolean>();
+  for (const [schema, rule] of rules) applies.set(schema, (applies.get(schema) ?? false) || rule);
+  return [...applies].flatMap(([schema, rule]) => (rule ? [schema] : []));
 };
 
-// The collection roles that include each container path.
-export const collectionRoles = (collections: ReadonlyArray<PackageDocument.Collection>) => {
-  const roles = new Map<string, Set<string>>();
-  for (const collection of collections) {
-    for (const path of collection.allPaths) {
-      const existing = roles.get(path) ?? new Set<string>();
-      for (const role of collection.roles) existing.add(role);
-      roles.set(path, existing);
-    }
-  }
-  return roles;
+// OPSChecker's schemas for an XHTML content document.
+export const xhtmlSchemas = (selection: Selection, item: ItemContext | undefined) => {
+  const properties = item?.properties ?? [];
+  const edupub = is(selection, "edupub") && (item?.structured ?? true);
+  const index = is(selection, "idx") || properties.includes("index") || item?.inIndex === true;
+  return schemasOf([
+    ["30/dict/dict-xhtml.sch", is(selection, "dict")],
+    ["30/edupub/edu-structure.sch", edupub],
+    ["30/edupub/edu-semantics.sch", edupub],
+    ["30/idx/idx-xhtml.sch", edupub],
+    ["30/idx/idx-xhtml.sch", index],
+    ["30/idx/idx-xhtml-index.sch", index],
+    ["30/datanav/datanav-xhtml.sch", properties.includes("data-nav")],
+  ]);
+};
+
+// NavChecker's schemas: an index profile alone does not make the navigation document an index.
+export const navSchemas = (selection: Selection, item: ItemContext | undefined) => {
+  const edupub = is(selection, "edupub") && (item?.structured ?? true);
+  const index = item?.properties.includes("index") === true || item?.inIndex === true;
+  return schemasOf([
+    ["30/edupub/edu-structure.sch", edupub],
+    ["30/edupub/edu-semantics.sch", edupub],
+    ["30/idx/idx-xhtml.sch", edupub],
+    ["30/dict/dict-xhtml.sch", is(selection, "dict")],
+    ["30/idx/idx-xhtml.sch", index],
+    ["30/idx/idx-xhtml-index.sch", index],
+  ]);
+};
+
+// The container paths an index collection links, with those of its nested index groups.
+export const indexPaths = (collections: ReadonlyArray<PackageDocument.Collection>) => {
+  const paths = new Set<string>();
+  const visit = (collection: PackageDocument.Collection) => {
+    if (!collection.roles.includes("index") && !collection.roles.includes("index-group")) return;
+    for (const { path } of collection.links) if (path !== undefined) paths.add(path);
+    for (const child of collection.collections) visit(child);
+  };
+  for (const collection of collections) if (collection.roles.includes("index")) visit(collection);
+  return paths;
 };

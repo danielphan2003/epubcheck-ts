@@ -10,6 +10,7 @@ import { isMessageId, type Severity } from "./messages/MessageCatalog.ts";
 import * as OcfChecker from "./ocf/OcfChecker.ts";
 import * as OpfChecker from "./opf/OpfChecker.ts";
 import type * as PackageDocument from "./opf/PackageDocument.ts";
+import * as Profiles from "./profiles/Profiles.ts";
 import * as Publication from "./publication/Publication.ts";
 import * as Report from "./report/Report.ts";
 
@@ -124,11 +125,15 @@ const make = Effect.gen(function* () {
         packageDocument.path,
         packageDocument.version,
         new Set(ocf.value.container.files),
-        profile,
+        packageDocument.profile,
       );
       if (Option.isNone(opfResult)) continue;
       metadata ??= opfResult.value.metadata;
-      yield* Publication.checkResources(ocf.value.container, opfResult.value, profile);
+      yield* Publication.checkResources(
+        ocf.value.container,
+        opfResult.value,
+        packageDocument.profile,
+      );
     }
     const first = ocf.value.packageDocuments[0];
     const publication =
@@ -150,8 +155,12 @@ const make = Effect.gen(function* () {
     const bytes = yield* fs.readFile(target).pipe(Effect.option);
     if (Option.isNone(bytes))
       return yield* report.message("PKG-008", Report.location(name), target);
-    if (mode === "opf") yield* OpfChecker.check(bytes.value, name, version, undefined, profile);
-    else yield* Publication.checkDocumentReferences(bytes.value, name, mode, version, profile);
+    if (mode === "opf") {
+      yield* OpfChecker.check(bytes.value, name, version, undefined, {
+        ...Profiles.DEFAULT,
+        profile,
+      });
+    } else yield* Publication.checkDocumentReferences(bytes.value, name, mode, version, profile);
   });
 
   const check = Effect.fn("EpubCheck.check")(function* (request: CheckRequest) {

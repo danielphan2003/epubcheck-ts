@@ -41,10 +41,10 @@ const checkImage = Effect.fn("Publication.checkImage")(function* (
 export const checkResources = Effect.fn("Publication.checkResources")(function* (
   container: Container.Container,
   opf: PackageDocument,
-  requestedProfile: Profiles.Profile = "default",
+  selection: Profiles.Selection = Profiles.DEFAULT,
 ) {
-  const profile = Profiles.effective(requestedProfile, opf.metadata);
-  const roles = Profiles.collectionRoles(opf.collections);
+  const report = yield* Report.Report;
+  const inIndex = Profiles.indexPaths(opf.collections);
   const spineItems = new Map(opf.spineItems.map((itemref) => [itemref.idref, itemref] as const));
   const isStructured = (item: ManifestItem) => {
     const itemref = spineItems.get(item.id);
@@ -114,14 +114,23 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       continue;
     }
     if (kind === undefined) continue;
+    const placed = {
+      properties: item.properties,
+      inIndex: inIndex.has(item.path),
+      structured: isStructured(item),
+    };
     const extraSchemas =
-      opf.version === "3" && kind === "xhtml"
-        ? Profiles.xhtmlSchemas(profile, {
-            properties: item.properties,
-            collectionRoles: roles.get(item.path) ?? new Set(),
-            structured: isStructured(item),
-          })
-        : [];
+      opf.version !== "3"
+        ? []
+        : kind === "xhtml"
+          ? Profiles.xhtmlSchemas(selection, placed)
+          : kind === "nav"
+            ? Profiles.navSchemas(selection, placed)
+            : [];
+    // Upstream's Search Key Map checker wants an `.xml` name, as written.
+    if (kind === "skm" && !item.path.endsWith(".xml")) {
+      yield* report.message("OPF-080", Report.location(item.path));
+    }
     const document = yield* ContentChecker.check(
       bytes.value,
       item.path,
@@ -155,31 +164,6 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       );
     }
   }
-  const report = yield* Report.Report;
-  if (opf.version === "3") {
-    const dictionary = documents.find((document) => document.features.dictionary !== undefined);
-    const hasDictionary = (paths: ReadonlyArray<string>) =>
-      documents.some(
-        (document) => paths.includes(document.path) && document.features.dictionary !== undefined,
-      );
-    // Each dictionary collection is a dictionary; without collections, the publication is one.
-    const dictionaries = opf.collections.filter((collection) =>
-      collection.roles.includes("dictionary"),
-    );
-    const missing =
-      dictionaries.length > 0
-        ? dictionaries.some((collection) => !hasDictionary(collection.paths))
-        : profile === "dict" && dictionary === undefined;
-    if (missing) yield* report.message("OPF-078", Report.location(opf.path));
-    const at = dictionary?.features.dictionary;
-    if (
-      dictionary !== undefined &&
-      at !== undefined &&
-      !opf.metadata.types.includes("dictionary")
-    ) {
-      yield* report.message("OPF-079", Report.location(dictionary.path, at.line, at.column));
-    }
-  }
   const itemLocation = (item: ManifestItem) =>
     Report.location(opf.path, item.element.line, item.element.column);
   // Upstream's rule for remote items: only audio, video, Flash and fonts may be remote. A remote
@@ -209,6 +193,33 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
   }
   yield* reportFindings(ReferenceChecker.check(references, publication));
+  if (opf.version === "3") {
+    const dictionaries = new Set(
+      documents.flatMap((document) =>
+        document.features.dictionary === undefined ? [] : [nfc(document.path)],
+      ),
+    );
+    // Each dictionary collection needs an XHTML document with dictionary content.
+    for (const collection of opf.collections) {
+      if (!collection.roles.includes("dictionary")) continue;
+      const found = collection.links.some(
+        ({ path }) =>
+          path !== undefined &&
+          publication.items.get(nfc(path))?.mediaType === "application/xhtml+xml" &&
+          dictionaries.has(nfc(path)),
+      );
+      if (!found) yield* report.message("OPF-078", Report.location(opf.path));
+    }
+    // Upstream's checkSpecifics: dictionary content needs the type, and a dictionary needs content.
+    const first = documents.find((document) => document.features.dictionary !== undefined);
+    const at = first?.features.dictionary;
+    if (first !== undefined && at !== undefined && !selection.types.has("DICTIONARY")) {
+      yield* report.message("OPF-079", Report.location(first.path, at.line, at.column));
+    }
+    if (first === undefined && Profiles.isDictionary(selection)) {
+      yield* report.message("OPF-078", Report.location(opf.path));
+    }
+  }
 });
 
 // A single content document: references need a publication, so only its URLs are checked.
@@ -219,8 +230,15 @@ export const checkDocumentReferences = Effect.fn("Publication.checkDocumentRefer
   version: "2" | "3",
   profile: Profiles.Profile = "default",
 ) {
+  const selection = { ...Profiles.DEFAULT, profile };
   const extraSchemas =
-    version === "3" && kind === "xhtml" ? Profiles.xhtmlSchemas(profile, undefined) : [];
+    version !== "3"
+      ? []
+      : kind === "xhtml"
+        ? Profiles.xhtmlSchemas(selection, undefined)
+        : kind === "nav"
+          ? Profiles.navSchemas(selection, undefined)
+          : [];
   const document = yield* ContentChecker.check(bytes, path, kind, version, extraSchemas);
   if (Option.isNone(document) || kind === "mo" || kind === "ncx" || kind === "skm") return;
   const context: Collect.Context = { version, container: false };
