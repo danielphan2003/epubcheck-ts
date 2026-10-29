@@ -1,6 +1,6 @@
 {
   "upstream": "v5.4.0",
-  "passed": 684,
+  "passed": 760,
   "total": 1251,
   "expectsMessages": {
     "passed": 306,
@@ -92,7 +92,7 @@
       "total": 3
     },
     "epub3/C-viewport-meta-tag": {
-      "passed": 0,
+      "passed": 34,
       "total": 34
     },
     "epub3/D-vocabularies": {
@@ -116,7 +116,7 @@
       "total": 24
     },
     "unit-tests": {
-      "passed": 0,
+      "passed": 42,
       "total": 42
     }
   }
