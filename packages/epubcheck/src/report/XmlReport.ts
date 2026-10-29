@@ -113,18 +113,15 @@ export const renderJhove = (result: CheckResult, options: ReportOptions) => {
     ...(metadata?.language === undefined
       ? []
       : [property("         ", "Language", "String", metadata.language)]),
-    ...(info.length === 0
-      ? []
-      : [
-          [
-            "         <property>",
-            "            <name>Info</name>",
-            '            <values arity="List" type="Property">',
-            ...info,
-            "            </values>",
-            "         </property>",
-          ].join("\n"),
-        ]),
+    // Upstream always writes the Info property, empty or not.
+    [
+      "         <property>",
+      "            <name>Info</name>",
+      ...(info.length === 0
+        ? ['            <values arity="List" type="Property"/>']
+        : ['            <values arity="List" type="Property">', ...info, "            </values>"]),
+      "         </property>",
+    ].join("\n"),
   ];
   return [
     '<?xml version="1.0" encoding="UTF-8"?>',
@@ -140,13 +137,15 @@ export const renderJhove = (result: CheckResult, options: ReportOptions) => {
     ...(metadata?.modified === undefined
       ? []
       : [`      <lastModified>${escapeText(metadata.modified)}</lastModified>`]),
-    "      <format>application/epub+zip</format>",
+    `      <format>${escapeText(result.formatName ?? "application/octet-stream")}</format>`,
     ...(result.publication === undefined
       ? []
       : [`      <version>${epubVersionLabel(result.publication.version)}</version>`]),
     `      <status>${isWellFormed(result) ? "Well-formed" : "Not well-formed"}</status>`,
     ...(messages.length === 0 ? [] : ["      <messages>", ...messages, "      </messages>"]),
-    "      <mimeType>application/epub+zip</mimeType>",
+    ...(result.formatName === undefined
+      ? []
+      : [`      <mimeType>${escapeText(result.formatName)}</mimeType>`]),
     "      <properties>",
     ...properties,
     "      </properties>",
@@ -170,10 +169,9 @@ export const renderXmp = (result: CheckResult, options: ReportOptions) => {
     'xmlns:stFnt="http://ns.adobe.com/xap/1.0/sType/Font#"',
     'xmlns:xmp="http://ns.adobe.com/xap/1.0/"',
     'xmlns:xmpTPg="http://ns.adobe.com/xap/1.0/t/pg/"',
-    `dc:format="application/epub+zip${version}"`,
-    ...(metadata?.identifier === undefined
-      ? []
-      : [`dc:identifier="${escape(metadata.identifier)}"`]),
+    `dc:format="${escape(result.formatName ?? "application/octet-stream")}${result.formatName === undefined ? "" : version}"`,
+    // Upstream writes the identifier even when there is none.
+    `dc:identifier="${escape(metadata?.identifier ?? "")}"`,
     ...(metadata?.language === undefined ? [] : [`dc:language="${escape(metadata.language)}"`]),
     'rdf:about=""',
     ...(result.created === undefined ? [] : [`xmp:CreateDate="${escape(result.created)}"`]),
