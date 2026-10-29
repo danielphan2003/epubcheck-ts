@@ -744,11 +744,16 @@ epub3/D-vocabularies/package-rendering-vocab.feature:69 A 'rendition:layout' pro
 epub3/D-vocabularies/package-rendering-vocab.feature:81 A 'rendition:layout-pre-paginated' property can be used as a spine override
 epub3/D-vocabularies/package-rendering-vocab.feature:88 A 'rendition:layout-pre-paginated' override in a roll publication is reported
 epub3/D-vocabularies/package-rendering-vocab.feature:97 two 'rendition:layout' overrides in the same 'itemref' element are reported
+epub3/E-obsolete-features/deprecated-features.feature:118 'xsd' reserved prefix for package metadata is deprecated
+epub3/E-obsolete-features/deprecated-features.feature:139 report a deprecated reserved prefix both in declaration and properties
+epub3/E-obsolete-features/deprecated-features.feature:147 report a deprecated reserved prefix declaration even if unused
+epub3/E-obsolete-features/deprecated-features.feature:155 report a deprecated reserved prefix even if it is overridden
 epub3/E-obsolete-features/deprecated-features.feature:170 'meta-auth' metadata is deprecated
 epub3/E-obsolete-features/deprecated-features.feature:18 Report usage of the 'bindings' element as deprecated
 epub3/E-obsolete-features/deprecated-features.feature:181 an 'acquire' link can identify the full version of the publication
 epub3/E-obsolete-features/deprecated-features.feature:192 '*-record' links are deprecated
 epub3/E-obsolete-features/deprecated-features.feature:206 'xml-signature' links are deprecated
+epub3/E-obsolete-features/deprecated-features.feature:220 the 'rendition:align-x-center' property is deprecated
 epub3/E-obsolete-features/deprecated-features.feature:232 the 'rendition:spread-portrait' spine override is deprecated
 epub3/E-obsolete-features/deprecated-features.feature:240 the 'rendition:viewport' property is deprecated
 epub3/E-obsolete-features/deprecated-features.feature:246 the 'rendition:viewport' property syntax errors are reported

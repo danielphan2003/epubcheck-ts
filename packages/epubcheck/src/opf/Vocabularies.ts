@@ -96,7 +96,6 @@ const RENDITION: Readonly<Partial<Record<PropertyContext, ReadonlyMap<string, St
   }),
   itemref: terms(
     [
-      "align-x-center",
       "layout-pre-paginated",
       "layout-reflowable",
       "page-spread-center",
@@ -104,6 +103,7 @@ const RENDITION: Readonly<Partial<Record<PropertyContext, ReadonlyMap<string, St
       "page-spread-right",
     ],
     {
+      "align-x-center": "deprecated",
       "flow-auto": "outdated",
       "flow-paginated": "outdated",
       "flow-scrolled-continuous": "outdated",
@@ -120,19 +120,25 @@ const RENDITION: Readonly<Partial<Record<PropertyContext, ReadonlyMap<string, St
   ),
 };
 
-const A11Y = terms([
-  "certifiedBy",
-  "certifierCredential",
-  "certifierReport",
-  "contactEmail",
-  "exemption",
-]);
+const A11Y: Readonly<Partial<Record<PropertyContext, ReadonlyMap<string, Status>>>> = {
+  meta: terms(["certifiedBy", "certifierCredential", "contactEmail", "exemption"]),
+  "link-rel": terms(["certifierCredential", "certifierReport"]),
+};
 const MEDIA = terms(["active-class", "duration", "narrator", "playback-active-class"]);
+const SCRIPTED = terms([
+  "network-access-required",
+  "required-params",
+  "storage-required",
+  "version",
+]);
 
 interface Reserved {
   readonly uri: string;
   readonly deprecated: boolean;
+  // The terms a context accepts; undefined accepts any term.
   readonly terms: (context: PropertyContext) => ReadonlyMap<string, Status> | undefined;
+  // Where the prefix is reserved without a declaration; everywhere when absent.
+  readonly reservedIn?: ReadonlyArray<PropertyContext> | undefined;
 }
 
 const unchecked = () => undefined;
@@ -142,7 +148,8 @@ export const RESERVED: Readonly<Record<string, Reserved>> = {
   a11y: {
     uri: A11Y_URI,
     deprecated: false,
-    terms: (context) => (context === "meta" || context === "link-rel" ? A11Y : new Map()),
+    terms: (context) => A11Y[context] ?? none(),
+    reservedIn: ["meta", "scheme", "link-rel", "link"],
   },
   dcterms: { uri: "http://purl.org/dc/terms/", deprecated: false, terms: unchecked },
   marc: { uri: "http://id.loc.gov/vocabulary/", deprecated: false, terms: unchecked },
@@ -162,23 +169,21 @@ export const RESERVED: Readonly<Record<string, Reserved>> = {
     terms: (context) => RENDITION[context] ?? none(),
   },
   schema: { uri: "http://schema.org/", deprecated: false, terms: unchecked },
-  xsd: { uri: "http://www.w3.org/2001/XMLSchema#", deprecated: false, terms: unchecked },
-  msv: {
-    uri: "http://www.idpf.org/epub/vocab/structure/magazine/#",
-    deprecated: true,
-    terms: unchecked,
-  },
-  prism: {
-    uri: "http://www.prismstandard.org/specifications/3.0/PRISM_CV_Spec_3.0.htm#",
-    deprecated: true,
-    terms: unchecked,
-  },
+  xsd: { uri: "http://www.w3.org/2001/XMLSchema#", deprecated: true, terms: unchecked },
 };
 
 // Known vocabularies a declared prefix may map to.
-const KNOWN_BY_URI = new Map(
-  Object.values(RESERVED).map((reserved) => [reserved.uri, reserved] as const),
-);
+const KNOWN_BY_URI = new Map<string, Reserved>([
+  ...Object.values(RESERVED).map((reserved) => [reserved.uri, reserved] as const),
+  [
+    "http://idpf.org/epub/vocab/sc/#",
+    {
+      uri: "http://idpf.org/epub/vocab/sc/#",
+      deprecated: false,
+      terms: (context) => (context === "meta" ? SCRIPTED : context === "item" ? none() : undefined),
+    },
+  ],
+]);
 
 const FORBIDDEN_URIS = new Set([META_URI, ITEM_URI, ITEMREF_URI, LINK_URI]);
 const DC_ELEMENTS = "http://purl.org/dc/elements/1.1/";
@@ -188,50 +193,48 @@ export interface Problem {
   readonly args: ReadonlyArray<string>;
 }
 
-export interface Prefixes {
-  readonly vocabs: ReadonlyMap<string, Reserved>;
-  readonly problems: ReadonlyArray<Problem>;
-}
+// Guava's CharMatcher.whitespace(), which upstream's prefix parser uses.
+const isWhitespace = (char: string) =>
+  /[\t\n\v\f\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]/.test(char);
 
-// Parses a `prefix` attribute: `prefix: URI` mappings separated by whitespace.
-export const parsePrefixes = (value: string | undefined): Prefixes => {
-  const vocabs = new Map(Object.entries(RESERVED));
+type PrefixState = "start" | "prefix" | "prefix-end" | "space" | "uri" | "whitespace";
+
+// What each state of upstream's parser reads, and which of those characters it allows.
+const STATES: Readonly<
+  Record<
+    PrefixState,
+    { readonly reads: (char: string) => boolean; readonly allows: string | undefined }
+  >
+> = {
+  start: { reads: isWhitespace, allows: "" },
+  prefix: { reads: (char) => char !== ":" && !isWhitespace(char), allows: undefined },
+  "prefix-end": { reads: (char) => char === ":", allows: undefined },
+  space: { reads: isWhitespace, allows: " " },
+  uri: { reads: (char) => !isWhitespace(char), allows: undefined },
+  whitespace: { reads: isWhitespace, allows: " \t\r\n" },
+};
+
+// java.net.URI's syntax, approximately: a scheme needs a scheme-specific part, escapes need two
+// hex digits, and quotes, angle brackets, braces, pipes, carets and backslashes are illegal.
+const isJavaUri = (value: string) => {
+  if (/[\u0000-\u0020"<>\\^`{|}]|%(?![0-9A-Fa-f]{2})/.test(value)) return false;
+  if (value.split("#").length > 2) return false;
+  const delimiter = value.search(/[:/?#]/);
+  if (delimiter < 0 || value[delimiter] !== ":") return true;
+  return (
+    /^[A-Za-z][A-Za-z0-9+.-]*$/.test(value.slice(0, delimiter)) && delimiter < value.length - 1
+  );
+};
+
+// Parses a `prefix` attribute with upstream's state machine: optional leading whitespace, then
+// `prefix:` and a URI separated by one space, with whitespace between mappings.
+export const parsePrefixes = (value: string | undefined) => {
+  const vocabs = new Map<string, Reserved>(Object.entries(RESERVED));
   const problems: Array<Problem> = [];
   if (value === undefined) return { vocabs, problems };
-  if (value !== value.trim()) problems.push({ id: "OPF-004", args: [] });
-  const tokens = value
-    .trim()
-    .split(/\s+/)
-    .filter((token) => token !== "");
-  for (let index = 0; index < tokens.length; index++) {
-    const token = tokens[index] ?? "";
-    const colon = token.indexOf(":");
-    let prefix: string;
-    let uri: string | undefined;
-    if (colon < 0) {
-      // The prefix is not immediately followed by a colon: skip a detached ":" and the URI.
-      problems.push({ id: "OPF-004c", args: [token] });
-      if (tokens[index + 1] === ":") index++;
-      index++;
-      continue;
-    }
-    if (colon < token.length - 1) {
-      problems.push({ id: "OPF-004d", args: [token.slice(0, colon)] });
-      prefix = token.slice(0, colon);
-      uri = token.slice(colon + 1);
-    } else {
-      prefix = token.slice(0, -1);
-      uri = tokens[++index];
-    }
-    if (prefix === "") {
-      problems.push({ id: "OPF-004a", args: [] });
-      continue;
-    }
-    if (!isNCName(prefix)) {
-      problems.push({ id: "OPF-004b", args: [prefix] });
-      continue;
-    }
-    if (uri === undefined) continue;
+  // Java prints a missing prefix as "null".
+  const named = () => prefix ?? "null";
+  const declare = (prefix: string, uri: string) => {
     if (prefix === "_") problems.push({ id: "OPF-007a", args: [] });
     else if (FORBIDDEN_URIS.has(uri)) problems.push({ id: "OPF-007b", args: [prefix] });
     else if (uri === DC_ELEMENTS) problems.push({ id: "OPF-007c", args: [] });
@@ -241,11 +244,70 @@ export const parsePrefixes = (value: string | undefined): Prefixes => {
         problems.push({ id: "OPF-007", args: [prefix] });
       if (reserved !== undefined && reserved.deprecated)
         problems.push({ id: "OPF-086c", args: [prefix] });
-      vocabs.set(prefix, KNOWN_BY_URI.get(uri) ?? { uri, deprecated: false, terms: unchecked });
+      const known = KNOWN_BY_URI.get(uri) ?? { uri, deprecated: false, terms: unchecked };
+      vocabs.set(prefix, { ...known, reservedIn: undefined });
+    }
+  };
+  let state: PrefixState = "start";
+  let prefix: string | undefined;
+  let read = "";
+  let index = 0;
+  while (index < value.length) {
+    const from = index;
+    const { reads, allows } = STATES[state];
+    while (index < value.length && reads(value[index] ?? "")) index++;
+    read = value.slice(from, index);
+    const disallowed = allows !== undefined && [...read].some((char) => !allows.includes(char));
+    switch (state) {
+      case "start":
+        if (read !== "") problems.push({ id: "OPF-004", args: [] });
+        state = "prefix";
+        break;
+      case "prefix":
+        if (read === "") problems.push({ id: "OPF-004a", args: [] });
+        else if (!isNCName(read)) problems.push({ id: "OPF-004b", args: [read] });
+        else prefix = read;
+        state = "prefix-end";
+        break;
+      case "prefix-end":
+        if (read !== "") {
+          state = "space";
+          break;
+        }
+        while (index < value.length && value[index] !== ":" && isWhitespace(value[index] ?? "")) {
+          index++;
+        }
+        problems.push({ id: "OPF-004c", args: [named()] });
+        state = value[index] === ":" ? "prefix-end" : "uri";
+        prefix = undefined;
+        break;
+      case "space":
+        if (read === "") {
+          problems.push({ id: "OPF-004d", args: [named()] });
+          prefix = undefined;
+        } else if (disallowed) problems.push({ id: "OPF-004e", args: [named()] });
+        state = "uri";
+        break;
+      case "uri":
+        if (!isJavaUri(read)) problems.push({ id: "OPF-006", args: [read, named()] });
+        else if (prefix !== undefined) declare(prefix, read);
+        prefix = undefined;
+        state = "whitespace";
+        break;
+      case "whitespace":
+        if (disallowed) problems.push({ id: "OPF-004f", args: [named()] });
+        state = "prefix";
+        break;
     }
   }
+  if (state !== "start" && state !== "prefix" && state !== "whitespace") {
+    problems.push({ id: "OPF-005", args: [named()] });
+  }
+  if (state === "prefix" && read !== "") problems.push({ id: "OPF-004", args: [] });
   return { vocabs, problems };
 };
+
+export type Prefixes = ReturnType<typeof parsePrefixes>;
 
 export interface Property {
   readonly prefix: string;
@@ -274,7 +336,9 @@ export const parseProperties = (
       problems.push({ id: "OPF-026", args: [token] });
       continue;
     }
-    const vocab = prefix === "" ? undefined : prefixes.vocabs.get(prefix);
+    const found = prefix === "" ? undefined : prefixes.vocabs.get(prefix);
+    const vocab =
+      found?.reservedIn === undefined || found.reservedIn.includes(context) ? found : undefined;
     if (prefix !== "" && vocab === undefined) {
       problems.push({ id: "OPF-028", args: [prefix] });
       continue;
