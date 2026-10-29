@@ -18,6 +18,7 @@ describe("MediaTypes", () => {
     { value: "text/css;x=€;y=c", normalized: "text/css;y=c" },
     { value: "text /css", normalized: "" },
     { value: "text/css x", normalized: "" },
+    { value: "Image/X ; a= ", normalized: 'image/x;a=""' },
     { value: "font/ttf;a=b=", normalized: "font/ttf" },
     { value: "font/ttf;a=b=;c=d", normalized: 'font/ttf;a="b=";c=d' },
     { value: "not a type", normalized: "" },

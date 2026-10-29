@@ -371,6 +371,11 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
   const urls = Url.checker(path, context);
   const epub3 = context.version === "3";
   const isSvgDocument = document.root.ns === SVG_NS;
+  // Upstream lowercases `type`, a case-insensitive attribute, on XHTML elements in EPUB 3 XHTML.
+  const typeAttribute = (element: Xml.XmlElement) => {
+    const value = Xml.attribute(element, "type");
+    return epub3 && !isSvgDocument && element.ns === XHTML_NS ? value?.toLowerCase() : value;
+  };
   let scripted = false;
   let scripts = false;
   let svg = false;
@@ -402,7 +407,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     options: { readonly resource?: boolean; readonly intrinsicFallback?: boolean } = {},
   ) => {
     if (resolved === undefined) return;
-    const mediaType = Xml.attribute(element, "type")?.trim();
+    const mediaType = typeAttribute(element)?.trim();
     const { resource = false, intrinsicFallback = false } = options;
     references.push({
       ...resolved,
@@ -441,7 +446,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     if (!inPicture || actual === undefined || resolved === undefined) return;
     if (resolved.target.kind === "data") return;
     const args = [Url.nameOf(resolved.target), actual];
-    const type = (Xml.attribute(element, "type") ?? "").trim();
+    const type = (typeAttribute(element) ?? "").trim();
     if (element.local === "img") {
       if (!BLESSED_IMAGES.has(actual))
         findings.push({ id: "MED-003", args, path, ...start(element) });
@@ -603,7 +608,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
             break;
           case "embed": {
             const resolved = resource(Xml.attribute(element, "src"), start(element));
-            typeOf(resolved, Xml.attribute(element, "type"), start(element));
+            typeOf(resolved, typeAttribute(element), start(element));
             register(resolved, "embed", element, start(element), { resource: true });
             break;
           }
@@ -616,7 +621,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
             if (sources === undefined) break;
             const src = Xml.attribute(element, "src");
             const resolved = resource(src, start(element));
-            const mediaType = typeOf(resolved, Xml.attribute(element, "type"), start(element));
+            const mediaType = typeOf(resolved, typeAttribute(element), start(element));
             if (context.container && src !== undefined && resolved !== undefined) {
               sources.set(src, { resolved, mediaType });
             }
@@ -707,7 +712,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     if (element.local === "object") {
       const at = end(element);
       const resolved = resource(Xml.attribute(element, "data"), at);
-      typeOf(resolved, Xml.attribute(element, "type"), at);
+      typeOf(resolved, typeAttribute(element), at);
       register(resolved, "object", element, at, {
         resource: true,
         intrinsicFallback: palpable.get(element) === true,
