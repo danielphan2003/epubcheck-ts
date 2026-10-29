@@ -15,6 +15,7 @@ const JsonText = Schema.fromJsonString(Schema.Unknown);
 
 const options = (world: World) => ({
   path: world.lastResult?.path ?? "",
+  containerPath: world.lastResult?.path ?? "",
   maxOfEachMessage: world.maxOfEachMessage ?? DEFAULT_MAX,
   checkedAt: 0,
   elapsedTime: 0,

@@ -5,7 +5,6 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
-import * as Result from "effect/Result";
 
 import * as EpubCheck from "../EpubCheck.ts";
 import * as MessageCatalog from "../messages/MessageCatalog.ts";
@@ -28,17 +27,18 @@ export class Terminal extends Context.Service<
   }
 >()("epubcheck-ts/cli/Cli/Terminal") {}
 
-export const terminalLayer = Layer.succeed(
-  Terminal,
-  Terminal.of({
+// Like Java's PrintStream, writes to a closed pipe (`epubcheck -l | head`) are dropped.
+export const terminalLayer = Layer.sync(Terminal, () => {
+  process.stdout.on("error", () => {});
+  return Terminal.of({
     stdout: Effect.fn("Terminal.stdout")(function* (text: string) {
       yield* Effect.sync(() => process.stdout.write(text));
     }),
     stderr: Effect.fn("Terminal.stderr")(function* (text: string) {
       yield* Effect.sync(() => process.stderr.write(text));
     }),
-  }),
-);
+  });
+});
 
 const LOCALES = Object.keys(bundles).filter((locale) => locale !== "default");
 
@@ -66,21 +66,26 @@ const text = (locale: string, key: string, ...args: ReadonlyArray<string>) => {
 type ReportFormat = "json" | "xml" | "xmp";
 type ReportingLevel = NonNullable<EpubCheck.CheckRequest["reportingLevel"]>;
 
+// Where a report goes: a file, standard output (`-`), or next to the checked path.
+type ReportTarget =
+  | { readonly kind: "file"; readonly path: string }
+  | { readonly kind: "stdout" }
+  | { readonly kind: "beside"; readonly path: string };
+
+// What upstream's argument parser records.
 export interface CliOptions {
   readonly path: string | undefined;
-  readonly mode: EpubCheck.CheckMode | "exp" | undefined;
-  readonly version: EpubCheck.EpubVersion | undefined;
+  readonly mode: string | undefined;
+  readonly version: EpubCheck.EpubVersion;
   readonly profile: EpubCheck.Profile | undefined;
   readonly reportingLevel: ReportingLevel;
-  // `-` writes the report to standard output.
-  readonly report: { readonly format: ReportFormat; readonly target: string } | undefined;
+  readonly report: { readonly format: ReportFormat; readonly target: ReportTarget } | undefined;
   readonly maxOfEachMessage: number;
-  readonly locale: string | undefined;
+  readonly locale: string;
   readonly failOnWarnings: boolean;
-  readonly quiet: boolean;
   readonly save: boolean;
-  readonly showVersion: boolean;
-  readonly help: boolean;
+  readonly displayHelp: boolean;
+  readonly displayVersion: boolean;
   readonly listChecks: { readonly target: string | undefined } | undefined;
   readonly customMessages: string | undefined;
 }
@@ -88,6 +93,8 @@ export interface CliOptions {
 export interface CliEnvironment {
   readonly cwd: string;
   readonly defaultLocale: string;
+  // Upstream's `ePubCheckCustomMessageFile` environment variable.
+  readonly customMessageFile?: string | undefined;
 }
 
 export interface CliOutcome {
@@ -96,12 +103,14 @@ export interface CliOutcome {
   readonly maxOfEachMessage: number | undefined;
 }
 
-const MODES = ["epub", "opf", "xhtml", "svg", "nav", "mo", "exp"] as const;
+const MODES = ["opf", "xhtml", "svg", "nav", "mo"] as const;
 const PROFILES = ["default", "edupub", "dict", "idx", "preview"] as const;
 const isOneOf = <T extends string>(values: ReadonlyArray<T>, value: string): value is T =>
   values.some((candidate) => candidate === value);
 
 const LEVELS: Readonly<Record<string, ReportingLevel>> = {
+  i: "INFO",
+  info: "INFO",
   f: "FATAL",
   fatal: "FATAL",
   e: "ERROR",
@@ -112,150 +121,240 @@ const LEVELS: Readonly<Record<string, ReportingLevel>> = {
   usage: "USAGE",
 };
 
-// Options take one or two dashes, as upstream accepts both; the first error wins.
-export const parseArgs = (argv: ReadonlyArray<string>, locale: string) => {
+// Upstream's console: standard output can be silenced (`-q`), standard error cannot.
+const console = () => {
+  const lines: Array<{ readonly stream: "stdout" | "stderr"; readonly text: string }> = [];
+  let quiet = false;
+  return {
+    lines,
+    out: (line: string) => {
+      if (!quiet) lines.push({ stream: "stdout", text: `${line}\n` });
+    },
+    err: (line: string) => lines.push({ stream: "stderr", text: `${line}\n` }),
+    // Output that bypasses quiet mode.
+    raw: (stream: "stdout" | "stderr", value: string) => lines.push({ stream, text: value }),
+    setQuiet: (value: boolean) => {
+      quiet = value;
+    },
+  };
+};
+type Console = ReturnType<typeof console>;
+
+// Upstream's processArguments: options take one or two dashes, help and version print as soon as
+// they are read, and the first error ends parsing with an exit code.
+const parseArgs = (argv: ReadonlyArray<string>, environment: CliEnvironment, out: Console) => {
+  let locale = resolveLocale(undefined, environment.defaultLocale);
   let path: string | undefined;
-  let mode: CliOptions["mode"];
-  let version: CliOptions["version"];
+  let mode: string | undefined;
+  let version: EpubCheck.EpubVersion = "3";
   let profile: CliOptions["profile"];
   let reportingLevel: ReportingLevel = "INFO";
   let report: CliOptions["report"];
   let maxOfEachMessage = Groups.DEFAULT_MAX_OF_EACH_MESSAGE;
-  let requestedLocale: string | undefined;
   let failOnWarnings = false;
-  let quiet = false;
   let save = false;
-  let showVersion = false;
-  let help = false;
+  let displayHelp = false;
+  let displayVersion = false;
   let listChecks: CliOptions["listChecks"];
-  let customMessages: string | undefined;
+  const formats = new Set<ReportFormat>();
+  // The environment variable only names a file that exists; `run` checks that.
+  let customMessages =
+    environment.customMessageFile === "" ? undefined : environment.customMessageFile;
+  const help = () => out.out(text(locale, "help_text", EpubCheck.VERSION));
+  const stop = (exitCode: number) => ({ exitCode });
 
-  const fail = (key: string, ...args: ReadonlyArray<string>) =>
-    Result.fail(text(locale, key, ...args));
-  if (argv.length === 0) return fail("argument_needed");
+  if (argv.length === 0) {
+    out.err(text(locale, "argument_needed"));
+    return stop(1);
+  }
   for (let index = 0; index < argv.length; index++) {
     const arg = argv[index] ?? "";
-    // An optional value: the next argument unless it is another option (`-` is stdout).
-    const optional = () => {
-      const next = argv[index + 1];
-      if (next === undefined || (next.startsWith("-") && next !== "-")) return undefined;
-      index++;
-      return next;
-    };
-    if (!arg.startsWith("-") || arg === "-") {
+    const next = argv[index + 1];
+    const match = /^--?(.*)$/s.exec(arg);
+    if (match === null) {
+      if (path !== undefined) {
+        out.err(text(locale, "unrecognized_argument", arg));
+        help();
+        return stop(1);
+      }
       path = arg;
       continue;
     }
-    const flag = arg.replace(/^--?/, "");
+    const flag = match[1] ?? "";
     const level = LEVELS[flag];
     if (level !== undefined) {
       reportingLevel = level;
       continue;
     }
-    switch (flag.toLowerCase() === "maxofeachmessage" ? "maxOfEachMessage" : flag) {
+    switch (flag) {
+      case "v":
+        // Upstream prints a hint and fails without a message.
+        if (next !== "2" && next !== "2.0" && next !== "3" && next !== "3.0") {
+          out.out(text(locale, "display_help"));
+          return stop(1);
+        }
+        index++;
+        version = next.startsWith("2") ? "2" : "3";
+        break;
+      case "m":
       case "mode":
-      case "m": {
-        const value = optional();
-        if (value === undefined) return fail("mode_argument_expected");
-        if (!isOneOf(MODES, value)) {
-          return fail("mode_version_not_supported", value, version ?? "3.0");
-        }
-        mode = value;
-        break;
-      }
-      case "v": {
-        const value = optional();
-        if (value === undefined) return fail("version_argument_expected");
-        const major = value.slice(0, 1);
-        if (major !== "2" && major !== "3") {
-          return fail("mode_version_not_supported", mode ?? "epub", value);
-        }
-        version = major;
-        break;
-      }
+      case "p":
       case "profile":
-      case "p": {
-        const value = optional();
-        if (value === undefined) return fail("profile_argument_expected");
-        // Upstream falls back to the default profile for an unknown name.
-        profile = isOneOf(PROFILES, value) ? value : "default";
-        break;
-      }
-      case "out":
-      case "o":
-      case "xmp":
-      case "x":
-      case "json":
-      case "j": {
-        if (report !== undefined) return fail("output_type_conflict");
-        const format = flag.startsWith("o") ? "xml" : flag.startsWith("x") ? "xmp" : "json";
-        report = { format, target: optional() ?? "-" };
-        break;
-      }
-      case "maxOfEachMessage": {
-        const value = argv[index + 1];
-        if (value === undefined) return fail("missing_maxofeach");
+        if (next === undefined) {
+          out.out(text(locale, "display_help"));
+          return stop(1);
+        }
         index++;
-        if (value.toLowerCase() === "unlimited") maxOfEachMessage = -1;
-        else if (/^[+-]?\d+$/.test(value)) maxOfEachMessage = Number(value);
-        else return fail("incorrect_maxofeach", value);
+        if (flag.startsWith("m")) mode = next;
+        else {
+          const name = next.toLowerCase();
+          if (isOneOf(PROFILES, name)) {
+            profile = name;
+            break;
+          }
+          out.err(text(locale, "mode_version_ignored"));
+          profile = "default";
+        }
         break;
-      }
-      case "locale": {
-        const value = argv[index + 1];
-        if (value === undefined) return fail("missing_locale");
-        if (value.startsWith("-")) return fail("incorrect_locale", value);
-        index++;
-        requestedLocale = value;
-        break;
-      }
+      case "s":
       case "save":
         save = true;
+        break;
+      case "o":
+      case "out":
+      case "j":
+      case "json":
+      case "x":
+      case "xmp": {
+        const format = flag.startsWith("o") ? "xml" : flag.startsWith("x") ? "xmp" : "json";
+        let target: ReportTarget;
+        if (next !== undefined && !next.startsWith("-")) {
+          index++;
+          target = { kind: "file", path: next };
+        } else if (next === "-") {
+          index++;
+          target = { kind: "stdout" };
+        } else if (path === undefined) {
+          // Upstream fails on a null path here, silently.
+          return stop(1);
+        } else target = { kind: "beside", path };
+        formats.add(format);
+        report = { format, target };
+        break;
+      }
+      case "q":
+      case "quiet":
+        out.setQuiet(true);
         break;
       case "failonwarnings":
         failOnWarnings = true;
         break;
-      case "quiet":
-      case "q":
-        quiet = true;
+      case "r":
+      case "redir":
+        if (next !== undefined) index++;
         break;
-      case "version":
-        showVersion = true;
+      case "c":
+      case "customMessages":
+        if (next === undefined) break;
+        if (next.toLowerCase() === "none") customMessages = undefined;
+        else if (!next.startsWith("-")) customMessages = next;
+        else {
+          out.err(text(locale, "expected_message_filename", next));
+          help();
+          return stop(1);
+        }
+        index++;
         break;
-      case "help":
+      case "l":
+      case "listChecks":
+        listChecks = { target: undefined };
+        if (next !== undefined && !next.startsWith("-")) {
+          index++;
+          listChecks = { target: next };
+        }
+        break;
+      case "locale":
+        if (next === undefined) {
+          out.err(text(locale, "missing_locale"));
+          help();
+          return stop(1);
+        }
+        if (next.startsWith("-")) {
+          out.err(text(locale, "incorrect_locale", next));
+          help();
+          return stop(1);
+        }
+        index++;
+        locale = resolveLocale(next, environment.defaultLocale);
+        break;
+      case "maxOfEachMessage":
+      case "maxofeachmessage":
+        if (next === undefined) {
+          out.err(text(locale, "missing_maxofeach"));
+          help();
+          return stop(1);
+        }
+        index++;
+        if (next === "unlimited") maxOfEachMessage = -1;
+        else if (/^[+-]?\d+$/.test(next) && Number(next) >= -(2 ** 31) && Number(next) < 2 ** 31) {
+          maxOfEachMessage = Number(next);
+        } else {
+          out.err(text(locale, "incorrect_maxofeach", next));
+          help();
+          return stop(1);
+        }
+        break;
       case "h":
       case "?":
-        help = true;
+      case "help":
+        help();
+        displayHelp = true;
         break;
-      case "listChecks":
-      case "l":
-        listChecks = { target: optional() };
-        break;
-      case "customMessages":
-      case "c":
-        customMessages = optional() ?? "";
+      case "version":
+        out.out(text(locale, "epubcheck_version_text", EpubCheck.VERSION));
+        displayVersion = true;
         break;
       default:
-        return fail("unrecognized_argument", arg);
+        out.err(text(locale, "unrecognized_argument", arg));
+        help();
+        return stop(1);
     }
   }
-  return Result.succeed<CliOptions>({
-    path,
+  if (formats.size > 1) {
+    out.err(text(locale, "output_type_conflict"));
+    return stop(1);
+  }
+  const options: CliOptions = {
+    path: path?.replaceAll("\\", "/"),
     mode,
     version,
     profile,
     reportingLevel,
     report,
     maxOfEachMessage,
-    locale: requestedLocale,
+    locale,
     failOnWarnings,
-    quiet,
     save,
-    showVersion,
-    help,
+    displayHelp,
+    displayVersion,
     listChecks,
     customMessages,
-  });
+  };
+  if (options.path === undefined) {
+    if (listChecks !== undefined || displayHelp || displayVersion) return { options };
+    out.err(text(locale, "no_file_specified"));
+    return stop(1);
+  }
+  if (/^.+\.[Ee][Pp][Uu][Bb]$/s.test(options.path)) {
+    if (mode !== undefined || version !== "3") {
+      out.err(text(locale, "mode_version_ignored"));
+      return { options: { ...options, mode: undefined } };
+    }
+  } else if (mode === undefined && profile === undefined) {
+    out.out(text(locale, "mode_required"));
+    return stop(1);
+  }
+  return { options };
 };
 
 const counter = (locale: string, kind: string, count: number) =>
@@ -265,44 +364,82 @@ const counter = (locale: string, kind: string, count: number) =>
     String(count),
   );
 
-// Upstream's tab-separated override file: a header, then ID, severity, and an optional message
-// and suggestion per line. Problems are reported as CHK messages.
-const readCustomMessages = Effect.fn("Cli.readCustomMessages")(function* (file: string) {
+// Upstream's PathUtil.removeWorkingDirectory: a path under the working directory starts with `.`.
+const removeWorkingDirectory = (path: string, cwd: string) =>
+  cwd === "/" || !path.startsWith(cwd) ? path : `.${path.slice(cwd.length)}`;
+
+// Java's File.getAbsolutePath, which does not normalize.
+const javaAbsolute = (path: string, cwd: string) =>
+  path.startsWith("/") ? path : `${cwd}/${path}`;
+
+// Java's String.split: trailing empty fields are dropped.
+const splitFields = (line: string) => {
+  const fields = line.split("\t");
+  while (fields.length > 1 && fields.at(-1) === "") fields.pop();
+  return fields;
+};
+
+// Upstream's override file: tab-separated ID, severity, and an optional message and suggestion
+// per line, after an optional header. Problems are CHK messages located at the file, whose line
+// numbers, as upstream counts them, skip the header and lines with problems.
+const readCustomMessages = Effect.fn("Cli.readCustomMessages")(function* (
+  file: string,
+  shown: string,
+  locale: string,
+) {
   const fs = yield* FileSystem.FileSystem;
   const report = yield* Report.Report;
-  const at = Report.location(file);
   const overrides: Record<string, EpubCheck.Override> = {};
   const content = yield* fs.readFileString(file).pipe(Effect.option);
   if (Option.isNone(content)) {
-    yield* report.message("CHK-001", at, file);
+    yield* report.message("CHK-001", Report.location(shown));
     return overrides;
   }
-  for (const line of content.value.split(/\r?\n/).slice(1)) {
-    if (line.trim() === "") continue;
-    const [written = "", severity = "", message = "", suggestion = ""] = line.split("\t");
-    const id = MessageCatalog.fromDisplayId(written);
-    if (id === undefined) {
-      yield* report.message("CHK-002", at, written, file);
-      continue;
+  let lineNumber = 1;
+  const lines = content.value.split(/\r\n|\r|\n/);
+  if (lines.at(-1) === "") lines.pop();
+  for (const line of lines) {
+    if (lineNumber === 1 && line.toLowerCase().startsWith("id")) continue;
+    const fields = splitFields(line);
+    const [written = "", severity = "", message = "", suggestion = ""] = fields;
+    if (fields.length >= 2) {
+      const id = MessageCatalog.fromDisplayId(written);
+      if (id === undefined) {
+        yield* report.message("CHK-002", Report.location(shown, lineNumber, 0), written, shown);
+        continue;
+      }
+      if (!MessageCatalog.isSeverity(severity)) {
+        const column = 1 + written.length;
+        yield* report.message(
+          "CHK-003",
+          Report.location(shown, lineNumber, column),
+          severity,
+          shown,
+        );
+        continue;
+      }
+      const original = MessageCatalog.rawMessage(id, locale);
+      const allowed = MessageCatalog.argumentCount(original);
+      if (message !== "" && MessageCatalog.argumentCount(message) > allowed) {
+        yield* report.message("CHK-004", Report.location(shown, lineNumber, 0), shown);
+        continue;
+      }
+      if (suggestion !== "" && MessageCatalog.argumentCount(suggestion) > allowed) {
+        yield* report.message("CHK-005", Report.location(shown, lineNumber, 0), shown);
+        continue;
+      }
+      const defaultSeverity = MessageCatalog.defaultSeverity(id);
+      const text = message === "" ? original : message;
+      overrides[id] = {
+        severity,
+        message:
+          severity === defaultSeverity
+            ? text
+            : ` (severity overridden from ${defaultSeverity}) ${text}`,
+        ...(suggestion === "" ? {} : { suggestion }),
+      };
     }
-    if (!MessageCatalog.isSeverity(severity)) {
-      yield* report.message("CHK-003", at, severity, file);
-      continue;
-    }
-    const allowed = MessageCatalog.argumentCount(MessageCatalog.rawMessage(id));
-    if (MessageCatalog.argumentCount(message) > allowed) {
-      yield* report.message("CHK-004", at, file);
-      continue;
-    }
-    if (MessageCatalog.argumentCount(suggestion) > allowed) {
-      yield* report.message("CHK-005", at, file);
-      continue;
-    }
-    overrides[id] = {
-      severity,
-      ...(message === "" ? {} : { message }),
-      ...(suggestion === "" ? {} : { suggestion }),
-    };
+    lineNumber++;
   }
   return overrides;
 });
@@ -317,9 +454,8 @@ const saveArchive = Effect.fn("Cli.saveArchive")(function* (directory: string) {
     const data = yield* container.read(name);
     if (Option.isSome(data)) entries.push({ name, data: data.value });
   }
-  yield* fs
-    .writeFile(`${directory.replace(/[\\/]+$/, "")}.epub`, ZipWriter.write(entries))
-    .pipe(Effect.orDie);
+  const archive = yield* ZipWriter.write(entries, yield* Clock.currentTimeMillis);
+  yield* fs.writeFile(`${directory.replace(/[\\/]+$/, "")}.epub`, archive).pipe(Effect.orDie);
 });
 
 const listChecks = () =>
@@ -331,159 +467,228 @@ const listChecks = () =>
     ),
   ].join("\n");
 
-export const run = Effect.fn("Cli.run")(function* (
+// Upstream's run: help and version end early, `--listChecks` lists and stops, and otherwise
+// the check runs and prints its messages, verdict, report and summary.
+const run = Effect.fn("Cli.run")(function* (
   options: CliOptions,
   environment: CliEnvironment,
+  out: Console,
 ) {
-  const terminal = yield* Terminal;
   const checker = yield* EpubCheck.EpubCheck;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const locale = resolveLocale(options.locale, environment.defaultLocale);
+  const { locale, report } = options;
   const done = (exitCode: number): CliOutcome => ({
     exitCode,
-    maxOfEachMessage: options.report === undefined ? undefined : options.maxOfEachMessage,
+    maxOfEachMessage: report === undefined ? undefined : options.maxOfEachMessage,
   });
+  const exists = (file: string) => fs.exists(file).pipe(Effect.orElseSucceed(() => false));
+  const strip = (file: string) => removeWorkingDirectory(file, environment.cwd);
 
-  if (options.help) {
-    yield* terminal.stdout(`${text(locale, "help_text", EpubCheck.VERSION)}\n`);
+  if (options.displayHelp || (options.displayVersion && options.path === undefined)) {
     return done(0);
-  }
-  if (options.showVersion) {
-    yield* terminal.stdout(`${text(locale, "epubcheck_version_text", EpubCheck.VERSION)}\n`);
   }
   if (options.listChecks !== undefined) {
     const target = options.listChecks.target;
-    if (target === undefined) yield* terminal.stdout(`${listChecks()}\n`);
+    if (target === undefined) out.raw("stdout", `${listChecks()}\n`);
     else {
-      yield* fs
-        .writeFileString(path.resolve(environment.cwd, target), `${listChecks()}\n`)
-        .pipe(Effect.orDie);
+      const file = path.resolve(environment.cwd, target);
+      const written = yield* fs.writeFileString(file, `${listChecks()}\n`).pipe(
+        Effect.as(true),
+        Effect.orElseSucceed(() => false),
+      );
+      if (!written)
+        out.err(text(locale, "error_creating_config_file", javaAbsolute(target, environment.cwd)));
     }
+    return done(0);
   }
-  if (options.path === undefined) {
-    if (options.showVersion || options.listChecks !== undefined) return done(0);
-    yield* terminal.stderr(`${text(locale, "no_file_specified")}\n`);
-    return done(1);
-  }
+  const raw = options.path ?? "";
+  const expanded = options.mode === "exp";
+  const absolute = path.resolve(environment.cwd, raw);
+  // Upstream checks an expanded EPUB as the archive it builds next to the directory.
+  const archive = `${path.dirname(absolute)}/${path.basename(absolute)}.epub`;
+  const epubFileName = expanded ? archive : strip(raw);
+  // Where messages about the container itself are located.
+  const containerPath = strip(expanded ? archive : absolute);
+  const preamble = yield* Report.make({ locale, reportingLevel: options.reportingLevel });
+  const fromEnvironment = environment.customMessageFile === options.customMessages;
+  const custom = options.customMessages;
+  const overrides =
+    custom === undefined ||
+    (fromEnvironment && !(yield* exists(path.resolve(environment.cwd, custom))))
+      ? undefined
+      : yield* readCustomMessages(
+          path.resolve(environment.cwd, custom),
+          strip(javaAbsolute(custom, environment.cwd)),
+          locale,
+        ).pipe(Effect.provideService(Report.Report, preamble));
 
   const startedAt = yield* Clock.currentTimeMillis;
-  const target = path.resolve(environment.cwd, options.path);
-  const isDirectory = yield* fs.stat(target).pipe(
-    Effect.map((info) => info.type === "Directory"),
-    Effect.orElseSucceed(() => false),
-  );
-  // The console names an expanded EPUB after the archive upstream builds from it.
-  const displayPath = isDirectory
-    ? `./${path.basename(target)}.epub`
-    : path.isAbsolute(options.path) || options.path.startsWith(".") || options.mode !== undefined
-      ? options.path
-      : `./${options.path}`;
+  let exitCode = 1;
+  let stdoutClosed = false;
+  let messages: ReadonlyArray<Report.Message> = yield* preamble.messages;
+  let result: EpubCheck.CheckResult | undefined;
+  const count = (severity: Report.Message["severity"]) =>
+    messages.filter((message) => message.severity === severity).length;
+  const consoleLine = (message: Report.Message) => {
+    const name = strip(epubFileName);
+    const where =
+      result === undefined
+        ? message.location.path
+        : JsonReport.locationPath(result, message.location, containerPath);
+    const file = name.endsWith(where) ? name : `${name}/${where}`;
+    const body = message.message.replace(/\s+/g, " ");
+    return `${message.severity}(${MessageCatalog.displayId(message.id)}): ${file}(${message.location.line},${message.location.column}): ${body}`;
+  };
+  const print = (message: Report.Message) => {
+    if (report !== undefined) return;
+    // Upstream prints USAGE messages on standard output even in quiet mode.
+    if (message.severity === "USAGE") out.raw("stdout", `${consoleLine(message)}\n`);
+    else out.err(consoleLine(message));
+  };
 
-  const preamble = yield* Report.make({ locale, reportingLevel: options.reportingLevel });
-  const overrides =
-    options.customMessages === undefined
-      ? undefined
-      : yield* readCustomMessages(path.resolve(environment.cwd, options.customMessages)).pipe(
-          Effect.provideService(Report.Report, preamble),
+  const mode = expanded ? undefined : options.mode;
+  const supported =
+    mode === undefined ||
+    mode === "opf" ||
+    mode === "xhtml" ||
+    mode === "svg" ||
+    (options.version === "3" && (mode === "mo" || mode === "nav"));
+  if (expanded && !(yield* exists(absolute))) {
+    messages.forEach(print);
+    out.err(text(locale, "directory_not_found", raw));
+  } else if (!expanded && !(yield* exists(absolute))) {
+    messages.forEach(print);
+    out.err(text(locale, "file_not_found", raw));
+  } else if (!supported) {
+    messages.forEach(print);
+    out.out(text(locale, "display_help"));
+    const label = JsonReport.epubVersionLabel(options.version);
+    out.err(text(locale, "mode_version_not_supported", mode ?? "", label));
+  } else {
+    const checked = yield* checker.check({
+      path: absolute,
+      ...(mode === undefined || !isOneOf(MODES, mode) ? { mode: "epub" } : { mode }),
+      version: options.version,
+      ...(options.profile === undefined ? {} : { profile: options.profile }),
+      locale,
+      reportingLevel: options.reportingLevel,
+      ...(overrides === undefined ? {} : { overrides }),
+    });
+    result = checked;
+    messages = [...messages, ...checked.messages];
+    const showVersion =
+      report === undefined &&
+      MessageCatalog.severityRank(options.reportingLevel) <= MessageCatalog.severityRank("INFO");
+    if (checked.publication !== undefined && showVersion) {
+      out.out(
+        text(
+          locale,
+          "validating_version_message",
+          JsonReport.epubVersionLabel(checked.publication.version),
+        ),
+      );
+    }
+    messages.forEach(print);
+    const errors = count("FATAL") + count("ERROR");
+    if (errors === 0 && count("WARNING") === 0) {
+      if (report?.target.kind !== "stdout") out.out(text(locale, "no_errors__or_warnings"));
+      exitCode = 0;
+    } else if (errors === 0) {
+      out.err(text(locale, "there_were_warnings"));
+      exitCode = options.failOnWarnings ? 1 : 0;
+    } else out.err(text(locale, "there_were_errors"));
+    if (expanded && options.save) {
+      if (errors > 0) out.err(text(locale, "deleting_archive"));
+      else {
+        yield* saveArchive(absolute).pipe(
+          // Upstream skips the archive when the directory cannot be read.
+          Effect.catchTags({
+            SymbolicLinkError: () => Effect.void,
+            ResourceReadError: () => Effect.void,
+          }),
         );
-  const checked = yield* checker.check({
-    path: target,
-    ...(options.mode === undefined || options.mode === "exp" ? {} : { mode: options.mode }),
-    ...(options.version === undefined ? {} : { version: options.version }),
-    ...(options.profile === undefined ? {} : { profile: options.profile }),
-    locale,
-    reportingLevel: options.reportingLevel,
-    ...(overrides === undefined ? {} : { overrides }),
-  });
-  const result = { ...checked, messages: [...(yield* preamble.messages), ...checked.messages] };
+      }
+    }
+  }
   const finishedAt = yield* Clock.currentTimeMillis;
 
-  // A report on standard output replaces the console summary; problems still go to stderr.
-  const quiet = options.quiet || options.report?.target === "-";
-  const out = (line: string) => (quiet ? Effect.void : terminal.stdout(`${line}\n`));
-  const err = (line: string) => terminal.stderr(`${line}\n`);
-  if (result.publication !== undefined) {
-    yield* out(
-      text(
-        locale,
-        "validating_version_message",
-        JsonReport.epubVersionLabel(result.publication.version),
-      ),
-    );
-  }
-  for (const message of result.messages) {
-    const where = JsonReport.locationPath(result, message.location, displayPath);
-    const file = where === displayPath ? displayPath : `${displayPath}/${where}`;
-    const line = `${message.severity}(${MessageCatalog.displayId(message.id)}): ${file}(${message.location.line},${message.location.column}): ${message.message}`;
-    yield* message.severity === "USAGE" || message.severity === "INFO" ? out(line) : err(line);
-  }
-
-  const count = (severity: Report.Message["severity"]) =>
-    result.messages.filter((message) => message.severity === severity).length;
-  const fatals = count("FATAL");
-  const errors = count("ERROR");
-  const warnings = count("WARNING");
-  if (fatals + errors > 0) yield* err(text(locale, "there_were_errors"));
-  else if (warnings > 0) yield* err(text(locale, "there_were_warnings"));
-  else yield* out(text(locale, "no_errors__or_warnings"));
-  const counters = [
-    counter(locale, "fatal", fatals),
-    counter(locale, "error", errors),
-    counter(locale, "warn", warnings),
-    counter(locale, "info", count("INFO")),
-    ...(options.reportingLevel === "USAGE" ? [counter(locale, "usage", count("USAGE"))] : []),
-  ];
-  yield* out(`${text(locale, "messages")}: ${counters.join(" / ")}\n`);
-  yield* out(text(locale, "epubcheck_completed"));
-
-  if (options.report !== undefined) {
+  if (report !== undefined) {
+    const full = { path: absolute, mode: result?.mode ?? "epub", ...result, messages };
     const rendered =
-      options.report.format === "json"
-        ? JsonReport.render(result, {
-            path: displayPath,
+      report.format === "json"
+        ? JsonReport.render(full, {
+            path: strip(javaAbsolute(epubFileName, environment.cwd)),
+            containerPath,
             maxOfEachMessage: options.maxOfEachMessage,
             checkedAt: startedAt,
             elapsedTime: finishedAt - startedAt,
-            customMessageFileName: options.customMessages,
+            customMessageFileName:
+              overrides === undefined || custom === undefined
+                ? undefined
+                : javaAbsolute(custom, environment.cwd),
           })
-        : (options.report.format === "xml" ? XmlReport.renderJhove : XmlReport.renderXmp)(result, {
-            path: displayPath,
-            uri: isDirectory ? `${target}.epub` : target,
+        : (report.format === "xml" ? XmlReport.renderJhove : XmlReport.renderXmp)(full, {
+            path: containerPath,
+            uri: epubFileName,
             maxOfEachMessage: options.maxOfEachMessage,
             checkedAt: startedAt,
           });
-    if (options.report.target === "-") yield* terminal.stdout(rendered);
-    else {
-      yield* fs
-        .writeFileString(path.resolve(environment.cwd, options.report.target), rendered)
-        .pipe(Effect.orDie);
+    const target = report.target;
+    if (target.kind === "stdout") {
+      out.raw("stdout", rendered);
+      // Upstream closes standard output with the report.
+      stdoutClosed = true;
+    } else {
+      const file =
+        target.kind === "file"
+          ? path.resolve(environment.cwd, target.path)
+          : (yield* fs.stat(path.resolve(environment.cwd, target.path)).pipe(
+                Effect.map((info) => info.type === "Directory"),
+                Effect.orElseSucceed(() => false),
+              ))
+            ? path.join(
+                path.dirname(path.resolve(environment.cwd, target.path)),
+                `${path.basename(target.path)}check.${EXTENSIONS[report.format]}`,
+              )
+            : path.resolve(environment.cwd, `${target.path}check.${EXTENSIONS[report.format]}`);
+      yield* fs.writeFileString(file, rendered).pipe(Effect.orDie);
     }
   }
-  if (options.save && isDirectory) {
-    if (fatals + errors > 0) yield* out(text(locale, "deleting_archive"));
-    else {
-      yield* saveArchive(target).pipe(
-        // Upstream skips the archive when the directory cannot be read.
-        Effect.catchTags({
-          SymbolicLinkError: () => Effect.void,
-          ResourceReadError: () => Effect.void,
-        }),
-      );
-    }
+
+  // Upstream's summary counts only the severities the reporting level shows.
+  const rank = MessageCatalog.severityRank(options.reportingLevel);
+  const counters = (
+    [
+      ["FATAL", "fatal"],
+      ["ERROR", "error"],
+      ["WARNING", "warn"],
+      ["INFO", "info"],
+      ["USAGE", "usage"],
+    ] as const
+  )
+    .filter(([severity]) => MessageCatalog.severityRank(severity) >= rank)
+    .map(([severity, kind]) => counter(locale, kind, count(severity)));
+  if (!stdoutClosed) {
+    out.out(`${text(locale, "messages")}: ${counters.join(" / ")}\n`);
+    out.out(text(locale, "epubcheck_completed"));
   }
-  return done(fatals + errors > 0 || (options.failOnWarnings && warnings > 0) ? 1 : 0);
+  return done(exitCode);
 });
+
+const EXTENSIONS: Readonly<Record<ReportFormat, string>> = { json: "json", xml: "xml", xmp: "xmp" };
 
 export const main = Effect.fn("Cli.main")(function* (
   argv: ReadonlyArray<string>,
   environment: CliEnvironment,
 ) {
   const terminal = yield* Terminal;
-  const parsed = parseArgs(argv, resolveLocale(undefined, environment.defaultLocale));
-  if (Result.isFailure(parsed)) {
-    yield* terminal.stderr(`${parsed.failure}\n`);
-    return { exitCode: 1, maxOfEachMessage: undefined } satisfies CliOutcome;
-  }
-  return yield* run(parsed.success, environment);
+  const out = console();
+  const parsed = parseArgs(argv, environment, out);
+  const outcome =
+    "options" in parsed
+      ? yield* run(parsed.options, environment, out)
+      : ({ exitCode: parsed.exitCode, maxOfEachMessage: undefined } satisfies CliOutcome);
+  for (const line of out.lines) yield* terminal[line.stream](line.text);
+  return outcome;
 });

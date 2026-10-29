@@ -10,6 +10,7 @@ import * as EpubCheck from "./EpubCheck.ts";
 Cli.main(process.argv.slice(2), {
   cwd: process.cwd(),
   defaultLocale: Intl.DateTimeFormat().resolvedOptions().locale,
+  customMessageFile: process.env["ePubCheckCustomMessageFile"],
 }).pipe(
   Effect.tap((outcome) => Effect.sync(() => void (process.exitCode = outcome.exitCode))),
   Effect.provide(

@@ -8,8 +8,10 @@ import type { Location, Message } from "./Report.ts";
 // Follows the shape of upstream's JSON report. Fields not computed yet are null.
 
 export interface ReportOptions {
-  // The checked path as the console shows it (`./book.epub`).
+  // The checked path as upstream's report states it (`./book.epub`).
   readonly path: string;
+  // Where messages about the container itself are located.
+  readonly containerPath: string;
   readonly maxOfEachMessage: number;
   // When the check started, in epoch milliseconds.
   readonly checkedAt: number;
@@ -36,7 +38,7 @@ export const render = (result: CheckResult, options: ReportOptions) => {
       additionalLocations: group.additionalLocations,
       locations: group.locations.map((location) => ({
         url: { opaque: false, hierarchical: true },
-        path: locationPath(result, location, options.path),
+        path: locationPath(result, location, options.containerPath),
         line: location.line,
         column: location.column,
         context: location.context ?? null,

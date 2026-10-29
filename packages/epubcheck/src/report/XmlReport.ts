@@ -24,6 +24,9 @@ const escape = (value: string) =>
   value.replace(/[&<>"]/g, (char) =>
     char === "&" ? "&amp;" : char === "<" ? "&lt;" : char === ">" ? "&gt;" : "&quot;",
   );
+// Upstream's DOM serializer leaves quotes alone in text.
+const escapeText = (value: string) =>
+  value.replace(/[&<>]/g, (char) => (char === "&" ? "&amp;" : char === "<" ? "&lt;" : "&gt;"));
 
 const SEVERITY_ORDER: ReadonlyArray<Message["severity"]> = [
   "FATAL",
@@ -76,7 +79,7 @@ const property = (indent: string, name: string, type: string, value: string) =>
     `${indent}<property>`,
     `${indent}   <name>${name}</name>`,
     `${indent}   <values arity="Scalar" type="${type}">`,
-    `${indent}      <value>${escape(value)}</value>`,
+    `${indent}      <value>${escapeText(value)}</value>`,
     `${indent}   </values>`,
     `${indent}</property>`,
   ].join("\n");
@@ -86,7 +89,7 @@ export const renderJhove = (result: CheckResult, options: ReportOptions) => {
   const created = Dates.utcIso(options.checkedAt);
   const messages = entries(result, options).map((entry) => {
     const id = MessageCatalog.displayId(entry.message.id);
-    return `         <message id="${id}" severity="${entry.label.level}">${escape(
+    return `         <message id="${id}" severity="${entry.label.level}">${escapeText(
       `${id}, ${entry.label.name}, [${entry.message.message}], ${entry.where}`,
     )}</message>`;
   });
@@ -136,7 +139,7 @@ export const renderJhove = (result: CheckResult, options: ReportOptions) => {
     `      <created>${created}</created>`,
     ...(metadata?.modified === undefined
       ? []
-      : [`      <lastModified>${escape(metadata.modified)}</lastModified>`]),
+      : [`      <lastModified>${escapeText(metadata.modified)}</lastModified>`]),
     "      <format>application/epub+zip</format>",
     ...(result.publication === undefined
       ? []
@@ -173,7 +176,7 @@ export const renderXmp = (result: CheckResult, options: ReportOptions) => {
   ];
   const outcomes = Groups.group(result.messages, options.maxOfEachMessage).flatMap((group) => [
     '                  <rdf:li rdf:parseType="Resource">',
-    `                     <premis:hasEventOutcome>${escape(
+    `                     <premis:hasEventOutcome>${escapeText(
       `${MessageCatalog.displayId(group.first.id)}, ${LABEL[group.first.severity].name}, ${group.first.message}`,
     )}</premis:hasEventOutcome>`,
     "                     <premis:hasEventOutcomeDetail>",
@@ -196,7 +199,7 @@ export const renderXmp = (result: CheckResult, options: ReportOptions) => {
       : [
           "         <dc:title>",
           "            <rdf:Alt>",
-          `               <rdf:li xml:lang="x-default">${escape(metadata.title)}</rdf:li>`,
+          `               <rdf:li xml:lang="x-default">${escapeText(metadata.title)}</rdf:li>`,
           "            </rdf:Alt>",
           "         </dc:title>",
         ]),
