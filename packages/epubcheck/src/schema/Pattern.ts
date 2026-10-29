@@ -209,6 +209,10 @@ export class Derivatives {
   private readonly closeMemo = new Map<number, Pattern>();
   private readonly endMemo = new Map<number, Pattern>();
   private readonly attributeMemo = new Map<string, Pattern>();
+  private readonly leavesMemo = new Map<
+    string,
+    ReadonlyArray<Pattern & { readonly t: "attribute" }>
+  >();
   private readonly forceAttributesMemo = new Map<number, Pattern>();
 
   readonly builder: PatternBuilder;
@@ -267,40 +271,84 @@ export class Derivatives {
   }
 
   // `value` undefined matches any value: Jing consumes a known attribute even when its value
-  // is invalid, so the attribute is not also reported as missing.
+  // is invalid, so the attribute is not also reported as missing. The value matters only through
+  // which `attribute` patterns for `name` accept it, so that set, not the value, keys the memo:
+  // memoizing on values would grow without bound across documents.
   attribute(p: Pattern, name: QName, value: string | undefined): Pattern {
-    const key = `${p.id}{${name.ns}}${name.local}${value === undefined ? "*" : `=${value}`}`;
+    const leaves = this.attributeLeaves(p, name);
+    const accepted = leaves
+      .filter((leaf) => value === undefined || this.valueMatches(leaf.p, value))
+      .map((leaf) => leaf.id);
+    return this.attributeAccepting(p, name, new Set(accepted), accepted.join(","));
+  }
+
+  // The `attribute` patterns in `p` whose name class contains `name`.
+  private attributeLeaves(
+    p: Pattern,
+    name: QName,
+  ): ReadonlyArray<Pattern & { readonly t: "attribute" }> {
+    const key = `${p.id}{${name.ns}}${name.local}`;
+    const memo = this.leavesMemo.get(key);
+    if (memo !== undefined) return memo;
+    const leaves = new Map<number, Pattern & { readonly t: "attribute" }>();
+    const pending: Array<Pattern> = [p];
+    const seen = new Set<number>();
+    while (pending.length > 0) {
+      const current = pending.pop();
+      if (current === undefined || seen.has(current.id)) continue;
+      seen.add(current.id);
+      switch (current.t) {
+        case "after":
+        case "choice":
+        case "group":
+        case "interleave":
+          pending.push(current.a, current.b);
+          break;
+        case "oneOrMore":
+          pending.push(current.p);
+          break;
+        case "attribute":
+          if (containsName(current.nc, name)) leaves.set(current.id, current);
+          break;
+        default:
+          break;
+      }
+    }
+    const result = [...leaves.values()].sort((left, right) => left.id - right.id);
+    this.leavesMemo.set(key, result);
+    return result;
+  }
+
+  private attributeAccepting(
+    p: Pattern,
+    name: QName,
+    accepted: ReadonlySet<number>,
+    acceptedKey: string,
+  ): Pattern {
+    const key = `${p.id}{${name.ns}}${name.local}=${acceptedKey}`;
     const memo = this.attributeMemo.get(key);
     if (memo !== undefined) return memo;
     const b = this.builder;
+    const next = (child: Pattern) => this.attributeAccepting(child, name, accepted, acceptedKey);
     let result: Pattern;
     switch (p.t) {
       case "after":
-        result = b.after(this.attribute(p.a, name, value), p.b);
+        result = b.after(next(p.a), p.b);
         break;
       case "choice":
-        result = b.choice(this.attribute(p.a, name, value), this.attribute(p.b, name, value));
+        result = b.choice(next(p.a), next(p.b));
         break;
       case "group":
-        result = b.choice(
-          b.group(this.attribute(p.a, name, value), p.b),
-          b.group(p.a, this.attribute(p.b, name, value)),
-        );
+        result = b.choice(b.group(next(p.a), p.b), b.group(p.a, next(p.b)));
         break;
       case "interleave":
-        result = b.choice(
-          b.interleave(this.attribute(p.a, name, value), p.b),
-          b.interleave(p.a, this.attribute(p.b, name, value)),
-        );
+        result = b.choice(b.interleave(next(p.a), p.b), b.interleave(p.a, next(p.b)));
         break;
       case "oneOrMore":
-        result = b.group(this.attribute(p.p, name, value), b.choice(p, b.empty));
+        result = b.group(next(p.p), b.choice(p, b.empty));
         break;
       case "attribute":
-        result =
-          containsName(p.nc, name) && (value === undefined || this.valueMatches(p.p, value))
-            ? b.empty
-            : b.notAllowed;
+        result = accepted.has(p.id) ? b.empty : b.notAllowed;
         break;
       default:
         result = b.notAllowed;

@@ -44,6 +44,17 @@ interface Base {
   readonly list?: boolean;
 }
 
+// Jing's lenient URI check: escapes are `%` and two hex digits, there is at most one fragment,
+// no brackets, and a scheme, if any, is well formed. Spaces and other unsafe characters pass.
+const isUri = (value: string) => {
+  if (/%(?![0-9A-Fa-f]{2})/.test(value)) return false;
+  if (value.split("#").length > 2 || /[[\]]/.test(value)) return false;
+  const colon = value.search(/[:/?#]/);
+  return (
+    colon < 0 || value[colon] !== ":" || /^[A-Za-z][A-Za-z0-9+.-]*$/.test(value.slice(0, colon))
+  );
+};
+
 const regex = (pattern: RegExp) => (value: string) => pattern.test(value);
 const decimalPattern = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/;
 const integerPattern = /^[+-]?\d+$/;
@@ -85,7 +96,7 @@ const bases: Readonly<Record<string, Base>> = {
   anyURI: {
     lexical: "a URI",
     whitespace: collapse,
-    test: () => true,
+    test: isUri,
     length: (value) => [...value].length,
   },
   boolean: { lexical: "a boolean", whitespace: collapse, test: regex(/^(?:true|false|1|0)$/) },

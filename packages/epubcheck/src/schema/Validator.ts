@@ -164,7 +164,12 @@ const requiredElements = (
       result = new Map([...a].filter(([key]) => b.has(key)));
       break;
     }
+    // A group requires what its first operand requires, and the rest only once that is optional.
     case "group":
+      result = p.a.nullable
+        ? new Map([...requiredElements(p.a, memo), ...requiredElements(p.b, memo)])
+        : requiredElements(p.a, memo);
+      break;
     case "interleave":
       result = new Map([...requiredElements(p.a, memo), ...requiredElements(p.b, memo)]);
       break;
@@ -253,9 +258,12 @@ const textDetail = (p: Pattern, value: string) => {
     const failure = target.dt.validate(value, { resolve: () => undefined });
     return failure === undefined ? [] : [failure];
   });
-  if (values.length > 0 && failures.length === 0) return `; must be equal to ${orList(values)}`;
-  if (failures.length > 0) return `; ${[...new Set(failures)].join(", ")}`;
-  return "";
+  // Jing lists every alternative: datatype failures, then the allowed values.
+  const alternatives = [
+    ...new Set(failures),
+    ...(values.length > 0 ? [`must be equal to ${orList(values)}`] : []),
+  ];
+  return alternatives.length === 0 ? "" : `; ${orList(alternatives)}`;
 };
 
 const hasTextTarget = (p: Pattern) => {
@@ -389,19 +397,29 @@ export class SchemaValidator {
         );
         return undefined;
       }
-      const missing = [...requiredElements(p).values()];
-      for (const required of missing) {
-        const afterRequired = skipElement(p, required);
-        const resumed = d.startTagOpen(afterRequired, name);
-        if (resumed.t !== "notAllowed") {
-          const { formatted } = formatNames([required], scope, false);
+      // Jing skips required elements until this one fits, names the first it skipped, and
+      // resumes as if they had been there.
+      let frontier = [...requiredElements(p).values()].map((required) => ({
+        first: required,
+        state: skipElement(p, required),
+      }));
+      for (let depth = 0; depth < 4 && frontier.length > 0; depth++) {
+        for (const { first, state } of frontier) {
+          const resumed = d.startTagOpen(state, name);
+          if (resumed.t === "notAllowed") continue;
+          const { formatted } = formatNames([first], scope, false);
           report(
             `element ${elementName(element)} not allowed yet; missing required element ${formatted[0] ?? ""}`,
             element,
           );
-          // Jing resumes as if the missing element had been there.
           return resumed;
         }
+        frontier = frontier.flatMap(({ first, state }) =>
+          [...requiredElements(state).values()].map((required) => ({
+            first,
+            state: skipElement(state, required),
+          })),
+        );
       }
       const nextNames = possible(p, "element").names;
       const allowedLater = nextNames.some(
@@ -512,7 +530,7 @@ export class SchemaValidator {
       const name = { ns: element.ns, local: element.local };
       const opened = d.startTagOpen(p, name);
       if (opened.t === "notAllowed") {
-        const resumed = startTagError(p, element, parentScope, unknownParent);
+        const resumed = startTagError(p, element, scope, unknownParent);
         if (resumed !== undefined) return validateContent(resumed, element, scope, false);
         // Recover like Jing: check the element against every declaration of its name (or, if
         // there is none, allow only text and attributes), then carry on as if it were absent.

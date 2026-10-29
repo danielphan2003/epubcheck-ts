@@ -11,6 +11,7 @@ import type { SchemaError } from "./Validator.ts";
 // parameters, lets, asserts, reports, and value-of/name in messages.
 
 const SCH_NS = "http://purl.oclc.org/dsdl/schematron";
+const MATHML_NS = "http://www.w3.org/1998/Math/MathML";
 // Schematron 1.5, which upstream's EPUB 2 NCX and XHTML schemas still use.
 const SCH15_NS = "http://www.ascc.net/xml/schematron";
 const isSchematron = (ns: string) => ns === SCH_NS || ns === SCH15_NS;
@@ -139,6 +140,9 @@ const rewrite = (expression: string, lets: Readonly<Record<string, unknown>> = {
       .replace(/(?<![\w:-])current\(\s*\)/g, `Q{${EXTENSIONS_NS}}current()`)
       .replace(/(?<![\w:-])resolve-uri\(/g, `Q{${EXTENSIONS_NS}}resolve-uri(`)
       .replace(/(?<![\w:-])matches\(/g, `Q{${EXTENSIONS_NS}}matches(`)
+      // fontoxpath binds `math` to its math functions before asking the resolver; the schemas
+      // only use it for MathML names.
+      .replace(/(?<![\w:.-])math:(?=[A-Za-z_*])/g, `Q{${MATHML_NS}}`)
       .replace(/\$([A-Za-z_][\w.-]*)/g, (match, name: string) =>
         name in lets ? `($${name}?*)` : match,
       ),
@@ -355,6 +359,57 @@ const locate = (node: slimdom.Node | null, built: Built, fallback: Xml.XmlElemen
   return fallback;
 };
 
+// Upstream's duplicate-ID idiom, `count($set[@a = current()/@a]) = 1` with both sides optionally
+// normalize-space()d, takes quadratic time in fontoxpath; it is answered from value counts.
+const UNIQUENESS =
+  /^count\(\$([\w.-]+)\[(normalize-space\()?@([\w-]+)\)?\s*=\s*(normalize-space\()?current\(\)\/@([\w-]+)\)?\]\)\s*=\s*1$/;
+const uniqueness = new Map<
+  string,
+  { readonly variable: string; readonly attribute: string; readonly normalize: boolean } | undefined
+>();
+const valueCounts = new WeakMap<object, Map<string, Map<string, number>>>();
+
+const attributeValue = (node: unknown, attribute: string, normalize: boolean) => {
+  if (!(node instanceof slimdom.Element)) return undefined;
+  const value = node.getAttribute(attribute);
+  if (value === null) return normalize ? "" : undefined;
+  return normalize ? value.replace(/[ \t\n\r]+/g, " ").trim() : value;
+};
+
+// Undefined when the test is not the idiom, or its variable is not a bound node list.
+const isUnique = (test: string, node: unknown, variables: Readonly<Record<string, unknown>>) => {
+  if (!uniqueness.has(test)) {
+    const match = UNIQUENESS.exec(test.trim());
+    const [, variable, left, attribute, right, current] = match ?? [];
+    uniqueness.set(
+      test,
+      variable !== undefined &&
+        attribute !== undefined &&
+        attribute === current &&
+        (left === undefined) === (right === undefined)
+        ? { variable, attribute, normalize: left !== undefined }
+        : undefined,
+    );
+  }
+  const idiom = uniqueness.get(test);
+  const set = idiom === undefined ? undefined : variables[idiom.variable];
+  if (idiom === undefined || !Array.isArray(set)) return undefined;
+  const key = `${idiom.attribute}|${idiom.normalize}`;
+  const byKey = valueCounts.get(set) ?? new Map<string, Map<string, number>>();
+  valueCounts.set(set, byKey);
+  let counts = byKey.get(key);
+  if (counts === undefined) {
+    counts = new Map<string, number>();
+    for (const member of set) {
+      const value = attributeValue(member, idiom.attribute, idiom.normalize);
+      if (value !== undefined) counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    byKey.set(key, counts);
+  }
+  const value = attributeValue(node, idiom.attribute, idiom.normalize);
+  return value !== undefined && counts.get(value) === 1;
+};
+
 export const validate = (schema: SchematronSchema, source: Xml.XmlDocument, baseUrl: string) => {
   registerExtensions();
   const built = build(source);
@@ -447,13 +502,15 @@ export const validate = (schema: SchematronSchema, source: Xml.XmlDocument, base
         for (const check of rule.checks) {
           let outcome: boolean;
           try {
-            outcome = evaluateXPathToBoolean(
-              rewrite(check.test, variables),
-              node,
-              null,
-              variables,
-              options(node),
-            );
+            outcome =
+              isUnique(check.test, node, variables) ??
+              evaluateXPathToBoolean(
+                rewrite(check.test, variables),
+                node,
+                null,
+                variables,
+                options(node),
+              );
           } catch {
             continue;
           }

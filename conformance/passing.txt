@@ -231,9 +231,11 @@ epub3/04-ocf/ocf.feature:280 Report an unknown element in the `container.xml` fi
 epub3/04-ocf/ocf.feature:287 Report a missing 'container.xml' file
 epub3/04-ocf/ocf.feature:293 Report a fatal error when checking an archive that is not an OCF
 epub3/04-ocf/ocf.feature:302 Report a missing OPF document
+epub3/04-ocf/ocf.feature:313 Report an `encryption.xml` file with invalid markup
 epub3/04-ocf/ocf.feature:32 Report a duplicate filename after common case folding
 epub3/04-ocf/ocf.feature:329 Report an `encryption.xml` file with duplicate IDs
 epub3/04-ocf/ocf.feature:338 Report an `encryption.xml` file with invalid compression metadata
+epub3/04-ocf/ocf.feature:350 Report a `signature.xml` file with invald markup
 epub3/04-ocf/ocf.feature:363 Verify a minimal packaged EPUB
 epub3/04-ocf/ocf.feature:368 Report an unreadable ZIP file (empty file)
 epub3/04-ocf/ocf.feature:376 Report an unreadable ZIP file (no end header)
@@ -446,6 +448,7 @@ epub3/07-content-documents/content-documents-xhtml.feature:575 Report obsolete `
 epub3/07-content-documents/content-documents-xhtml.feature:581 Report obsolete `param` element
 epub3/07-content-documents/content-documents-xhtml.feature:589 Allow fragment identifiers on PDFs
 epub3/07-content-documents/content-documents-xhtml.feature:596 Verify passing schematron assertions
+epub3/07-content-documents/content-documents-xhtml.feature:601 Report failing schematron assertions
 epub3/07-content-documents/content-documents-xhtml.feature:609 Report an "importmap" script with an "src" attribute
 epub3/07-content-documents/content-documents-xhtml.feature:616 Verify non-HTML `source` elements are skipped
 epub3/07-content-documents/content-documents-xhtml.feature:623 Verify use of `style` element in the header

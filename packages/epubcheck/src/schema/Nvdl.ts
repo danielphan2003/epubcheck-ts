@@ -45,15 +45,19 @@ const withChildren = (
   children,
 });
 
-// allowOnlyHTML: inside an SVG `title`, only XHTML elements may appear, at any depth.
-const titleChildren = (element: Xml.XmlElement, errors: Array<SchemaError>): Array<Xml.XmlNode> =>
+// allowOnlyHTML: an SVG `title` may hold XHTML, and within XHTML only XHTML, at any depth. SVG
+// children of the title itself stay in the SVG section, for the schema to judge.
+const titleChildren = (
+  element: Xml.XmlElement,
+  errors: Array<SchemaError>,
+  inXhtml = false,
+): Array<Xml.XmlNode> =>
   element.children.flatMap((child): Array<Xml.XmlNode> => {
     if (child.kind === "text") return [child];
-    if (child.ns !== XHTML_NS) {
-      errors.push(rejected(child));
-      return [];
-    }
-    return [withChildren(child, titleChildren(child, errors))];
+    if (child.ns === XHTML_NS) return [withChildren(child, titleChildren(child, errors, true))];
+    if (child.ns === SVG_NS && !inXhtml) return [child];
+    errors.push(rejected(child));
+    return [];
   });
 
 const FOREIGN_ATTRIBUTE_NS = new Set(["", OPS_NS, XLINK_NS, XML_NS, XMLNS_NS]);
