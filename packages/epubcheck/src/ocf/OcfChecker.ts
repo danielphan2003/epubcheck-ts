@@ -394,6 +394,17 @@ export const check = Effect.fn("OcfChecker.check")(function* (
     const document = yield* XmlChecker.check(bytes.value, file, schemas, {
       checksVersion: handled.has(file),
     });
+    // Upstream reads these as `application/xml`, whose DOCTYPE names no external identifier; it
+    // cannot read a `container.xml` with one at all.
+    if (version === "3" && file !== CONTAINER_FILE && Option.isSome(document)) {
+      for (const { id, args, path: at, line, column } of XmlChecker.externalIdentifiers(
+        document.value.doctype,
+        file,
+        "application/xml",
+      )) {
+        yield* report.message(id, Report.location(at, line, column), ...args);
+      }
+    }
     if (file === "META-INF/encryption.xml" && Option.isSome(document)) {
       const names = new Set(container.files.map((name) => name.normalize("NFC")));
       encryption = Encryption.read(document.value, names);

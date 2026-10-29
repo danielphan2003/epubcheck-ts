@@ -39,6 +39,36 @@ interface SchemaFinding {
   readonly informative?: boolean;
 }
 
+// The DOCTYPE external identifiers EPUB 3 tolerates, by media type.
+const EXTERNAL_IDENTIFIERS: Readonly<Record<string, readonly [string, string]>> = {
+  "image/svg+xml": ["-//W3C//DTD SVG 1.1//EN", "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"],
+  "application/mathml+xml": [
+    "-//W3C//DTD MathML 3.0//EN",
+    "http://www.w3.org/Math/DTD/mathml3/mathml3.dtd",
+  ],
+  "application/x-dtbncx+xml": [
+    "-//NISO//DTD ncx 2005-1//EN",
+    "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd",
+  ],
+};
+
+// Upstream's DeclarationHandler, in EPUB 3, on a DOCTYPE other than an XHTML document's `html`
+// one: external identifiers are allowed only as the media type's own (OPF-073).
+export const externalIdentifiers = (
+  doctype: Xml.XmlDoctype | undefined,
+  path: string,
+  mediaType: string,
+) => {
+  if (doctype === undefined || (doctype.publicId === undefined && doctype.systemId === undefined)) {
+    return [];
+  }
+  const allowed = EXTERNAL_IDENTIFIERS[mediaType];
+  if (allowed !== undefined && doctype.publicId === allowed[0] && doctype.systemId === allowed[1]) {
+    return [];
+  }
+  return [{ id: "OPF-073" as const, args: [], path, line: doctype.line, column: doctype.column }];
+};
+
 // The preprocessing and schema errors of a parsed document.
 const validateDocument = (
   document: Xml.XmlDocument,

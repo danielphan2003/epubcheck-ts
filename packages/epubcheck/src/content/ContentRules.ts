@@ -2,6 +2,7 @@ import type { MessageId } from "../messages/MessageCatalog.ts";
 import type { Finding } from "../references/Collect.ts";
 import * as JavaText from "../util/JavaText.ts";
 import * as Xml from "../xml/Xml.ts";
+import * as XmlChecker from "../xml/XmlChecker.ts";
 
 // EPUB 3 XHTML and SVG content document rules the schemas do not express: the XML version and
 // DOCTYPE, discouraged and deprecated constructs, alternate style sheets, SSML, MathML
@@ -169,8 +170,8 @@ const svgHrefs = (path: string, element: Xml.XmlElement) => {
   return { findings: [], hrefs: [href] };
 };
 
-// Upstream's DeclarationHandler: in EPUB 3, external entities are not allowed, an `html` DOCTYPE
-// is the HTML5 one, and other DOCTYPEs are left to the media type checks.
+// Upstream's DeclarationHandler: in EPUB 3, external entities are not allowed, and an `html`
+// DOCTYPE is the HTML5 one.
 const doctypeFindings = (doctype: Xml.XmlDoctype, path: string, kind: "xhtml" | "svg") => {
   const findings: Array<Finding> = [];
   const isHtml = kind === "xhtml" && doctype.name.toLowerCase() === "html";
@@ -179,6 +180,9 @@ const doctypeFindings = (doctype: Xml.XmlDoctype, path: string, kind: "xhtml" | 
     // Upstream formats a missing public ID with Java's string conversion.
     const args = [doctype.publicId ?? "null", "<!DOCTYPE html>"];
     findings.push({ id: "HTM-004", args, path, line: doctype.line, column: doctype.column });
+  } else if (!isHtml) {
+    const mediaType = kind === "svg" ? "image/svg+xml" : "application/xhtml+xml";
+    findings.push(...XmlChecker.externalIdentifiers(doctype, path, mediaType));
   }
   for (const entity of doctype.externalEntities) {
     findings.push({

@@ -586,6 +586,7 @@ epub3/05-package-document/package-document.feature:588 Report an SVG using remot
 epub3/05-package-document/package-document.feature:594 Report an XHTML document using remote fonts in `style` without the `remote-resource` property set in the package document
 epub3/05-package-document/package-document.feature:600 Report the declaration of the `remote-resources` property when the content has no script
 epub3/05-package-document/package-document.feature:606 Report a reference a remote resource when the `remote-resources` property is not set in the manifest
+epub3/05-package-document/package-document.feature:612 Report a media overlay document with remote resources but missing the `remote-resources` property
 epub3/05-package-document/package-document.feature:618 Verify that inline CSS does not trigger an unrequired `remote-resources` property error
 epub3/05-package-document/package-document.feature:626 Report the declaration of the `scripted` property when the content has no script
 epub3/05-package-document/package-document.feature:632 Report a scripted document (javascript) without the `scripted` property declared in the package document
@@ -976,6 +977,8 @@ epub3/09-media-overlays/media-overlays.feature:76 Report a `par` element with mo
 epub3/09-media-overlays/media-overlays.feature:83 Report a `par` element with a `seq` child
 epub3/09-media-overlays/media-overlays.feature:96 Report an audio file URL with a fragment
 epub3/B-external-identifiers/external-identifiers.feature:14 Verify DOCTYPE declarations with allowed external identifiers
+epub3/B-external-identifiers/external-identifiers.feature:19 Report a DOCTYPE declaration with an allowed external identifier but not on the expected media type
+epub3/B-external-identifiers/external-identifiers.feature:25 Report a DOCTYPE declaration with an external identifier that is not allowed
 epub3/C-viewport-meta-tag/viewport-syntax.feature:15 parsing valid viewport values
 epub3/C-viewport-meta-tag/viewport-syntax.feature:17 parsing valid viewport values
 epub3/C-viewport-meta-tag/viewport-syntax.feature:18 parsing valid viewport values
