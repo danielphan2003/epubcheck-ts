@@ -3,6 +3,7 @@ import * as Option from "effect/Option";
 
 import * as ContentChecker from "../content/ContentChecker.ts";
 import * as ContentRules from "../content/ContentRules.ts";
+import * as EpubType from "../content/EpubType.ts";
 import * as FixedLayout from "../layout/FixedLayout.ts";
 import * as MediaOverlays from "../overlays/MediaOverlays.ts";
 import type * as Container from "../ocf/Container.ts";
@@ -27,6 +28,14 @@ const reportFindings = Effect.fn("Publication.reportFindings")(function* (
     );
   }
 });
+
+// Documents whose `epub:type` attributes are checked, by the media type upstream names them with.
+const EPUB_TYPE_MEDIA_TYPES: Partial<Record<ContentChecker.ContentKind, string>> = {
+  xhtml: "application/xhtml+xml",
+  nav: "application/xhtml+xml",
+  svg: "image/svg+xml",
+  mo: "application/smil+xml",
+};
 
 // Compares an image's leading bytes with its declared media type and file name.
 const checkImage = Effect.fn("Publication.checkImage")(function* (
@@ -157,6 +166,10 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       const keys = Collect.fromSearchKeyMap(document.value, item.path, context);
       references.push(...keys.references);
       yield* reportFindings(keys.findings);
+    }
+    const typedAs = opf.version === "3" ? EPUB_TYPE_MEDIA_TYPES[kind] : undefined;
+    if (Option.isSome(document) && typedAs !== undefined) {
+      yield* reportFindings(EpubType.check(document.value, item.path, typedAs));
     }
     if (Option.isSome(document) && kind === "mo") {
       const read = MediaOverlays.read(document.value, item.path, {
@@ -305,6 +318,10 @@ export const checkDocumentReferences = Effect.fn("Publication.checkDocumentRefer
           ? Profiles.navSchemas(selection, undefined)
           : [];
   const document = yield* ContentChecker.check(bytes, path, kind, version, extraSchemas);
+  const typedAs = version === "3" ? EPUB_TYPE_MEDIA_TYPES[kind] : undefined;
+  if (Option.isSome(document) && typedAs !== undefined) {
+    yield* reportFindings(EpubType.check(document.value, path, typedAs));
+  }
   if (Option.isSome(document) && kind === "mo") {
     yield* reportFindings(MediaOverlays.read(document.value, path).findings);
   }

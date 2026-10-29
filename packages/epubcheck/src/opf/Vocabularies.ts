@@ -143,6 +143,17 @@ interface Reserved {
 const unchecked = () => undefined;
 const none = () => new Map<string, Status>();
 
+const MSV: Reserved = {
+  uri: "http://www.idpf.org/epub/vocab/structure/magazine/#",
+  deprecated: true,
+  terms: unchecked,
+};
+const PRISM: Reserved = {
+  uri: "http://www.prismstandard.org/specifications/3.0/PRISM_CV_Spec_3.0.htm#",
+  deprecated: true,
+  terms: unchecked,
+};
+
 export const RESERVED: Readonly<Record<string, Reserved>> = {
   a11y: {
     uri: A11Y_URI,
@@ -232,10 +243,17 @@ const isJavaUri = (value: string) => {
   );
 };
 
+// The prefixes content documents reserve for `epub:type`: only the deprecated magazine ones.
+export const CONTENT_RESERVED: Readonly<Record<string, Reserved>> = { msv: MSV, prism: PRISM };
+
 // Parses a `prefix` attribute with upstream's state machine: optional leading whitespace, then
 // `prefix:` and a URI separated by one space, with whitespace between mappings.
-export const parsePrefixes = (value: string | undefined) => {
-  const vocabs = new Map<string, Reserved>(Object.entries(RESERVED));
+// `reservedPrefixes` are the prefixes available without a declaration.
+export const parsePrefixes = (
+  value: string | undefined,
+  reservedPrefixes: Readonly<Record<string, Reserved>> = RESERVED,
+) => {
+  const vocabs = new Map<string, Reserved>(Object.entries(reservedPrefixes));
   const problems: Array<Problem> = [];
   if (value === undefined) return { vocabs, problems };
   // Java prints a missing prefix as "null".
@@ -245,7 +263,7 @@ export const parsePrefixes = (value: string | undefined) => {
     else if (FORBIDDEN_URIS.has(uri)) problems.push({ id: "OPF-007b", args: [prefix] });
     else if (uri === DC_ELEMENTS) problems.push({ id: "OPF-007c", args: [] });
     else {
-      const reserved = RESERVED[prefix];
+      const reserved = reservedPrefixes[prefix];
       if (reserved !== undefined && reserved.uri !== uri)
         problems.push({ id: "OPF-007", args: [prefix] });
       if (reserved !== undefined && reserved.deprecated)
