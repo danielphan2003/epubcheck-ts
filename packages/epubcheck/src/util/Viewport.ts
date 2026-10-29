@@ -21,10 +21,10 @@ const isSeparator = (char: string) => char === "," || char === ";";
 
 type State = "name" | "assign" | "value" | "after-value" | "separator";
 
-export const parse = (input: string): Viewport => {
+export const parse = (input: string) => {
   const properties: Array<readonly [string, string]> = [];
-  if (input === "") return { properties, errors: ["NULL_OR_EMPTY"] };
-  const fail = (error: ViewportError): Viewport => ({ properties, errors: [error] });
+  const fail = (error: ViewportError) => ({ properties, errors: [error] });
+  if (input === "") return fail("NULL_OR_EMPTY");
   let state: State = "name";
   let name = "";
   let value = "";
@@ -64,7 +64,7 @@ export const parse = (input: string): Viewport => {
         else value += char;
         break;
       case "after-value":
-        // Whitespace after a value is skipped; anything else is read as a separator.
+        // Whitespace after a value is skipped; anything else goes to the separator state.
         if (!isSpace(char)) {
           state = "separator";
           consumed = false;

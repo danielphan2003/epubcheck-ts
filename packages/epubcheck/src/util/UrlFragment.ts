@@ -10,19 +10,30 @@ export interface UrlFragment {
   readonly isValid: boolean;
 }
 
-const SCHEME_BASED = /^(\w+)\(.*\)$/s;
+const SCHEME_BASED = /^(\w+)\(.*\)$/;
 const MEDIA_FRAGMENT = /^(?:t|xywh|track|id|xyn|xyr)=[^&]+(?:&[^&=]+=[^&]+)*$/s;
-const SVG_VIEW = /^svgView\(.+\)$/s;
+const SVG_VIEW = /^svgView\(.+\)$/;
 const SPATIAL = /^xywh=(?:pixel:|percent:)?\d+,\d+,\d+,\d+$/;
 const TEMPORAL = /^t=(?:npt:)?(?:([0-9.:]+)(?:,([0-9.:]+))?|,([0-9.:]+))$/;
 const NPT_TIME = /^(?:\d+|[0-5]\d:[0-5]\d|\d+:[0-5]\d:[0-5]\d)(?:\.\d*)?$/;
 
+// Like the reference's URL library: each valid `%XX` becomes a byte, anything else stays as
+// it is, and invalid UTF-8 decodes to U+FFFD.
 const percentDecode = (value: string) => {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
+  const encoder = new TextEncoder();
+  const bytes: Array<number> = [];
+  let index = 0;
+  while (index < value.length) {
+    if (/^%[0-9A-Fa-f]{2}$/.test(value.slice(index, index + 3))) {
+      bytes.push(Number.parseInt(value.slice(index + 1, index + 3), 16));
+      index += 3;
+      continue;
+    }
+    const char = String.fromCodePoint(value.codePointAt(index) ?? 0);
+    bytes.push(...encoder.encode(char));
+    index += char.length;
   }
+  return new TextDecoder().decode(new Uint8Array(bytes));
 };
 
 const isTimeSegment = (segment: string) => {
@@ -34,7 +45,7 @@ const isTimeSegment = (segment: string) => {
 
 const isSpaceSegment = (segment: string) => SPATIAL.test(segment);
 
-const result = (fields: Partial<UrlFragment>): UrlFragment => ({
+const result = (fields: Partial<UrlFragment>) => ({
   id: "",
   scheme: "",
   isMediaFragment: false,
@@ -82,8 +93,9 @@ const xml = (fragment: string) => {
   return result({ id, isValid: isNCName(id) });
 };
 
+// Media types are case-insensitive.
 export const parse = (fragment: string, mediaType: string) => {
-  switch (mediaType) {
+  switch (mediaType.toLowerCase()) {
     case "image/svg+xml":
       return svg(fragment);
     case "text/html":
