@@ -26,13 +26,19 @@ describe("Schematron.validate", () => {
     <pattern><rule context="t"><assert test="normalize-space()">empty</assert></rule></pattern>
     <pattern><rule context="i"><assert test="normalize-space(@v) = 'a'">not a</assert></rule></pattern>
   </schema>`;
-  // XPath's whitespace is space, tab, CR and LF only; NBSP and U+3000 are content.
+  // XPath's whitespace is space, tab, CR and LF only; NBSP and U+3000 are content. Rules fire in
+  // one pass in document order across patterns, as the jar's console output shows.
   it.each([
     { name: "a space-only title", instance: "<r><t> \t\n</t></r>", messages: ["empty"] },
     { name: "an NBSP-only title", instance: "<r><t>\u00a0</t></r>", messages: [] },
     { name: "a padded attribute", instance: "<r><i v=' a\t'/></r>", messages: [] },
     { name: "an NBSP-padded attribute", instance: "<r><i v='a\u3000'/></r>", messages: ["not a"] },
-  ])("normalizes whitespace in $name", ({ instance, messages }) => {
+    {
+      name: "patterns matching out of order",
+      instance: "<r><i v='b'/><t/><i v='c'/></r>",
+      messages: ["not a", "empty", "not a"],
+    },
+  ])("checks $name", ({ instance, messages }) => {
     const schema = Schematron.parse(SCHEMA, "test.sch", () => undefined);
     const document = Xml.parse(instance);
     if (Result.isFailure(schema) || Result.isFailure(document)) throw new Error("bad fixture");

@@ -7,6 +7,7 @@ import * as Path from "effect/Path";
 import * as Result from "effect/Result";
 import * as JavaText from "../util/JavaText.ts";
 
+import * as Profiles from "../profiles/Profiles.ts";
 import * as Report from "../report/Report.ts";
 import * as Schemas from "../schema/Schemas.ts";
 import * as Xml from "../xml/Xml.ts";
@@ -22,6 +23,8 @@ const PACKAGE_MEDIA_TYPE = "application/oebps-package+xml";
 export interface PackageDocument {
   readonly path: string;
   readonly version: "2" | "3";
+  // The publication's profile, with this package document's own `dc:type` values.
+  readonly profile: Profiles.Selection;
 }
 
 export interface OcfResult {
@@ -31,12 +34,16 @@ export interface OcfResult {
   readonly formatName: string | undefined;
 }
 
+interface ContainerLinks {
+  readonly rootfiles: ReadonlyArray<string>;
+  // The last Rendition Mapping Document link, the only one upstream keeps.
+  readonly mapping: string | undefined;
+}
+
 // Upstream ICU canonicalCaseFold: NFD, then full case folding. Lower-upper-lower approximates
 // full folding, including `ß`/`ẞ` to `ss`.
 const canonicalCaseFold = (name: string) =>
   name.normalize("NFD").toLowerCase().toUpperCase().toLowerCase();
-
-// Java's String.trim strips U+0000 through U+0020 only.
 
 // Container paths in container.xml are URLs relative to the container root.
 const resolveRootfile = (fullPath: string) => {
@@ -199,9 +206,10 @@ const peekVersion = Effect.fn("OcfChecker.peekVersion")(function* (
   if (peek.root !== "package")
     return Result.fail("Package element must be the first element in the package file");
   if (peek.version === undefined) return Result.fail("Version attribute not found");
-  if (peek.version === "3.0") return Result.succeed("3" as const);
-  if (peek.version === "2.0") return Result.succeed("2" as const);
-  return Result.fail("Version not supported");
+  const version =
+    peek.version === "3.0" ? ("3" as const) : peek.version === "2.0" ? ("2" as const) : undefined;
+  if (version === undefined) return Result.fail("Version not supported");
+  return Result.succeed({ version, types: Profiles.knownTypes(peek.types) });
 });
 
 const checkContainerFile = Effect.fn("OcfChecker.checkContainerFile")(function* (
@@ -212,11 +220,24 @@ const checkContainerFile = Effect.fn("OcfChecker.checkContainerFile")(function* 
   const report = yield* Report.Report;
   if (!container.files.includes(CONTAINER_FILE)) {
     if (!hadFatal) yield* report.message("RSC-002", at);
-    return Option.none<ReadonlyArray<string>>();
+    return Option.none<ContainerLinks>();
   }
   const document = yield* parseXml(container, CONTAINER_FILE);
-  if (Option.isNone(document)) return Option.some<ReadonlyArray<string>>([]);
+  const none = { rootfiles: [], mapping: undefined };
+  if (Option.isNone(document)) return Option.some<ContainerLinks>(none);
   const rootfiles: Array<string> = [];
+  const mapping = [...Xml.descendants(document.value.root)]
+    .filter(
+      (element) =>
+        element.ns === CONTAINER_NS &&
+        element.local === "link" &&
+        JavaText.trim(Xml.attribute(element, "rel") ?? "") === "mapping",
+    )
+    .flatMap((element) => {
+      const href = Xml.attribute(element, "href")?.trim();
+      return href === undefined || href === "" ? [] : [resolveRootfile(href)];
+    })
+    .at(-1);
   for (const element of Xml.descendants(document.value.root)) {
     if (element.ns !== CONTAINER_NS || element.local !== "rootfile") continue;
     const location = Report.location(CONTAINER_FILE, element.line, element.column);
@@ -232,10 +253,13 @@ const checkContainerFile = Effect.fn("OcfChecker.checkContainerFile")(function* 
     const mediaType = (Xml.attribute(element, "media-type") ?? "unknown").trim().toLowerCase();
     if (mediaType === PACKAGE_MEDIA_TYPE) rootfiles.push(resolveRootfile(fullPath));
   }
-  return Option.some<ReadonlyArray<string>>(rootfiles);
+  return Option.some<ContainerLinks>({ rootfiles, mapping });
 });
 
-export const check = Effect.fn("OcfChecker.check")(function* (target: string) {
+export const check = Effect.fn("OcfChecker.check")(function* (
+  target: string,
+  profile: Profiles.Profile = "default",
+) {
   const report = yield* Report.Report;
   const path = yield* Path.Path;
   const at = Report.location(path.basename(target));
@@ -246,49 +270,92 @@ export const check = Effect.fn("OcfChecker.check")(function* (target: string) {
   yield* checkStructure(container, at);
   const formatName = yield* checkMimetype(container, at);
   const hadFatal = (yield* report.messages).some((message) => message.severity === "FATAL");
-  const rootfiles = yield* checkContainerFile(container, at, hadFatal);
-  if (Option.isNone(rootfiles)) return Option.none<OcfResult>();
+  const links = yield* checkContainerFile(container, at, hadFatal);
+  if (Option.isNone(links)) return Option.none<OcfResult>();
+  const rootfiles = links.value.rootfiles;
 
   const containerLocation = Report.location(CONTAINER_FILE);
-  if (rootfiles.value.length === 0) {
+  if (rootfiles.length === 0) {
     yield* report.message("RSC-003", containerLocation);
     return Option.none<OcfResult>();
   }
-  const packageDocuments: Array<PackageDocument> = [];
-  for (const [index, rootfile] of rootfiles.value.entries()) {
+  const peeked: Array<{
+    readonly path: string;
+    readonly version: "2" | "3";
+    readonly types: ReadonlySet<string>;
+  }> = [];
+  for (const [index, rootfile] of rootfiles.entries()) {
     if (!container.files.includes(rootfile)) {
       yield* report.message("OPF-002", containerLocation, rootfile);
       return Option.none<OcfResult>();
     }
-    const version = yield* peekVersion(container, rootfile);
-    if (Result.isFailure(version)) {
-      yield* report.message("OPF-001", Report.location(rootfile), version.failure);
+    const peek = yield* peekVersion(container, rootfile);
+    if (Result.isFailure(peek)) {
+      yield* report.message("OPF-001", Report.location(rootfile), peek.failure);
       if (index === 0) return Option.none<OcfResult>();
       continue;
     }
-    packageDocuments.push({ path: rootfile, version: version.success });
+    peeked.push({ path: rootfile, ...peek.success });
   }
 
   // Every declared rendition counts, including ones whose version could not be read.
-  const version = packageDocuments[0]?.version ?? "3";
-  if (rootfiles.value.length > 1) {
+  const first = peeked[0];
+  const version = first?.version ?? "3";
+  // Upstream's checkPublicationProfile: EPUB 2 has no profiles, and in EPUB 3 a known `dc:type`
+  // (of the first package document that has one) overrides the requested profile.
+  const firstTypes = peeked.find((document) => document.types.size > 0)?.types ?? new Set<string>();
+  let effective = profile;
+  if (version === "2") {
+    if (profile !== "default" && first !== undefined)
+      yield* report.message("PKG-023", Report.location(first.path));
+    effective = "default";
+  } else {
+    effective = Profiles.effective(profile, firstTypes);
+    if (effective !== profile && first !== undefined) {
+      const type = Profiles.typeOf(effective);
+      yield* report.message("OPF-064", Report.location(first.path), type, effective.toUpperCase());
+    }
+  }
+  const packageDocuments = peeked.map(({ path, version, types }) => ({
+    path,
+    version,
+    profile: { profile: effective, types },
+  }));
+
+  const multiple = rootfiles.length > 1;
+  if (multiple) {
     if (version === "2") yield* report.message("PKG-013", containerLocation);
-    else if (!container.files.includes("META-INF/metadata.xml"))
-      yield* report.message("RSC-019", at);
+    else {
+      if (!container.files.includes("META-INF/metadata.xml")) yield* report.message("RSC-019", at);
+      const mapping = links.value.mapping;
+      const bytes = mapping === undefined ? Option.none() : yield* readResource(container, mapping);
+      if (mapping !== undefined && Option.isSome(bytes)) {
+        yield* XmlChecker.check(bytes.value, mapping, Schemas.RENDITION_MAPPING);
+      }
+    }
   }
 
-  // Validate META-INF files against their schemas: encryption first, then the others.
+  // Validate META-INF files against their schemas: encryption first, then the others. Upstream
+  // parses `metadata.xml` always, but checks its schemas only for multiple renditions.
+  const metadataSchemas =
+    version === "3" && multiple
+      ? [
+          ...Schemas.METADATA_30,
+          ...(effective === "edupub" ? ["30/edupub/edu-ocf-metadata.sch"] : []),
+        ]
+      : [];
   const metaFiles: ReadonlyArray<readonly [string, ReadonlyArray<string>]> =
     version === "2"
       ? [
           ["META-INF/encryption.xml", Schemas.ENCRYPTION_20],
           [CONTAINER_FILE, Schemas.CONTAINER_20],
+          ["META-INF/metadata.xml", metadataSchemas],
           ["META-INF/signatures.xml", Schemas.SIGNATURES_20],
         ]
       : [
           ["META-INF/encryption.xml", Schemas.ENCRYPTION_30],
           [CONTAINER_FILE, Schemas.CONTAINER_30],
-          ["META-INF/metadata.xml", Schemas.METADATA_30],
+          ["META-INF/metadata.xml", metadataSchemas],
           ["META-INF/signatures.xml", Schemas.SIGNATURES_30],
         ];
   for (const [file, schemas] of metaFiles) {

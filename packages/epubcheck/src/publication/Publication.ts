@@ -4,8 +4,9 @@ import * as Option from "effect/Option";
 import * as ContentChecker from "../content/ContentChecker.ts";
 import type * as Container from "../ocf/Container.ts";
 import * as OcfChecker from "../ocf/OcfChecker.ts";
-import type { ManifestItem, PackageDocument } from "../opf/PackageDocument.ts";
+import type { ManifestItem, PackageDocument, SpineItem } from "../opf/PackageDocument.ts";
 import * as Collect from "../references/Collect.ts";
+import * as Profiles from "../profiles/Profiles.ts";
 import * as ReferenceChecker from "../references/ReferenceChecker.ts";
 import * as Url from "../references/Url.ts";
 import * as Report from "../report/Report.ts";
@@ -40,7 +41,20 @@ const checkImage = Effect.fn("Publication.checkImage")(function* (
 export const checkResources = Effect.fn("Publication.checkResources")(function* (
   container: Container.Container,
   opf: PackageDocument,
+  selection: Profiles.Selection = Profiles.DEFAULT,
 ) {
+  const report = yield* Report.Report;
+  const inIndex = Profiles.indexPaths(opf.collections);
+  // Upstream marks an item non-linear or fixed-layout if any of its itemrefs makes it so; items
+  // outside the spine are non-linear, and the legacy `roll` layout is fixed.
+  const isFixed = (itemref: SpineItem) =>
+    opf.metadata.layout === "roll" ||
+    (opf.metadata.layout === "pre-paginated" &&
+      !itemref.properties.includes("rendition:layout-reflowable")) ||
+    itemref.properties.includes("rendition:layout-pre-paginated");
+  const itemrefsOf = Map.groupBy(opf.spineItems, (itemref) => itemref.idref);
+  const isStructured = (item: ManifestItem) =>
+    itemrefsOf.get(item.id)?.every((itemref) => itemref.linear && !isFixed(itemref)) ?? false;
   const nfc = (path: string) => path.normalize("NFC");
   const byId = new Map(opf.items.map((item) => [item.id, item] as const));
   const ids = new Map<string, ReadonlySet<string>>();
@@ -76,6 +90,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   };
   const references: Array<Collect.Reference> = [];
   let scripts = false;
+  const documents: Array<{ readonly path: string; readonly features: Collect.Features }> = [];
   for (const item of opf.items) {
     // An item for the package document itself is OPF-099, not a content document.
     if (item.path === undefined || item.path === opf.path) continue;
@@ -99,14 +114,43 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       continue;
     }
     if (kind === undefined) continue;
-    const document = yield* ContentChecker.check(bytes.value, item.path, kind, opf.version);
+    const placed = {
+      properties: item.properties,
+      inIndex: inIndex.has(item.path),
+      structured: isStructured(item),
+    };
+    const extraSchemas =
+      opf.version !== "3"
+        ? []
+        : kind === "xhtml"
+          ? Profiles.xhtmlSchemas(selection, placed)
+          : kind === "nav"
+            ? Profiles.navSchemas(selection, placed)
+            : [];
+    // Upstream's Search Key Map checker wants an `.xml` name, as written.
+    if (kind === "skm" && !item.path.endsWith(".xml")) {
+      yield* report.message("OPF-080", Report.location(item.path));
+    }
+    const document = yield* ContentChecker.check(
+      bytes.value,
+      item.path,
+      kind,
+      opf.version,
+      extraSchemas,
+    );
+    if (Option.isSome(document) && kind === "skm") {
+      const keys = Collect.fromSearchKeyMap(document.value, item.path, context);
+      references.push(...keys.references);
+      yield* reportFindings(keys.findings);
+    }
     if (Option.isNone(document)) unparsed.add(nfc(item.path));
-    if (Option.isNone(document) || kind === "mo" || kind === "ncx") continue;
+    if (Option.isNone(document) || kind === "mo" || kind === "ncx" || kind === "skm") continue;
     const collected = Collect.fromDocument(document.value, item.path, context);
     references.push(...collected.references);
     ids.set(nfc(item.path), Collect.ids(document.value));
     yield* reportFindings(collected.findings);
     if (collected.features.scripts) scripts = true;
+    documents.push({ path: item.path, features: collected.features });
     if (opf.version === "3") {
       const { root } = document.value;
       yield* reportFindings(
@@ -120,7 +164,6 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       );
     }
   }
-  const report = yield* Report.Report;
   const itemLocation = (item: ManifestItem) =>
     Report.location(opf.path, item.element.line, item.element.column);
   // Upstream's rule for remote items: only audio, video, Flash and fonts may be remote. A remote
@@ -150,6 +193,33 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
   }
   yield* reportFindings(ReferenceChecker.check(references, publication));
+  if (opf.version === "3") {
+    const dictionaries = new Set(
+      documents.flatMap((document) =>
+        document.features.dictionary === undefined ? [] : [nfc(document.path)],
+      ),
+    );
+    // Each dictionary collection needs an XHTML document with dictionary content.
+    for (const collection of opf.collections) {
+      if (!collection.roles.includes("dictionary")) continue;
+      const found = collection.links.some(
+        ({ path }) =>
+          path !== undefined &&
+          publication.items.get(nfc(path))?.mediaType === "application/xhtml+xml" &&
+          dictionaries.has(nfc(path)),
+      );
+      if (!found) yield* report.message("OPF-078", Report.location(opf.path));
+    }
+    // Upstream's checkSpecifics: dictionary content needs the type, and a dictionary needs content.
+    const first = documents.find((document) => document.features.dictionary !== undefined);
+    const at = first?.features.dictionary;
+    if (first !== undefined && at !== undefined && !selection.types.has("DICTIONARY")) {
+      yield* report.message("OPF-079", Report.location(first.path, at.line, at.column));
+    }
+    if (first === undefined && Profiles.isDictionary(selection)) {
+      yield* report.message("OPF-078", Report.location(opf.path));
+    }
+  }
 });
 
 // A single content document: references need a publication, so only its URLs are checked.
@@ -158,9 +228,19 @@ export const checkDocumentReferences = Effect.fn("Publication.checkDocumentRefer
   path: string,
   kind: ContentChecker.ContentKind,
   version: "2" | "3",
+  profile: Profiles.Profile = "default",
 ) {
-  const document = yield* ContentChecker.check(bytes, path, kind, version);
-  if (Option.isNone(document) || kind === "mo" || kind === "ncx") return;
+  const selection = { ...Profiles.DEFAULT, profile };
+  const extraSchemas =
+    version !== "3"
+      ? []
+      : kind === "xhtml"
+        ? Profiles.xhtmlSchemas(selection, undefined)
+        : kind === "nav"
+          ? Profiles.navSchemas(selection, undefined)
+          : [];
+  const document = yield* ContentChecker.check(bytes, path, kind, version, extraSchemas);
+  if (Option.isNone(document) || kind === "mo" || kind === "ncx" || kind === "skm") return;
   const context: Collect.Context = { version, container: false };
   yield* reportFindings(Collect.fromDocument(document.value, path, context).findings);
 });

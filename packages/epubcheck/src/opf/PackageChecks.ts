@@ -1,10 +1,11 @@
 import { keyedSuggestion, type MessageId } from "../messages/MessageCatalog.ts";
 import * as JavaText from "../util/JavaText.ts";
-import { percentDecode } from "../util/UrlFragment.ts";
+import { parse as parseFragment, percentDecode } from "../util/UrlFragment.ts";
 import * as Xml from "../xml/Xml.ts";
+import * as Url from "../references/Url.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import { checkLanguageTag } from "./LanguageTag.ts";
-import type { ManifestItem, PackageDocument } from "./PackageDocument.ts";
+import type { Collection, ManifestItem, PackageDocument } from "./PackageDocument.ts";
 import * as JavaDigits from "./JavaDigits.ts";
 import * as Vocabularies from "./Vocabularies.ts";
 import * as W3cDate from "./W3cDate.ts";
@@ -278,6 +279,7 @@ const spineChecks = ({ document, opf }: Context) => {
     // Data URLs are reported elsewhere (RSC-029); remote items are checked too.
     if (opf.version === "3" && !/^data:/i.test(item.href)) {
       findings.push(...spineFallbackFinding(item, items));
+      if (item.properties.includes("data-nav")) findings.push(at(item.element, "OPF-077"));
     }
     seen.add(idref);
   }
@@ -550,9 +552,65 @@ const vocabularyChecks = ({ document, opf }: Context) => {
   return findings;
 };
 
+const SEARCH_KEY_MAP = "application/vnd.epub.search-key-map+xml";
+
+// Upstream's checks of the collections defined by EPUB Dictionaries, Indexes and Previews: each
+// resource of a top-level collection, with an index's nested index groups.
+const collectionChecks = ({ opf }: Context) => {
+  const findings: Array<Finding> = [];
+  const byPath = new Map(
+    opf.items.flatMap((item) => (item.path === undefined ? [] : [[item.path, item] as const])),
+  );
+  const resources = (collection: Collection) =>
+    collection.links.map(({ href, path }) => ({
+      // Messages quote the container URL, not the decoded path.
+      name: path === undefined ? href : Url.encodePath(path),
+      href,
+      item: path === undefined ? undefined : byPath.get(path),
+    }));
+  const index = (collection: Collection) => {
+    if (!collection.roles.includes("index") && !collection.roles.includes("index-group")) return;
+    for (const { item } of resources(collection)) {
+      if (item?.mediaType !== "application/xhtml+xml") findings.push(nowhere("OPF-071"));
+    }
+    for (const child of collection.collections) index(child);
+  };
+  for (const collection of opf.collections) {
+    if (collection.roles.includes("dictionary")) {
+      let maps = 0;
+      for (const { name, item } of resources(collection)) {
+        if (item === undefined) findings.push(nowhere("OPF-081", name));
+        else if (item.mediaType === SEARCH_KEY_MAP) {
+          if (maps > 0) findings.push(nowhere("OPF-082"));
+          maps++;
+        } else if (item.mediaType !== "application/xhtml+xml") {
+          findings.push(nowhere("OPF-084", name));
+        }
+      }
+      if (maps === 0) findings.push(nowhere("OPF-083"));
+    }
+    if (collection.roles.includes("index")) index(collection);
+    if (collection.roles.includes("preview")) {
+      for (const { href, item } of resources(collection)) {
+        if (item === undefined || !CONTENT_DOCUMENT_TYPES.has(item.mediaType)) {
+          findings.push(nowhere("OPF-075"));
+          continue;
+        }
+        const hash = href.indexOf("#");
+        const fragment = hash < 0 ? undefined : href.slice(hash + 1);
+        if (fragment !== undefined && parseFragment(fragment, "").scheme === "epubcfi") {
+          findings.push(nowhere("OPF-076"));
+        }
+      }
+    }
+  }
+  return findings;
+};
+
 export const check = (context: Context) => [
   ...(context.opf.version === "3" ? vocabularyChecks(context) : []),
   ...metadataChecks(context),
   ...manifestChecks(context),
   ...spineChecks(context),
+  ...(context.opf.version === "3" ? collectionChecks(context) : []),
 ];

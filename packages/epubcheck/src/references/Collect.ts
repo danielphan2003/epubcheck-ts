@@ -24,7 +24,9 @@ export type ReferenceType =
   // CSS `url()` values outside `@font-face`, and `input` images.
   | "generic"
   | "svg-symbol"
-  | "cite";
+  | "cite"
+  // A Search Key Map's link to dictionary content.
+  | "search-key";
 
 export interface Finding {
   readonly id: MessageId;
@@ -77,6 +79,8 @@ export interface Features {
   readonly mathml: boolean;
   readonly switch: boolean;
   readonly remoteResources: boolean;
+  // Where the first `epub:type="dictionary"` element is.
+  readonly dictionary: { readonly line: number; readonly column: number } | undefined;
   // Content that allows the `index` and `glossary` properties.
   readonly index: boolean;
   readonly glossary: boolean;
@@ -384,6 +388,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
   let mathml = false;
   let hasSwitch = false;
   let remoteResources = false;
+  let dictionary: Features["dictionary"];
   let index = false;
   let glossary = false;
   const remoteStyles: Array<number> = [];
@@ -697,6 +702,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
       if (element.attributes.some((attribute) => EVENT_HANDLERS.has(attribute.local.toLowerCase())))
         scripted = scripts = true;
       const types = (Xml.attribute(element, "type", OPS_NS) ?? "").split(/\s+/);
+      if (types.includes("dictionary")) dictionary ??= start(element);
       if (types.includes("index")) index = true;
       if (types.includes("glossary")) glossary = true;
     }
@@ -772,11 +778,31 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     mathml,
     switch: hasSwitch,
     remoteResources,
+    dictionary,
     index,
     glossary,
     remoteStyles,
   };
   return { references, findings, features };
+};
+
+// A Search Key Map Document links search key groups and matches to dictionary content.
+export const fromSearchKeyMap = (document: Xml.XmlDocument, path: string, context: Context) => {
+  const references: Array<Reference> = [];
+  const findings: Array<Finding> = [];
+  const urls = Url.checker(path, context);
+  for (const element of [document.root, ...Xml.descendants(document.root)]) {
+    const href = Xml.attribute(element, "href");
+    if (element.ns !== OPS_NS || href === undefined) continue;
+    if (element.local !== "search-key-group" && element.local !== "match") continue;
+    const at = { path, line: element.line, column: element.column };
+    const { problems, resolved } = urls.check(href);
+    for (const problem of problems) findings.push({ ...problem, ...at });
+    if (resolved !== undefined) {
+      references.push({ ...resolved, type: "search-key", resource: false, ...at });
+    }
+  }
+  return { references, findings };
 };
 
 // Upstream's palpable content: embedded content, text, and elements that contain either.

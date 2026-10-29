@@ -84,3 +84,7 @@ export const ENCRYPTION_30 = ["30/ocf-encryption-30.rnc", "30/ocf-encryption-30.
 export const SIGNATURES_20 = ["20/rng/signatures.rng"];
 export const SIGNATURES_30 = ["30/ocf-signatures-30.rnc"];
 export const METADATA_30 = ["30/ocf-metadata-30.rnc", "30/ocf-metadata-30.sch"];
+export const RENDITION_MAPPING = [
+  "30/multiple-renditions/mapping.rnc",
+  "30/multiple-renditions/mapping.sch",
+];

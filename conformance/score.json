@@ -1,9 +1,9 @@
 {
   "upstream": "v5.4.0",
-  "passed": 1033,
+  "passed": 1091,
   "total": 1251,
   "expectsMessages": {
-    "passed": 518,
+    "passed": 576,
     "total": 720
   },
   "areas": {
@@ -16,7 +16,7 @@
       "total": 5
     },
     "epub-dictionaries": {
-      "passed": 12,
+      "passed": 34,
       "total": 34
     },
     "epub-distributable-objects": {
@@ -24,23 +24,23 @@
       "total": 2
     },
     "epub-edupub": {
-      "passed": 14,
+      "passed": 29,
       "total": 32
     },
     "epub-indexes": {
-      "passed": 9,
+      "passed": 18,
       "total": 18
     },
     "epub-multiple-renditions": {
-      "passed": 10,
+      "passed": 13,
       "total": 13
     },
     "epub-previews": {
-      "passed": 5,
+      "passed": 10,
       "total": 10
     },
     "epub-region-nav": {
-      "passed": 5,
+      "passed": 8,
       "total": 10
     },
     "epub-scriptable-components": {
@@ -100,7 +100,7 @@
       "total": 79
     },
     "epub3/E-obsolete-features": {
-      "passed": 57,
+      "passed": 58,
       "total": 72
     },
     "epub3/G-media-type-registrations": {

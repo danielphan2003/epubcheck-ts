@@ -5,7 +5,7 @@ import type * as Xml from "../xml/Xml.ts";
 import { preprocess } from "./Preprocess.ts";
 import * as XmlChecker from "../xml/XmlChecker.ts";
 
-export type ContentKind = "xhtml" | "nav" | "svg" | "mo" | "ncx";
+export type ContentKind = "xhtml" | "nav" | "svg" | "mo" | "ncx" | "skm";
 
 // EPUB 2 has no navigation documents or media overlays, so upstream checks neither there.
 export const kindOf = (
@@ -22,6 +22,8 @@ export const kindOf = (
       return version === "3" ? "mo" : undefined;
     case "application/x-dtbncx+xml":
       return "ncx";
+    case "application/vnd.epub.search-key-map+xml":
+      return "skm";
     default:
       return undefined;
   }
@@ -63,6 +65,8 @@ const validation = (kind: ContentKind, version: "2" | "3") => {
       };
     case "ncx":
       return { schemas: ["20/rng/ncx.rng", "20/sch/ncx.sch"], prepare: undefined };
+    case "skm":
+      return { schemas: ["30/dict/search-key-map.rnc"], prepare: undefined };
   }
 };
 
@@ -80,9 +84,11 @@ export const check = Effect.fn("ContentChecker.check")(function* (
   path: string,
   kind: ContentKind,
   version: "2" | "3",
+  // Profile and extension schemas, from Profiles.
+  extraSchemas: ReadonlyArray<string> = [],
 ) {
   const { schemas, prepare } = validation(kind, version);
-  return yield* XmlChecker.check(bytes, path, schemas, {
+  return yield* XmlChecker.check(bytes, path, [...schemas, ...extraSchemas], {
     prepare,
     isXhtml: kind === "xhtml" || kind === "nav",
     informative: version === "3" && (kind === "xhtml" || kind === "nav" || kind === "svg"),

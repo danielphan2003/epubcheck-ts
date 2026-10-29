@@ -33,14 +33,34 @@ export interface Metadata {
   readonly language: string | undefined;
   readonly date: string | undefined;
   readonly modified: string | undefined;
+  readonly types: ReadonlyArray<string>;
+  // The global `rendition:layout` value.
+  readonly layout: string | undefined;
+}
+
+// A `collection` element (EPUB 3): its roles, its own links, and the collections nested in it.
+export interface Collection {
+  readonly roles: ReadonlyArray<string>;
+  // Each link's `href`, and the container path it points to, if any.
+  readonly links: ReadonlyArray<{ readonly href: string; readonly path: string | undefined }>;
+  readonly collections: ReadonlyArray<Collection>;
+}
+
+export interface SpineItem {
+  readonly idref: string;
+  readonly linear: boolean;
+  readonly properties: ReadonlyArray<string>;
 }
 
 export interface PackageDocument {
   readonly path: string;
   readonly version: "2" | "3";
   readonly items: ReadonlyArray<ManifestItem>;
+  // Item IDs in spine order; `spineItems` has each itemref's details.
   readonly spine: ReadonlyArray<string>;
+  readonly spineItems: ReadonlyArray<SpineItem>;
   readonly metadata: Metadata;
+  readonly collections: ReadonlyArray<Collection>;
 }
 
 const BASE = "https://container.invalid/";
@@ -81,10 +101,43 @@ export const read = (
         element,
       };
     });
-  const itemrefs = (spine === undefined ? [] : Xml.childElements(spine))
+  const spineItems = (spine === undefined ? [] : Xml.childElements(spine))
     .filter((element) => element.ns === OPF_NS && element.local === "itemref")
-    .map((element) => (Xml.attribute(element, "idref") ?? "").trim());
-  return { path, version, items, spine: itemrefs, metadata: readMetadata(document, children) };
+    .map((element) => ({
+      idref: (Xml.attribute(element, "idref") ?? "").trim(),
+      linear: (Xml.attribute(element, "linear") ?? "").trim() !== "no",
+      properties: (Xml.attribute(element, "properties") ?? "")
+        .split(/\s+/)
+        .filter((token) => token !== ""),
+    }));
+  const itemrefs = spineItems.map((itemref) => itemref.idref);
+  // Annotated, as it is recursive.
+  const readCollection = (element: Xml.XmlElement): Collection => ({
+    roles: (Xml.attribute(element, "role") ?? "").split(/\s+/).filter((role) => role !== ""),
+    links: Xml.childElements(element)
+      .filter((link) => link.ns === OPF_NS && link.local === "link")
+      .map((link) => {
+        const href = (Xml.attribute(link, "href") ?? "").trim();
+        // Fragments name parts of a resource; the resource is what the collection includes.
+        return { href, path: resolve(href.split("#")[0] ?? href, path) };
+      }),
+    collections: Xml.childElements(element)
+      .filter((child) => child.ns === OPF_NS && child.local === "collection")
+      .map(readCollection),
+  });
+  // Top-level collections; nested ones are in their parents.
+  const collections = children
+    .filter((element) => element.local === "collection")
+    .map(readCollection);
+  return {
+    path,
+    version,
+    items,
+    spine: itemrefs,
+    spineItems,
+    metadata: readMetadata(document, children),
+    collections,
+  };
 };
 
 const readMetadata = (
@@ -108,6 +161,12 @@ const readMetadata = (
   const identifier =
     identifiers.find((element) => Xml.attribute(element, "id")?.trim() === uniqueIdentifier) ??
     identifiers[0];
+  const layout = elements.find(
+    (element) =>
+      element.ns === OPF_NS &&
+      element.local === "meta" &&
+      Xml.attribute(element, "property")?.trim() === "rendition:layout",
+  );
   const modified = elements.find(
     (element) =>
       element.ns === OPF_NS &&
@@ -125,6 +184,8 @@ const readMetadata = (
     identifier: identifier === undefined ? undefined : Xml.textContent(identifier).trim(),
     language: values("language")[0],
     date: values("date")[0],
+    types: values("type"),
+    layout: layout === undefined ? undefined : Xml.textContent(layout).trim(),
     modified: modified === undefined ? undefined : Xml.textContent(modified).trim(),
   };
 };

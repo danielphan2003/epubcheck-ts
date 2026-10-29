@@ -1,6 +1,8 @@
 import * as Result from "effect/Result";
 import { SaxesParser } from "saxes";
 
+import * as JavaText from "../util/JavaText.ts";
+
 // A small namespace-aware DOM. Positions follow SAX: the line and 1-based column just past the
 // start tag, which is where upstream's Xerces-based parser locates element events.
 export interface XmlAttribute {
@@ -571,6 +573,8 @@ export const textContent = (element: XmlElement) => {
 export interface PackagePeek {
   readonly root: string | undefined;
   readonly version: string | undefined;
+  // The `dc:type` values in `metadata`, trimmed as Java trims.
+  readonly types: ReadonlyArray<string>;
   readonly error: XmlError | undefined;
 }
 
@@ -582,13 +586,30 @@ export const peekPackage = (source: string): PackagePeek => {
   let version: string | undefined;
   let error: XmlError | undefined;
   let done = false;
+  const types: Array<string> = [];
+  let type: string | undefined;
+  const isType = (tag: { readonly local: string; readonly uri: string }) =>
+    tag.local === "type" && tag.uri === "http://purl.org/dc/elements/1.1/";
   parser.on("opentag", (tag) => {
-    if (done || root !== undefined) return;
+    if (done) return;
+    if (isType(tag)) type = "";
+    if (root !== undefined) return;
     root = tag.local;
     version = tag.local === "package" ? tag.attributes.version?.value : undefined;
   });
+  const append = (text: string) => {
+    if (!done && type !== undefined) type += text;
+  };
+  parser.on("text", append);
+  parser.on("cdata", append);
   parser.on("closetag", (tag) => {
+    if (done) return;
     if (tag.local === "metadata" || tag.local === "package") done = true;
+    else if (isType(tag) && type !== undefined) {
+      const trimmed = JavaText.trim(type);
+      if (trimmed !== "") types.push(trimmed);
+      type = undefined;
+    }
   });
   parser.on("error", (cause) => {
     if (done || error !== undefined) return;
@@ -599,5 +620,5 @@ export const peekPackage = (source: string): PackagePeek => {
     };
   });
   parser.write(source).close();
-  return { root, version, error };
+  return { root, version, types, error };
 };

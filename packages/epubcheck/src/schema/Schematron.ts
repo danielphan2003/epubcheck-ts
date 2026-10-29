@@ -150,6 +150,9 @@ const rewrite = (expression: string, lets: Readonly<Record<string, unknown>> = {
       .replace(/(?<![\w:-])current\(\s*\)/g, `Q{${EXTENSIONS_NS}}current()`)
       .replace(/(?<![\w:-])resolve-uri\(/g, `Q{${EXTENSIONS_NS}}resolve-uri(`)
       .replace(/(?<![\w:-])matches\(/g, `Q{${EXTENSIONS_NS}}matches(`)
+      // Upstream's processor takes the first text node here, as XPath 1.0 would; XPath 2.0
+      // rejects a sequence of several.
+      .replace(/(?<![\w:-])normalize-space\(text\(\)\)/g, "normalize-space(text()[1])")
       .replace(
         /(?<![\w:}-])normalize-space\(\s*\)/g,
         `Q{${EXTENSIONS_NS}}normalize-space(string(.))`,
@@ -586,8 +589,32 @@ export const validate = (schema: SchematronSchema, source: Xml.XmlDocument, base
         .join(""),
     );
 
+  // Document order, with attributes right after their element.
+  const order = new Map<slimdom.Node, number>();
+  const pending: Array<slimdom.Node> = [built.document];
+  while (pending.length > 0) {
+    const node = pending.pop();
+    if (node === undefined) break;
+    order.set(node, order.size);
+    if (node instanceof slimdom.Element) {
+      for (const attribute of node.attributes) order.set(attribute, order.size);
+    }
+    for (let index = node.childNodes.length - 1; index >= 0; index--) {
+      const child = node.childNodes[index];
+      if (child !== undefined) pending.push(child);
+    }
+  }
+
+  // Like Jing, one pass in document order: at each node, every pattern fires the first of its
+  // rules whose context matches.
   const globals = bind(schema.lets, built.document, {});
-  for (const pattern of schema.patterns) {
+  const firings: Array<{
+    readonly node: slimdom.Node;
+    readonly pattern: number;
+    readonly rule: Rule;
+    readonly variables: Record<string, unknown>;
+  }> = [];
+  for (const [index, pattern] of schema.patterns.entries()) {
     const patternVariables = bind(pattern.lets, built.document, globals);
     const handled = new Set<slimdom.Node>();
     for (const rule of pattern.rules) {
@@ -606,32 +633,39 @@ export const validate = (schema: SchematronSchema, source: Xml.XmlDocument, base
       for (const node of nodes) {
         if (handled.has(node)) continue;
         handled.add(node);
-        const variables = bind(rule.lets, node, patternVariables);
-        for (const check of rule.checks) {
-          let outcome: boolean;
-          try {
-            outcome =
-              isUnique(check.test, node, variables) ??
-              isRepeated(check.test, node) ??
-              evaluateXPathToBoolean(
-                rewrite(check.test, variables),
-                node,
-                null,
-                variables,
-                options(node),
-              );
-          } catch {
-            continue;
-          }
-          if (check.kind === "assert" ? outcome : !outcome) continue;
-          const element = locate(node, built, source.root);
-          errors.push({
-            message: message(check.message, node, variables),
-            line: element.line,
-            column: element.column,
-          });
-        }
+        firings.push({ node, pattern: index, rule, variables: patternVariables });
       }
+    }
+  }
+  firings.sort(
+    (left, right) =>
+      (order.get(left.node) ?? 0) - (order.get(right.node) ?? 0) || left.pattern - right.pattern,
+  );
+  for (const { node, rule, variables: patternVariables } of firings) {
+    const variables = bind(rule.lets, node, patternVariables);
+    for (const check of rule.checks) {
+      let outcome: boolean;
+      try {
+        outcome =
+          isUnique(check.test, node, variables) ??
+          isRepeated(check.test, node) ??
+          evaluateXPathToBoolean(
+            rewrite(check.test, variables),
+            node,
+            null,
+            variables,
+            options(node),
+          );
+      } catch {
+        continue;
+      }
+      if (check.kind === "assert" ? outcome : !outcome) continue;
+      const element = locate(node, built, source.root);
+      errors.push({
+        message: message(check.message, node, variables),
+        line: element.line,
+        column: element.column,
+      });
     }
   }
   return errors;
