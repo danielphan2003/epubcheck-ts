@@ -13,7 +13,9 @@
     "conformance:check": "node conformance/src/bin.ts check",
     "conformance:diff": "node conformance/src/bin.ts diff",
     "sync:upstream": "node scripts/sync-upstream.ts",
-    "fetch:epubcheck-jar": "node scripts/fetch-epubcheck-jar.ts"
+    "fetch:epubcheck-jar": "node scripts/fetch-epubcheck-jar.ts",
+    "generate:messages": "node scripts/generate-messages.ts",
+    "generate:schemas": "node scripts/generate-schemas.ts"
   },
   "devDependencies": {
     "@types/node": "catalog:",

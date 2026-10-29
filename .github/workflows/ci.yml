@@ -25,7 +25,7 @@ jobs:
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1.22.0
         with:
-          node-version: "26"
+          node-version-file: package.json
           cache: true
 
       - name: Format
@@ -53,7 +53,7 @@ jobs:
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1.22.0
         with:
-          node-version: "26"
+          node-version-file: package.json
           cache: true
 
       # The ratchet compares against the base branch's committed score. A base without one

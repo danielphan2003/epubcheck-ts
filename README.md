@@ -10,12 +10,13 @@ This is early work. See the conformance score below for what it checks today.
 ## Usage
 
 The library and CLI run from source on Node.js 26 or later. There is no npm release yet.
+`pnpm install` downloads the pinned Node 26 for the repository, and `pnpm exec node` runs it.
 
 ```sh
 pnpm install
-node packages/epubcheck/src/bin.ts book.epub
-node packages/epubcheck/src/bin.ts book.epub --json report.json
-node packages/epubcheck/src/bin.ts package.opf --mode opf -v 3.0
+pnpm exec node packages/epubcheck/src/bin.ts book.epub
+pnpm exec node packages/epubcheck/src/bin.ts book.epub --json report.json
+pnpm exec node packages/epubcheck/src/bin.ts package.opf --mode opf -v 3.0
 ```
 
 The CLI accepts EPUBCheck's options, with one or two dashes: `--mode`, `-v`, `--profile`, `--json`,
