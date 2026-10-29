@@ -90,3 +90,130 @@ describe("Xml.parse errors", () => {
     expect(Result.isFailure(parsed) && parsed.failure).toEqual(error);
   });
 });
+
+describe("Xml.decodeDocument", () => {
+  const bytes = (...values: ReadonlyArray<number | string>) =>
+    new Uint8Array(
+      values.flatMap((value) =>
+        typeof value === "number" ? [value] : [...new TextEncoder().encode(value)],
+      ),
+    );
+  const declaration = (encoding: string) => `<?xml version="1.0" encoding=${encoding}?><r/>`;
+  // Each answer is EPUBCheck 5.4.0's: the encoding it reports (RSC-027, RSC-028) and the error
+  // Xerces raises (RSC-016).
+  it.each([
+    { name: "no declaration", input: bytes("<r/>"), encoding: "UTF-8", error: undefined },
+    {
+      name: "a UTF-8 BOM",
+      input: bytes(0xef, 0xbb, 0xbf, "<r/>"),
+      encoding: "UTF-8",
+      error: undefined,
+    },
+    {
+      name: "a declared Latin-1",
+      input: bytes(declaration('"ISO-8859-1"')),
+      encoding: "ISO-8859-1",
+      error: undefined,
+    },
+    {
+      name: "a lowercase name",
+      input: bytes(declaration("'windows-1252'")),
+      encoding: "WINDOWS-1252",
+      error: undefined,
+    },
+    // Upstream looks for a literal `encoding=` and reads the document as UTF-8 otherwise.
+    {
+      name: "spaces around `=`",
+      input: bytes('<?xml version="1.0" encoding = "ISO-8859-1"?><r/>'),
+      encoding: "UTF-8",
+      error: undefined,
+    },
+    {
+      name: "a name Xerces rejects",
+      input: bytes(declaration('"UTF8"')),
+      encoding: "UTF8",
+      error: 'Invalid encoding name "UTF8".',
+    },
+    // Xerces decodes ASCII strictly, under any of its names.
+    {
+      name: "non-ASCII bytes declared ASCII",
+      input: bytes(declaration('"us-ascii"'), 0xe9),
+      encoding: "US-ASCII",
+      error: 'Byte "233" is not a member of the (7-bit) ASCII character set.',
+    },
+    {
+      name: "an ASCII alias",
+      input: bytes(declaration('"ISO646-US"')),
+      encoding: "ISO646-US",
+      error: undefined,
+    },
+    {
+      name: "single-byte text declaring UTF-16",
+      input: bytes(declaration('"UTF-16"')),
+      encoding: "UTF-16",
+      error: "Content is not allowed in prolog.",
+    },
+    {
+      name: "a UTF-16 BOM",
+      input: bytes(0xff, 0xfe, 0x3c, 0x00, 0x72, 0x00, 0x2f, 0x00, 0x3e, 0x00),
+      encoding: "UTF-16",
+      error: undefined,
+    },
+    // The UTF-16 patterns come first, so this UCS-4 BOM is reported as UTF-16.
+    {
+      name: "FF FE 00 00",
+      input: bytes(0xff, 0xfe, 0x00, 0x00, 0x3c, 0x00),
+      encoding: "UTF-16",
+      error: undefined,
+    },
+    // Without a BOM, UTF-16 is recognized only from `<?`.
+    {
+      name: "BOM-less UTF-16",
+      input: bytes(
+        0x3c,
+        0x00,
+        0x3f,
+        0x00,
+        0x78,
+        0x00,
+        0x6d,
+        0x00,
+        0x6c,
+        0x00,
+        0x3f,
+        0x00,
+        0x3e,
+        0x00,
+        0x3c,
+        0x00,
+        0x72,
+        0x00,
+        0x2f,
+        0x00,
+        0x3e,
+        0x00,
+      ),
+      encoding: "UTF-16",
+      error: undefined,
+    },
+    {
+      name: "BOM-less UTF-16 without a declaration",
+      input: bytes(0x3c, 0x00, 0x72, 0x00, 0x2f, 0x00, 0x3e, 0x00),
+      encoding: "UTF-8",
+      error: undefined,
+    },
+  ])("sniffs $name", ({ input, encoding, error }) => {
+    const decoded = Xml.decodeDocument(input);
+    expect(decoded.encoding).toBe(encoding);
+    expect(decoded.error?.message).toBe(error);
+  });
+
+  it("locates encoding errors just past the declaration", () => {
+    const decoded = Xml.decodeDocument(new TextEncoder().encode(declaration('"foo-bar"')));
+    expect(decoded.error).toEqual({
+      message: 'Invalid encoding name "foo-bar".',
+      line: 1,
+      column: 41,
+    });
+  });
+});

@@ -20,9 +20,7 @@ export const check = Effect.fn("OpfChecker.check")(function* (
     bytes,
     path,
     version === "2" ? Schemas.PACKAGE_20 : Schemas.PACKAGE_30,
-    undefined,
-    false,
-    version,
+    { version },
   );
   if (Option.isNone(document)) return Option.none<PackageDocument.PackageDocument>();
   const opf = PackageDocument.read(document.value, path, version);

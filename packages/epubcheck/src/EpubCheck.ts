@@ -7,9 +7,9 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import type { Severity } from "./messages/MessageCatalog.ts";
-import * as ContentChecker from "./content/ContentChecker.ts";
 import * as OcfChecker from "./ocf/OcfChecker.ts";
 import * as OpfChecker from "./opf/OpfChecker.ts";
+import * as Publication from "./publication/Publication.ts";
 import * as Report from "./report/Report.ts";
 
 // Upstream checker modes: a full publication (packaged or expanded) or a single document.
@@ -91,15 +91,7 @@ const make = Effect.gen(function* () {
         new Set(ocf.value.container.files),
       );
       if (Option.isNone(opfResult)) continue;
-      const opf = opfResult.value;
-      for (const item of opf.items) {
-        const kind = ContentChecker.kindOf(item.mediaType, item.properties, opf.version);
-        // An item for the package document itself is OPF-099, not a content document.
-        if (kind === undefined || item.path === undefined || item.path === opf.path) continue;
-        const content = yield* OcfChecker.readResource(ocf.value.container, item.path);
-        if (Option.isSome(content))
-          yield* ContentChecker.check(content.value, item.path, kind, opf.version);
-      }
+      yield* Publication.checkResources(ocf.value.container, opfResult.value);
     }
   });
 
@@ -115,7 +107,7 @@ const make = Effect.gen(function* () {
     if (Option.isNone(bytes))
       return yield* report.message("PKG-008", Report.location(name), target);
     if (mode === "opf") yield* OpfChecker.check(bytes.value, name, version);
-    else yield* ContentChecker.check(bytes.value, name, mode, version);
+    else yield* Publication.checkDocumentReferences(bytes.value, name, mode, version);
   });
 
   const check = Effect.fn("EpubCheck.check")(function* (request: CheckRequest) {

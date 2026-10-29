@@ -36,13 +36,14 @@ export interface Container {
 }
 
 export const fromZip = (archive: Zip.ZipArchive): Container => {
-  const byName = new Map(archive.entries.map((entry) => [entry.name, entry]));
+  // Look names up NFC-normalized: references may use another normalization form.
+  const byName = new Map(archive.entries.map((entry) => [entry.name.normalize("NFC"), entry]));
   return {
     packaged: true,
     files: archive.entries.filter((entry) => !entry.isDirectory).map((entry) => entry.name),
     directories: archive.entries.filter((entry) => entry.isDirectory).map((entry) => entry.name),
     read: (path) => {
-      const entry = byName.get(path);
+      const entry = byName.get(path.normalize("NFC"));
       if (entry === undefined || entry.isDirectory) return Effect.succeedNone;
       return Zip.read(archive, entry).pipe(
         Effect.asSome,
@@ -80,17 +81,19 @@ export const fromDirectory = Effect.fn("Container.fromDirectory")(function* (roo
     }
     pending.push(...children.reverse());
   }
-  const known = new Set(files);
+  const known = new Map(files.map((file) => [file.normalize("NFC"), file] as const));
   return {
     packaged: false,
     files,
     directories,
-    read: (relative: string) =>
-      known.has(relative)
-        ? fs.readFile(path.join(root, relative)).pipe(
+    read: (relative: string) => {
+      const file = known.get(relative.normalize("NFC"));
+      return file !== undefined
+        ? fs.readFile(path.join(root, file)).pipe(
             Effect.asSome,
             Effect.mapError((cause) => new ResourceReadError({ path: relative, cause })),
           )
-        : Effect.succeedNone,
+        : Effect.succeedNone;
+    },
   } satisfies Container;
 });

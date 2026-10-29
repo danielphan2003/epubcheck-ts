@@ -204,12 +204,14 @@ export interface ParseOptions {
   readonly externalEntities?: (doctype: XmlDoctype) => Readonly<Record<string, string>>;
 }
 
-export const decode = (bytes: Uint8Array) => {
-  if (bytes[0] === 0xfe && bytes[1] === 0xff)
-    return new TextDecoder("utf-16be").decode(bytes.subarray(2));
-  if (bytes[0] === 0xff && bytes[1] === 0xfe)
-    return new TextDecoder("utf-16le").decode(bytes.subarray(2));
-  return new TextDecoder("utf-8").decode(bytes);
+const decodeUcs4 = (bytes: Uint8Array, littleEndian: boolean) => {
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  let text = "";
+  for (let offset = 0; offset + 4 <= bytes.length; offset += 4) {
+    const codepoint = view.getUint32(offset, littleEndian);
+    text += codepoint <= 0x10ffff ? String.fromCodePoint(codepoint) : "\uFFFD";
+  }
+  return text;
 };
 
 // Xerces rejects an entity reference without its `;`, which saxes reports later and less
@@ -256,6 +258,145 @@ const offsetOf = (source: string, line: number, column: number) => {
   }
   return offset + column - 1;
 };
+
+export interface Decoded {
+  // The encoding upstream reports ("UTF-8", "UTF-16", "UCS-4", or the declared name).
+  readonly encoding: string;
+  readonly text: string | undefined;
+  // A well-formedness error the encoding causes in Xerces, which upstream reports as RSC-016.
+  readonly error: XmlError | undefined;
+}
+
+// Encoding names that Xerces 2.12 (upstream's parser) and TextDecoder both accept.
+const XERCES_ENCODINGS = new Set(
+  (
+    "866 ANSI_X3.4-1968 ARABIC ASCII ASMO-708 BIG5 CP819 CP866 CSBIG5 CSEUCKR " +
+    "CSEUCPKDFMTJAPANESE CSGB2312 CSIBM866 CSISO2022JP CSISOLATIN1 CSISOLATIN2 CSISOLATIN3 " +
+    "CSISOLATIN4 CSISOLATIN5 CSISOLATINARABIC CSISOLATINCYRILLIC CSISOLATINGREEK " +
+    "CSISOLATINHEBREW CSKOI8R CSKSC56011987 CSSHIFTJIS CYRILLIC ECMA-114 ECMA-118 ELOT_928 EUC-JP " +
+    "EUC-KR GB18030 GB2312 GBK GREEK GREEK8 HEBREW IBM819 IBM866 ISO-2022-JP ISO-8859-1 " +
+    "ISO-8859-13 ISO-8859-15 ISO-8859-2 ISO-8859-3 ISO-8859-4 ISO-8859-5 ISO-8859-6 ISO-8859-7 " +
+    "ISO-8859-8 ISO-8859-8-I ISO-8859-9 ISO-IR-100 ISO-IR-101 ISO-IR-109 ISO-IR-110 ISO-IR-126 " +
+    "ISO-IR-127 ISO-IR-138 ISO-IR-144 ISO-IR-148 ISO-IR-149 ISO_8859-1 ISO_8859-15 ISO_8859-2 " +
+    "ISO_8859-3 ISO_8859-4 ISO_8859-5 ISO_8859-6 ISO_8859-7 ISO_8859-8 ISO_8859-9 KOI8-R KOREAN " +
+    "KSC_5601 KS_C_5601-1987 KS_C_5601-1989 L1 L2 L3 L4 L5 LATIN1 LATIN2 LATIN3 LATIN4 LATIN5 " +
+    "MS_KANJI SHIFT_JIS TIS-620 US-ASCII UTF-16 UTF-16BE UTF-16LE UTF-8 WINDOWS-1250 " +
+    "WINDOWS-1251 WINDOWS-1252 WINDOWS-1253 WINDOWS-1254 WINDOWS-1255 WINDOWS-1256 " +
+    "WINDOWS-1257 WINDOWS-1258 WINDOWS-31J"
+  ).split(" "),
+);
+
+const ASCII_ENCODINGS = new Set(
+  (
+    "ANSI_X3.4-1968 ANSI_X3.4-1986 ASCII CP367 CSASCII IBM-367 IBM367 ISO-IR-6 ISO646-US " +
+    "ISO_646.IRV:1991 US US-ASCII"
+  ).split(" "),
+);
+
+const declaredEncoding = (prefix: string) =>
+  /^<\?xml[^>]*?\sencoding\s*=\s*["']([^"']+)["']/.exec(prefix)?.[1];
+
+const startsWith = (bytes: Uint8Array, ...magic: ReadonlyArray<number>) =>
+  magic.every((byte, index) => bytes[index] === byte);
+
+// The encoding upstream reports, sniffed from the first 256 bytes the way its
+// XMLEncodingSniffer does: byte patterns, then a literal `encoding="..."` in the leading ASCII.
+const sniff = (bytes: Uint8Array) => {
+  if (bytes.length < 4) return undefined;
+  const utf16 = [
+    [0xfe, 0xff],
+    [0xff, 0xfe],
+    [0x00, 0x3c, 0x00, 0x3f],
+    [0x3c, 0x00, 0x3f, 0x00],
+  ];
+  if (utf16.some((magic) => startsWith(bytes, ...magic))) return "UTF-16";
+  const ucs4 = [
+    [0x00, 0x00, 0xfe, 0xff],
+    [0x00, 0x00, 0xff, 0xfe],
+    [0x00, 0x00, 0x00, 0x3c],
+    [0x00, 0x00, 0x3c, 0x00],
+    [0x00, 0x3c, 0x00, 0x00],
+    [0x3c, 0x00, 0x00, 0x00],
+  ];
+  if (ucs4.some((magic) => startsWith(bytes, ...magic))) return "UCS-4";
+  if (startsWith(bytes, 0xef, 0xbb, 0xbf)) return "UTF-8";
+  if (startsWith(bytes, 0x4c, 0x6f, 0xa7, 0x94)) return "EBCDIC";
+  const head = bytes.subarray(0, 256);
+  const ascii = head.findIndex((byte) => byte === 0 || byte > 0x7f);
+  const header = new TextDecoder("latin1").decode(
+    head.subarray(0, ascii < 0 ? head.length : ascii),
+  );
+  const at = header.indexOf("encoding=");
+  const quote = at < 0 ? undefined : header[at + 9];
+  if (quote !== '"' && quote !== "'") return undefined;
+  const end = header.indexOf(quote, at + 10);
+  return end < 0 ? undefined : header.slice(at + 10, end).toUpperCase();
+};
+
+// Xerces reports encoding errors just past the XML declaration.
+const declarationError = (prefix: string, message: string) => ({
+  text: undefined,
+  error: { message, line: 1, column: prefix.indexOf("?>") < 0 ? 1 : prefix.indexOf("?>") + 3 },
+});
+
+// A UTF-16 document declaring another encoding is not well-formed for Xerces.
+const utf16 = (text: string) => {
+  const declared = declaredEncoding(text);
+  return declared === undefined || declared.toUpperCase().startsWith("UTF-16")
+    ? { text, error: undefined }
+    : declarationError(text, "Content is not allowed in prolog.");
+};
+
+// Upstream decodes UTF-8 itself, and lets Xerces detect any other encoding.
+const xerces = (bytes: Uint8Array) => {
+  const [b0, b1, b2, b3] = bytes;
+  if (b0 === 0xfe && b1 === 0xff)
+    return utf16(new TextDecoder("utf-16be").decode(bytes.subarray(2)));
+  if (b0 === 0xff && b1 === 0xfe)
+    return utf16(new TextDecoder("utf-16le").decode(bytes.subarray(2)));
+  if (startsWith(bytes, 0x00, 0x00, 0xfe, 0xff) || startsWith(bytes, 0x00, 0x00, 0x00, 0x3c)) {
+    return { text: decodeUcs4(bytes.subarray(b2 === 0xfe ? 4 : 0), false), error: undefined };
+  }
+  if (startsWith(bytes, 0x3c, 0x00, 0x00, 0x00)) {
+    return { text: decodeUcs4(bytes, true), error: undefined };
+  }
+  if (b0 === 0x00 && b1 === 0x3c) return utf16(new TextDecoder("utf-16be").decode(bytes));
+  if (b0 === 0x3c && b1 === 0x00 && b3 === 0x00) {
+    return utf16(new TextDecoder("utf-16le").decode(bytes));
+  }
+  const prefix = new TextDecoder("latin1").decode(bytes.subarray(0, 200));
+  const declared = declaredEncoding(prefix);
+  if (declared === undefined) return { text: new TextDecoder().decode(bytes), error: undefined };
+  // Single-byte text cannot be UTF-16, whatever it declares.
+  if (declared.toUpperCase().startsWith("UTF-16")) {
+    return declarationError(prefix, "Content is not allowed in prolog.");
+  }
+  // Xerces decodes ASCII strictly.
+  if (ASCII_ENCODINGS.has(declared.toUpperCase())) {
+    const byte = bytes.find((value) => value > 0x7f);
+    return byte === undefined
+      ? { text: new TextDecoder("latin1").decode(bytes), error: undefined }
+      : declarationError(
+          prefix,
+          `Byte "${byte}" is not a member of the (7-bit) ASCII character set.`,
+        );
+  }
+  if (!XERCES_ENCODINGS.has(declared.toUpperCase())) {
+    return declarationError(prefix, `Invalid encoding name "${declared}".`);
+  }
+  return { text: new TextDecoder(declared).decode(bytes), error: undefined };
+};
+
+export const decodeDocument = (bytes: Uint8Array): Decoded => {
+  const encoding = sniff(bytes) ?? "UTF-8";
+  if (encoding === "UTF-8") {
+    const body = startsWith(bytes, 0xef, 0xbb, 0xbf) ? bytes.subarray(3) : bytes;
+    return { encoding, text: new TextDecoder().decode(body), error: undefined };
+  }
+  return { encoding, ...xerces(bytes) };
+};
+
+export const decode = (bytes: Uint8Array) => decodeDocument(bytes).text ?? "";
 
 export const parse = (source: string, options: ParseOptions = {}) => {
   const parser = new SaxesParser({ xmlns: true, position: true });
