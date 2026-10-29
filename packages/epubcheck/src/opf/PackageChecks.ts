@@ -14,6 +14,27 @@ const XML_NS = "http://www.w3.org/XML/1998/namespace";
 // Container paths resolve against this base, so a URL's origin tells local from remote.
 const CONTAINER = new URL("https://container.invalid/");
 
+// Upstream compares URLs normalized: inside the container without the query, and with the path
+// decoded, in NFC and encoded again.
+const normalizedUrl = (href: string, base: URL) => {
+  const url = URL.parse(href, base);
+  if (url === null) return undefined;
+  if (url.origin === CONTAINER.origin) url.search = "";
+  try {
+    url.pathname = decodeURIComponent(url.pathname).normalize("NFC");
+  } catch {
+    // A malformed escape stays as written.
+  }
+  return url.href;
+};
+
+// The media types upstream checks an item for: a MIME type its parser accepts, which also passes
+// its own pattern (where `+-^` is a range).
+const MIME_TYPE = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+const ITEM_MEDIA_TYPE = /^[a-zA-Z0-9!#$&+-^_]+\/[a-zA-Z0-9!#$&+-^_]+$/;
+const isCheckedMediaType = (mediaType: string) =>
+  MIME_TYPE.test(mediaType) && ITEM_MEDIA_TYPE.test(mediaType);
+
 export interface Finding {
   readonly id: MessageId;
   readonly args: ReadonlyArray<string>;
@@ -99,17 +120,17 @@ const manifestChecks = ({ opf, container }: Context) => {
       ? undefined
       : new Set([...container].map((file) => file.normalize("NFC")));
   const byId = new Map(opf.items.map((item) => [item.id, item] as const));
-  // Upstream identifies items by URL, with the fragment but, inside the container, without the
-  // query. The last item for a URL is the one it keeps and checks; every other one is a duplicate.
+  // Upstream identifies items by normalized URL, fragment included. The last item for a URL is
+  // the one it keeps and checks; every other one is a duplicate. An item without one is skipped.
   const packageUrl = new URL(opf.path, CONTAINER);
-  const urlOf = (item: ManifestItem) => {
-    const url = URL.parse(item.href, packageUrl);
-    if (url?.origin === CONTAINER.origin) url.search = "";
-    return url?.href;
-  };
+  const urlOf = (item: ManifestItem) =>
+    Xml.attribute(item.element, "href") === undefined
+      ? undefined
+      : normalizedUrl(item.href, packageUrl);
   const kept = new Map(opf.items.map((item) => [urlOf(item), item] as const));
   for (const item of opf.items) {
     const url = urlOf(item);
+    if (url === undefined) continue;
     if (kept.get(url) !== item) {
       findings.push(at(item.element, "OPF-074", item.path ?? url ?? item.href));
       continue;
@@ -119,7 +140,8 @@ const manifestChecks = ({ opf, container }: Context) => {
       continue;
     }
     if (opf.version === "3") {
-      if (item.href.includes("#")) findings.push(at(item.element, "OPF-091"));
+      const checked = !isRemote(item.href) && isCheckedMediaType(item.mediaType);
+      if (checked && item.href.includes("#")) findings.push(at(item.element, "OPF-091"));
       for (const property of item.properties) {
         if (!allowedFor(property, item.mediaType))
           findings.push(at(item.element, "OPF-012", property, item.mediaType));
@@ -139,6 +161,11 @@ const manifestChecks = ({ opf, container }: Context) => {
     const fallback = fallbackOf(item);
     if (fallback !== "" && !byId.has(fallback))
       findings.push(at(item.element, "OPF-040", fallback));
+    // Upstream quotes the item's `fallback`, not its `fallback-style`, in OPF-041.
+    const style = Xml.attribute(item.element, "fallback-style");
+    if (opf.version === "2" && style !== undefined && !byId.has(style.trim())) {
+      findings.push(at(item.element, "OPF-041", Xml.attribute(item.element, "fallback") ?? "null"));
+    }
   }
   // Upstream's worklist: an item resolves without a fallback, with a missing one, or through a
   // resolved one, and goes to the back of the queue otherwise. Once a full pass makes no progress,
@@ -223,21 +250,29 @@ const metadataChecks = ({ document, opf, container }: Context) => {
   const uniqueIdentifier = Xml.attribute(root, "unique-identifier");
   if (uniqueIdentifier === undefined || uniqueIdentifier === "") findings.push(at(root, "OPF-048"));
   // Upstream matches each identifier's trimmed `id` against the attribute as written.
-  const unique = dcElements("identifier").find((element) => {
+  const uniques = dcElements("identifier").filter((element) => {
     const id = Xml.attribute(element, "id");
     return id !== undefined && id !== "" && id.trim() === uniqueIdentifier;
   });
+  const unique = uniques[0];
   if (unique === undefined && container !== undefined) {
-    findings.push(nowhere("OPF-030", uniqueIdentifier ?? "null"));
+    findings.push(
+      nowhere(
+        "OPF-030",
+        uniqueIdentifier === undefined || uniqueIdentifier === "" ? "null" : uniqueIdentifier,
+      ),
+    );
   }
-  if (unique !== undefined) {
-    const value = Xml.textContent(unique).trim();
-    const scheme = Xml.attribute(unique, "scheme", OPF_NS)?.toLowerCase();
+  for (const identifier of uniques) {
+    // Upstream skips an identifier without character data.
+    if (!identifier.children.some((child) => child.kind === "text")) continue;
+    const value = Xml.textContent(identifier).trim();
+    const scheme = Xml.attribute(identifier, "scheme", OPF_NS)?.toLowerCase();
     if (
       (value.startsWith("urn:uuid:") || scheme === "uuid") &&
       !isJavaUuid(value.replaceAll("urn:uuid:", ""))
     ) {
-      findings.push(atEnd(unique, "OPF-085", value));
+      findings.push(atEnd(identifier, "OPF-085", value));
     }
   }
 
@@ -271,6 +306,7 @@ const metadataChecks = ({ document, opf, container }: Context) => {
 const hasRefinesCycle = (metadata: Xml.XmlElement) => {
   const refines = new Map<string, string>();
   for (const element of opfChildren(metadata, "meta")) {
+    if (Xml.attribute(element, "name") !== undefined) continue;
     const id = Xml.attribute(element, "id") ?? "";
     const target = Xml.attribute(element, "refines") ?? "";
     if (id !== "" && target.startsWith("#")) refines.set(id, target.slice(1));
@@ -339,10 +375,15 @@ const vocabularyChecks = ({ document, opf }: Context) => {
   // stops there, and an unparsable URL skips to the language tag.
   const packageUrl = new URL(opf.path, CONTAINER);
   for (const link of opfChildren(metadata, "link")) {
-    const href = Xml.attribute(link, "href") ?? "";
-    const url = URL.parse(href, packageUrl);
+    const href = Xml.attribute(link, "href");
+    const url = href === undefined ? null : URL.parse(href, packageUrl);
     if (url?.protocol === "data:") continue;
-    if (url !== null && url.hash.length > 1 && url.href.split("#")[0] === packageUrl.href) {
+    if (
+      href !== undefined &&
+      url !== null &&
+      url.hash.length > 1 &&
+      normalizedUrl(href.split("#")[0] ?? "", packageUrl) === packageUrl.href
+    ) {
       findings.push(at(link, "OPF-098", href));
       continue;
     }
@@ -356,7 +397,9 @@ const vocabularyChecks = ({ document, opf }: Context) => {
       if (rels.has("alternate") && relCount > 1) findings.push(at(link, "OPF-089"));
       const mediaType = Xml.attribute(link, "media-type");
       if (mediaType === undefined) {
-        if (url.origin === CONTAINER.origin) findings.push(at(link, "OPF-093"));
+        // `file:` URLs count as local, as in upstream's isSameOrigin.
+        if (url.origin === CONTAINER.origin || url.protocol === "file:")
+          findings.push(at(link, "OPF-093"));
         else if (rels.has("record") || rels.has("voicing"))
           findings.push(at(link, "OPF-094", Xml.attribute(link, "rel") ?? ""));
       } else if (rels.has("voicing") && !mediaType.startsWith("audio/")) {

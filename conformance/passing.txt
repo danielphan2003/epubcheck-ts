@@ -84,6 +84,7 @@ epub2/opf-package-document.feature:103 an identifier with a "uuid" scheme should
 epub2/opf-package-document.feature:108 report an empty 'dc:date' metadata
 epub2/opf-package-document.feature:113 report a 'dc:date' value not conforming to ISO-8601
 epub2/opf-package-document.feature:143 Verify conforming fallbacks
+epub2/opf-package-document.feature:147 Report a 'fallback-style' attribute pointing to a non-existing ID
 epub2/opf-package-document.feature:159 Report a spine with only non-linear resources
 epub2/opf-package-document.feature:164 Report a spine with no 'toc' attribute
 epub2/opf-package-document.feature:17 the minimal OPF document is reported as valid

@@ -180,7 +180,12 @@ const KNOWN_BY_URI = new Map<string, Reserved>([
     {
       uri: "http://idpf.org/epub/vocab/sc/#",
       deprecated: false,
-      terms: (context) => (context === "meta" ? SCRIPTED : context === "item" ? none() : undefined),
+      terms: (context) =>
+        context === "meta" || context === "scheme"
+          ? SCRIPTED
+          : context === "itemref"
+            ? undefined
+            : none(),
     },
   ],
 ]);
@@ -217,12 +222,18 @@ const STATES: Readonly<
 // java.net.URI's syntax, approximately: a scheme needs a scheme-specific part, escapes need two
 // hex digits, and quotes, angle brackets, braces, pipes, carets and backslashes are illegal.
 const isJavaUri = (value: string) => {
-  if (/[\u0000-\u0020"<>\\^`{|}]|%(?![0-9A-Fa-f]{2})/.test(value)) return false;
+  if (/[\u0000-\u0020\u007f"<>\\^`{|}]|%(?![0-9A-Fa-f]{2})/.test(value)) return false;
   if (value.split("#").length > 2) return false;
+  // Brackets only enclose an IP literal host.
+  const host = /^([A-Za-z][A-Za-z0-9+.-]*:\/\/(?:[^/?#@]*@)?)\[[0-9A-Fa-f:.]+\]/;
+  if (/[[\]]/.test(value.replace(host, "$1"))) return false;
   const delimiter = value.search(/[:/?#]/);
   if (delimiter < 0 || value[delimiter] !== ":") return true;
+  const rest = value.slice(delimiter + 1);
   return (
-    /^[A-Za-z][A-Za-z0-9+.-]*$/.test(value.slice(0, delimiter)) && delimiter < value.length - 1
+    /^[A-Za-z][A-Za-z0-9+.-]*$/.test(value.slice(0, delimiter)) &&
+    rest !== "" &&
+    !rest.startsWith("#")
   );
 };
 
@@ -325,7 +336,8 @@ export const parseProperties = (
   const properties: Array<Property> = [];
   const problems: Array<Problem> = [];
   if (value === undefined) return { properties, problems };
-  const tokens = value.split(/\s+/).filter((token) => token !== "");
+  // Java splits on ASCII whitespace only; NBSP belongs to a token.
+  const tokens = value.split(/[ \t\n\v\f\r]+/).filter((token) => token !== "");
   if (!isList && tokens.length > 1)
     return { properties, problems: [{ id: "OPF-025" as const, args: [value] }] };
   for (const token of tokens) {

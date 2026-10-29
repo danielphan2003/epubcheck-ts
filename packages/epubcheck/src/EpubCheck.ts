@@ -94,7 +94,8 @@ const make = Effect.gen(function* () {
       const opf = opfResult.value;
       for (const item of opf.items) {
         const kind = ContentChecker.kindOf(item.mediaType, item.properties, opf.version);
-        if (kind === undefined || item.path === undefined) continue;
+        // An item for the package document itself is OPF-099, not a content document.
+        if (kind === undefined || item.path === undefined || item.path === opf.path) continue;
         const content = yield* OcfChecker.readResource(ocf.value.container, item.path);
         if (Option.isSome(content))
           yield* ContentChecker.check(content.value, item.path, kind, opf.version);

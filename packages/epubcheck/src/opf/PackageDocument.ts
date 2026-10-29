@@ -52,7 +52,7 @@ export const read = (
         path: href === "" ? undefined : resolve(href, path),
         mediaType: (Xml.attribute(element, "media-type") ?? "").trim(),
         properties: (Xml.attribute(element, "properties") ?? "")
-          .split(/\s+/)
+          .split(/[ \t\n\v\f\r]+/)
           .filter((token) => token !== ""),
         element,
       };
