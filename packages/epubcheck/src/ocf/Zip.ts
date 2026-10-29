@@ -44,6 +44,10 @@ export class ZipEntryError extends Schema.TaggedError<ZipEntryError>()("ZipEntry
 
 export interface ZipEntry {
   readonly name: string;
+  // The MS-DOS modification time, and the Unix one an extended timestamp field records, if any.
+  readonly dosTime: number;
+  readonly dosDate: number;
+  readonly unixTime: number | undefined;
   readonly isDirectory: boolean;
   readonly method: number;
   readonly compressedSize: number;
@@ -106,6 +110,23 @@ const locateDirectory = (view: DataView, end: number): Directory | undefined => 
 };
 
 // The ZIP64 extended-information extra field replaces size and offset fields that overflowed.
+const EXTENDED_TIMESTAMP = 0x5455;
+
+// The modification time of an extended timestamp field, in seconds since the epoch.
+const extendedTimestamp = (view: DataView, extraStart: number, extraLength: number) => {
+  let cursor = extraStart;
+  const end = extraStart + extraLength;
+  while (cursor + 4 <= end) {
+    const id = view.getUint16(cursor, true);
+    const length = view.getUint16(cursor + 2, true);
+    if (id === EXTENDED_TIMESTAMP && length >= 5 && (view.getUint8(cursor + 4) & 1) !== 0) {
+      return view.getInt32(cursor + 5, true);
+    }
+    cursor += 4 + length;
+  }
+  return undefined;
+};
+
 const zip64Values = (
   view: DataView,
   extraStart: number,
@@ -177,6 +198,9 @@ export const parse = Effect.fn("Zip.parse")(function* (bytes: Uint8Array) {
     ).map((value, position) => value ?? recorded[position] ?? 0);
     entries.push({
       name,
+      dosTime: view.getUint16(offset + 12, true),
+      dosDate: view.getUint16(offset + 14, true),
+      unixTime: extendedTimestamp(view, offset + 46 + nameLength, extraLength),
       isDirectory: name.endsWith("/"),
       method,
       compressedSize: compressedSize ?? 0,

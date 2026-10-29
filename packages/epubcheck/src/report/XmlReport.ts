@@ -86,7 +86,7 @@ const property = (indent: string, name: string, type: string, value: string) =>
 
 export const renderJhove = (result: CheckResult, options: ReportOptions) => {
   const metadata = result.publication?.metadata;
-  const created = Dates.utcIso(options.checkedAt);
+  const created = result.created;
   const messages = entries(result, options).map((entry) => {
     const id = MessageCatalog.displayId(entry.message.id);
     return `         <message id="${id}" severity="${entry.label.level}">${escapeText(
@@ -97,7 +97,7 @@ export const renderJhove = (result: CheckResult, options: ReportOptions) => {
     metadata?.identifier === undefined
       ? []
       : [property("               ", "Identifier", "String", metadata.identifier)],
-    [property("               ", "CreationDate", "Date", created)],
+    created === undefined ? [] : [property("               ", "CreationDate", "Date", created)],
     metadata?.modified === undefined
       ? []
       : [property("               ", "ModDate", "Date", metadata.modified)],
@@ -136,7 +136,7 @@ export const renderJhove = (result: CheckResult, options: ReportOptions) => {
     '        xsi:schemaLocation="http://schema.openpreservation.org/ois/xml/ns/jhove https://schema.openpreservation.org/ois/xml/xsd/jhove/jhove.xsd">',
     `   <date>${Dates.localIso(options.checkedAt)}</date>`,
     `   <repInfo uri="${escape(options.uri)}">`,
-    `      <created>${created}</created>`,
+    ...(created === undefined ? [] : [`      <created>${created}</created>`]),
     ...(metadata?.modified === undefined
       ? []
       : [`      <lastModified>${escapeText(metadata.modified)}</lastModified>`]),
@@ -163,16 +163,20 @@ export const renderXmp = (result: CheckResult, options: ReportOptions) => {
       ? ""
       : `;version=${epubVersionLabel(result.publication.version)}`;
   const attributes = [
+    // Upstream's serializer writes namespace declarations, then attributes, alphabetically.
     'xmlns:dc="http://purl.org/dc/elements/1.1/"',
+    'xmlns:extended-properties="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties/"',
     'xmlns:premis="http://www.loc.gov/premis/rdf/v1#"',
+    'xmlns:stFnt="http://ns.adobe.com/xap/1.0/sType/Font#"',
     'xmlns:xmp="http://ns.adobe.com/xap/1.0/"',
+    'xmlns:xmpTPg="http://ns.adobe.com/xap/1.0/t/pg/"',
     `dc:format="application/epub+zip${version}"`,
     ...(metadata?.identifier === undefined
       ? []
       : [`dc:identifier="${escape(metadata.identifier)}"`]),
     ...(metadata?.language === undefined ? [] : [`dc:language="${escape(metadata.language)}"`]),
     'rdf:about=""',
-    ...(metadata?.modified === undefined ? [] : [`xmp:CreateDate="${escape(metadata.modified)}"`]),
+    ...(result.created === undefined ? [] : [`xmp:CreateDate="${escape(result.created)}"`]),
   ];
   const outcomes = Groups.group(result.messages, options.maxOfEachMessage).flatMap((group) => [
     '                  <rdf:li rdf:parseType="Resource">',

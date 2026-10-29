@@ -60,6 +60,8 @@ export interface CheckResult {
   readonly mode: CheckMode;
   // What the package document declares, when the publication's version could be read.
   readonly publication?: PublicationInfo | undefined;
+  // When the container was made, as upstream's XML reports state it.
+  readonly created?: string | undefined;
   readonly messages: ReadonlyArray<Report.Message>;
 }
 
@@ -101,10 +103,11 @@ const make = Effect.gen(function* () {
     const exists = yield* fs.exists(target).pipe(Effect.orElseSucceed(() => false));
     if (!exists) {
       yield* report.message("PKG-018", Report.location(path.basename(target)));
-      return undefined;
+      return { publication: undefined, created: undefined };
     }
     const ocf = yield* OcfChecker.check(target);
-    if (Option.isNone(ocf)) return undefined;
+    if (Option.isNone(ocf)) return { publication: undefined, created: undefined };
+    const { created } = ocf.value.container;
     let metadata: PackageDocument.Metadata | undefined;
     for (const packageDocument of ocf.value.packageDocuments) {
       const bytes = yield* OcfChecker.readResource(ocf.value.container, packageDocument.path);
@@ -120,9 +123,11 @@ const make = Effect.gen(function* () {
       yield* Publication.checkResources(ocf.value.container, opfResult.value);
     }
     const first = ocf.value.packageDocuments[0];
-    return first === undefined
-      ? undefined
-      : ({ version: first.version, metadata } satisfies PublicationInfo);
+    const publication =
+      first === undefined
+        ? undefined
+        : ({ version: first.version, metadata } satisfies PublicationInfo);
+    return { publication, created };
   });
 
   // Single-document modes check one file outside any publication, as upstream's `--mode`.
@@ -156,8 +161,10 @@ const make = Effect.gen(function* () {
     const run =
       mode === "epub"
         ? checkPublication(target)
-        : checkDocument(target, mode, request.version ?? "3").pipe(Effect.as(undefined));
-    const publication = yield* run.pipe(
+        : checkDocument(target, mode, request.version ?? "3").pipe(
+            Effect.as({ publication: undefined, created: undefined }),
+          );
+    const { publication, created } = yield* run.pipe(
       Effect.provideService(Report.Report, report),
       Effect.provide(platform),
     );
@@ -165,6 +172,7 @@ const make = Effect.gen(function* () {
       path: target,
       mode,
       publication,
+      created,
       messages: yield* report.messages,
     } satisfies CheckResult;
   });

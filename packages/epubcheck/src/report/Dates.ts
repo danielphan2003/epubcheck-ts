@@ -21,5 +21,17 @@ export const localIso = (millis: number) => {
   return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}T${pad(parts.hour)}:${pad(parts.minute)}:${pad(parts.second)}${offset === "+00:00" ? "Z" : offset}`;
 };
 
+// Java's SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'"): local time with a literal `Z`.
+export const localWithZ = (millis: number) => {
+  const parts = DateTime.toParts(local(millis));
+  return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}T${pad(parts.hour)}:${pad(parts.minute)}:${pad(parts.second)}Z`;
+};
+
+// Java's FileTime.toString: UTC, with only the fraction of a second it needs.
+export const fileTime = (millis: number) => {
+  const iso = DateTime.formatIso(DateTime.makeUnsafe(millis));
+  return iso.replace(/\.?0+Z$/, "Z");
+};
+
 export const utcIso = (millis: number) =>
   `${DateTime.formatIso(DateTime.makeUnsafe(millis)).slice(0, 19)}Z`;

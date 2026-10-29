@@ -10,6 +10,7 @@ import * as EpubCheck from "../EpubCheck.ts";
 import * as MessageCatalog from "../messages/MessageCatalog.ts";
 import * as Container from "../ocf/Container.ts";
 import * as ZipWriter from "../ocf/ZipWriter.ts";
+import * as Dates from "../report/Dates.ts";
 import * as Groups from "../report/Groups.ts";
 import * as JsonReport from "../report/JsonReport.ts";
 import * as Report from "../report/Report.ts";
@@ -614,7 +615,21 @@ const run = Effect.fn("Cli.run")(function* (
   const finishedAt = yield* Clock.currentTimeMillis;
 
   if (report !== undefined) {
-    const full = { path: absolute, mode: result?.mode ?? "epub", ...result, messages };
+    // An expanded EPUB is dated by the archive upstream builds from its files.
+    const container = path.join(absolute, "META-INF", "container.xml");
+    const built = expanded
+      ? yield* fs.stat(container).pipe(
+          Effect.map((info) => Option.getOrUndefined(info.mtime)),
+          Effect.orElseSucceed(() => undefined),
+        )
+      : undefined;
+    const full = {
+      path: absolute,
+      mode: result?.mode ?? "epub",
+      ...result,
+      ...(built === undefined ? {} : { created: Dates.localWithZ(built.getTime()) }),
+      messages,
+    };
     const rendered =
       report.format === "json"
         ? JsonReport.render(full, {

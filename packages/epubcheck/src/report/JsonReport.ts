@@ -26,9 +26,10 @@ export const locationPath = (result: CheckResult, location: Location, displayPat
   location.path === (result.path.split(/[\\/]/).pop() ?? result.path) ? displayPath : location.path;
 
 export const render = (result: CheckResult, options: ReportOptions) => {
-  const count = (severity: Message["severity"]) =>
-    result.messages.filter((message) => message.severity === severity).length;
   const groups = Groups.group(result.messages, options.maxOfEachMessage).sort(Groups.byIdThenText);
+  // Upstream counts messages as it groups them, by ID and text.
+  const count = (severity: Message["severity"]) =>
+    groups.filter((group) => group.first.severity === severity).length;
   const metadata = result.publication?.metadata;
   return Jackson.stringify({
     messages: groups.map((group) => ({
@@ -64,7 +65,8 @@ export const render = (result: CheckResult, options: ReportOptions) => {
             publisher: metadata?.publisher ?? null,
             title: metadata?.title ?? null,
             creator: metadata?.creators ?? [],
-            date: metadata?.date ?? metadata?.modified ?? null,
+            // Upstream's `date` is the modification date; `dc:date` is not reported.
+            date: metadata?.modified ?? null,
             subject: metadata?.subjects ?? [],
             description: metadata?.description ?? null,
             rights: metadata?.rights ?? null,
