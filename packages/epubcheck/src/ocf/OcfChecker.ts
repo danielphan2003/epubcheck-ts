@@ -336,28 +336,26 @@ export const check = Effect.fn("OcfChecker.check")(function* (
   }
 
   // Validate META-INF files against their schemas: encryption first, then the others. Upstream
-  // validates `metadata.xml` only for multiple renditions.
+  // parses `metadata.xml` always, but checks its schemas only for multiple renditions.
+  const metadataSchemas =
+    version === "3" && multiple
+      ? [
+          ...Schemas.METADATA_30,
+          ...(effective === "edupub" ? ["30/edupub/edu-ocf-metadata.sch"] : []),
+        ]
+      : [];
   const metaFiles: ReadonlyArray<readonly [string, ReadonlyArray<string>]> =
     version === "2"
       ? [
           ["META-INF/encryption.xml", Schemas.ENCRYPTION_20],
           [CONTAINER_FILE, Schemas.CONTAINER_20],
+          ["META-INF/metadata.xml", metadataSchemas],
           ["META-INF/signatures.xml", Schemas.SIGNATURES_20],
         ]
       : [
           ["META-INF/encryption.xml", Schemas.ENCRYPTION_30],
           [CONTAINER_FILE, Schemas.CONTAINER_30],
-          ...(multiple
-            ? [
-                [
-                  "META-INF/metadata.xml",
-                  [
-                    ...Schemas.METADATA_30,
-                    ...(effective === "edupub" ? ["30/edupub/edu-ocf-metadata.sch"] : []),
-                  ],
-                ] as const,
-              ]
-            : []),
+          ["META-INF/metadata.xml", metadataSchemas],
           ["META-INF/signatures.xml", Schemas.SIGNATURES_30],
         ];
   for (const [file, schemas] of metaFiles) {
