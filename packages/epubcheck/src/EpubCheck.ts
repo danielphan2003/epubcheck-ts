@@ -2,11 +2,15 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
 import type { Severity } from "./messages/MessageCatalog.ts";
+import * as ContentChecker from "./content/ContentChecker.ts";
 import * as OcfChecker from "./ocf/OcfChecker.ts";
+import * as OpfChecker from "./opf/OpfChecker.ts";
+import * as PackageDocument from "./opf/PackageDocument.ts";
 import * as Report from "./report/Report.ts";
 
 // Upstream checker modes: a full publication (packaged or expanded) or a single document.
@@ -76,7 +80,45 @@ const make = Effect.gen(function* () {
     if (!exists) {
       return yield* report.message("PKG-018", Report.location(path.basename(target)));
     }
-    yield* OcfChecker.check(target);
+    const ocf = yield* OcfChecker.check(target);
+    if (Option.isNone(ocf)) return;
+    for (const packageDocument of ocf.value.packageDocuments) {
+      const bytes = yield* OcfChecker.readResource(ocf.value.container, packageDocument.path);
+      if (Option.isNone(bytes)) continue;
+      const document = yield* OpfChecker.check(
+        bytes.value,
+        packageDocument.path,
+        packageDocument.version,
+      );
+      if (Option.isNone(document)) continue;
+      const opf = PackageDocument.read(
+        document.value,
+        packageDocument.path,
+        packageDocument.version,
+      );
+      for (const item of opf.items) {
+        const kind = ContentChecker.kindOf(item.mediaType, item.properties, opf.version);
+        if (kind === undefined || item.path === undefined) continue;
+        const content = yield* OcfChecker.readResource(ocf.value.container, item.path);
+        if (Option.isSome(content))
+          yield* ContentChecker.check(content.value, item.path, kind, opf.version);
+      }
+    }
+  });
+
+  // Single-document modes check one file outside any publication, as upstream's `--mode`.
+  const checkDocument = Effect.fn("EpubCheck.checkDocument")(function* (
+    target: string,
+    mode: Exclude<CheckMode, "epub">,
+    version: EpubVersion,
+  ) {
+    const report = yield* Report.Report;
+    const name = path.basename(target);
+    const bytes = yield* fs.readFile(target).pipe(Effect.option);
+    if (Option.isNone(bytes))
+      return yield* report.message("PKG-008", Report.location(name), target);
+    if (mode === "opf") yield* OpfChecker.check(bytes.value, name, version);
+    else yield* ContentChecker.check(bytes.value, name, mode, version);
   });
 
   const check = Effect.fn("EpubCheck.check")(function* (request: CheckRequest) {
@@ -86,12 +128,11 @@ const make = Effect.gen(function* () {
       locale: request.locale,
       reportingLevel: request.reportingLevel,
     });
-    if (mode === "epub") {
-      yield* checkPublication(target).pipe(
-        Effect.provideService(Report.Report, report),
-        Effect.provide(platform),
-      );
-    }
+    const run =
+      mode === "epub"
+        ? checkPublication(target)
+        : checkDocument(target, mode, request.version ?? "3");
+    yield* run.pipe(Effect.provideService(Report.Report, report), Effect.provide(platform));
     return { path: target, mode, messages: yield* report.messages } satisfies CheckResult;
   });
 

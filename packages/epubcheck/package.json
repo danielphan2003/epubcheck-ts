@@ -29,7 +29,9 @@
   "dependencies": {
     "@effect/platform-node": "catalog:",
     "effect": "catalog:",
-    "saxes": "^6.0.0"
+    "fontoxpath": "^3.34.0",
+    "saxes": "^6.0.0",
+    "slimdom": "^4.3.5"
   },
   "devDependencies": {
     "@effect/vitest": "catalog:",
