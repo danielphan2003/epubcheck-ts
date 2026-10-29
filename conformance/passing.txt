@@ -467,6 +467,7 @@ epub3/04-ocf/ocf.feature:235 an SVG image 'xlink:href' referencing a missing res
 epub3/04-ocf/ocf.feature:240 an SVG image with 'xlink:href' and 'href' referencing the same missing resource is reported once
 epub3/04-ocf/ocf.feature:245 an SVG image 'xlink:href' referencing a missing resource but 'href' referencing and existing resource is reported
 epub3/04-ocf/ocf.feature:255 Report a CSS `url` that is not declared in the package document or present in the container
+epub3/04-ocf/ocf.feature:261 Report a CSS `url` error even when preceded by a syntax error
 epub3/04-ocf/ocf.feature:27 Verify a file name containing a `+` character is allowed (issue 188)
 epub3/04-ocf/ocf.feature:270 Report a package metadata link to a missing resource
 epub3/04-ocf/ocf.feature:280 Report an unknown element in the `container.xml` file
@@ -658,11 +659,19 @@ epub3/07-content-documents/content-documents-css.feature:102 Do not check invali
 epub3/07-content-documents/content-documents-css.feature:108 Verify valid CSS font-size declarations
 epub3/07-content-documents/content-documents-css.feature:112 Verify a fragment-only URL does not trigger a "fragment not defined" error
 epub3/07-content-documents/content-documents-css.feature:18 Verify a minimal publication with a stylesheet
+epub3/07-content-documents/content-documents-css.feature:25 Report the use of the CSS 'direction' property
+epub3/07-content-documents/content-documents-css.feature:32 Report the use of the CSS 'unicode-bidi' property
 epub3/07-content-documents/content-documents-css.feature:41 Verify a CSS document encoded in UTF-8 (declared with `@charset`)
+epub3/07-content-documents/content-documents-css.feature:46 Warn about a CSS document encoded in UTF-16 (declared with `@charset`)
+epub3/07-content-documents/content-documents-css.feature:52 Warn about a CSS document encoded in UTF-16 (and no `@charset` declaration)
+epub3/07-content-documents/content-documents-css.feature:58 Report a CSS document with a `@charset` declaration that is not utf-8 or utf-16
 epub3/07-content-documents/content-documents-css.feature:65 Verify that namespace URIs in CSS are not recognized as remote resources (issue 237)
 epub3/07-content-documents/content-documents-css.feature:70 Report an attempt to `@import` a CSS file that declared in the package document but not present in the container
 epub3/07-content-documents/content-documents-css.feature:76 Report an attempt to `@import` a CSS file that is not declared in the manifest but is present in the container
 epub3/07-content-documents/content-documents-css.feature:83 Verify valid CSS Selectors syntax
+epub3/07-content-documents/content-documents-css.feature:87 Report CSS syntax errors
+epub3/07-content-documents/content-documents-css.feature:92 Report an empty `@font-face` declaration
+epub3/07-content-documents/content-documents-css.feature:97 Report a `@font-face` declaration with an empty URL reference
 epub3/07-content-documents/content-documents-fixed-layout.feature:103 Verify that the initial containing block rules are not checked on embedded svg elements
 epub3/07-content-documents/content-documents-fixed-layout.feature:108 Report a fixed-layout SVG without a `viewbox` declaration
 epub3/07-content-documents/content-documents-fixed-layout.feature:114 Report a fixed-layout SVG without a `viewbox` declaration (only `width`/`height` in units)
@@ -803,8 +812,10 @@ epub3/07-content-documents/content-documents-xhtml.feature:601 Report failing sc
 epub3/07-content-documents/content-documents-xhtml.feature:609 Report an "importmap" script with an "src" attribute
 epub3/07-content-documents/content-documents-xhtml.feature:616 Verify non-HTML `source` elements are skipped
 epub3/07-content-documents/content-documents-xhtml.feature:623 Verify use of `style` element in the header
+epub3/07-content-documents/content-documents-xhtml.feature:627 Report `style` element without a `type` declaration
 epub3/07-content-documents/content-documents-xhtml.feature:632 Report `style` element in the body
 epub3/07-content-documents/content-documents-xhtml.feature:640 Verify the `style` attribute is allowed with valid syntax
+epub3/07-content-documents/content-documents-xhtml.feature:644 Report use of `style` attribute with invalid css syntax
 epub3/07-content-documents/content-documents-xhtml.feature:65 Verify versionless HTML `doctype`
 epub3/07-content-documents/content-documents-xhtml.feature:651 Verify that an SVG image can be referenced from `img`, `object` and `iframe` elements
 epub3/07-content-documents/content-documents-xhtml.feature:655 Verify that `svg:switch` doesn't trigger the package document `switch` property check
@@ -1134,12 +1145,14 @@ epub3/E-obsolete-features/outdated-features.feature:358 Report the 'rendition:sp
 epub3/E-obsolete-features/outdated-features.feature:366 Report the 'rendition:spread-landscape' spine override as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:374 Report the 'rendition:spread-none' spine override as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:382 the 'rendition:spread' spine overrides values are mutually exclusive
+epub3/E-obsolete-features/outdated-features.feature:391 Report CSS '-epub' prefixed properties as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:64 Verify duplicating encryption declaration is allowed
 epub3/E-obsolete-features/outdated-features.feature:86 Report a collection element as outdated (USAGE)
 epub3/G-media-type-registrations/media-types-registrations.feature:13 Report when the '.epub' extension is not lower case
 localization/localization.feature:11 The default testing locale is English
 localization/localization.feature:16 The reporting locale can be configured
 localization/localization.feature:22 The reporting locale overrides the default locale
+localization/localization.feature:31 CSS messages are localized
 localization/localization.feature:43 Jing locale is properly reset (after the previous scenario)
 localization/localization.feature:50 Case-conversion is locale-dependent
 reporting/json-report.feature:101 `renditionLayout` "pre-paginated" on item

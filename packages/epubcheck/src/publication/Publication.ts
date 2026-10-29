@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import * as ContentChecker from "../content/ContentChecker.ts";
+import * as CssChecker from "../css/CssChecker.ts";
 import * as ContentRules from "../content/ContentRules.ts";
 import * as EpubType from "../content/EpubType.ts";
 import * as FixedLayout from "../layout/FixedLayout.ts";
@@ -150,7 +151,12 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       continue;
     }
     if (isCss) {
-      const text = new TextDecoder().decode(bytes.value);
+      const text = CssChecker.decode(bytes.value);
+      const { locale } = yield* Report.Report;
+      yield* reportFindings(CssChecker.encodingFindings(bytes.value, item.path));
+      yield* reportFindings(
+        CssChecker.check(text, { path: item.path, line: 1, column: 1 }, locale),
+      );
       styleSheets.push({ path: item.path, css: text });
       const css = Collect.fromCss(text, item.path, context);
       references.push(...css.references);
@@ -220,6 +226,9 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     if (opf.version === "2" && kind === "xhtml") {
       yield* reportFindings(ContentRules.epub2Doctype(document.value, item.path));
     }
+    yield* reportFindings(
+      CssChecker.checkDocument(document.value, item.path, (yield* Report.Report).locale),
+    );
     yield* reportFindings(ContentRules.schemeFindings(document.value, item.path, opf.version));
     if (opf.version === "3") {
       yield* reportFindings(
@@ -427,6 +436,9 @@ export const checkDocumentReferences = Effect.fn("Publication.checkDocumentRefer
   if (version === "2" && kind === "xhtml") {
     yield* reportFindings(ContentRules.epub2Doctype(document.value, path));
   }
+  yield* reportFindings(
+    CssChecker.checkDocument(document.value, path, (yield* Report.Report).locale),
+  );
   yield* reportFindings(ContentRules.schemeFindings(document.value, path, version));
   if (version === "3") {
     yield* reportFindings(

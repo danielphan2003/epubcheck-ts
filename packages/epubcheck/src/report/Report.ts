@@ -57,6 +57,8 @@ export class Report extends Context.Service<
       ...args: ReadonlyArray<string>
     ) => Effect.Effect<void>;
     readonly messages: Effect.Effect<ReadonlyArray<Message>>;
+    // The reporting locale, for checkers that format text of their own (such as CSS errors).
+    readonly locale: string | undefined;
   }
 >()("epubcheck-ts/report/Report") {}
 
@@ -84,7 +86,11 @@ export const make = (options: ReportOptions = {}) =>
       yield* Effect.sync(() => reported.push(entry));
     });
 
-    return Report.of({ message, messages: Effect.sync(() => [...reported]) });
+    return Report.of({
+      message,
+      messages: Effect.sync(() => [...reported]),
+      locale: options.locale,
+    });
   });
 
 export const layer = (options?: ReportOptions) => Layer.effect(Report, make(options));
