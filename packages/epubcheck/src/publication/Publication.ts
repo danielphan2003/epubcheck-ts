@@ -46,6 +46,22 @@ const EPUB_TYPE_MEDIA_TYPES: Partial<Record<ContentChecker.ContentKind, string>>
   mo: "application/smil+xml",
 };
 
+// The references upstream counts as using a publication resource (OPF-097); `iframe`, `object`
+// and `embed` are generic there.
+const RESOURCE_TYPES = new Set<Collect.ReferenceType>([
+  "generic",
+  "stylesheet",
+  "font",
+  "image",
+  "audio",
+  "video",
+  "track",
+  "script",
+  "iframe",
+  "object",
+  "embed",
+]);
+
 // Compares an image's leading bytes with its declared media type and file name.
 const checkImage = Effect.fn("Publication.checkImage")(function* (
   item: ManifestItem,
@@ -376,6 +392,27 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       else if (!referenced.has(Url.remoteKey(href))) {
         yield* report.message(scripts ? "RSC-006b" : "RSC-006", itemLocation(item), name);
       }
+    }
+    // Manifest items nothing loads: upstream counts references to publication resources and the
+    // media overlays of the items its checkItem sees, not hyperlinks or citations.
+    const used = new Set<string>();
+    for (const { type, target } of references) {
+      if (!RESOURCE_TYPES.has(type)) continue;
+      if (target.kind === "local") used.add(target.path);
+      else if (target.kind === "remote") used.add(target.url);
+    }
+    for (const item of PackageChecks.checkedItems(opf)) {
+      const overlay = byId.get(Xml.attribute(item.element, "media-overlay")?.trim() ?? "");
+      if (overlay === undefined) continue;
+      used.add(overlay.path === undefined ? Url.remoteKey(overlay.href) : nfc(overlay.path));
+    }
+    for (const item of opf.items) {
+      const name = item.path === undefined ? Url.remoteKey(item.href) : nfc(item.path);
+      if (used.has(name) || publication.spine.has(item) || item.properties.includes("nav"))
+        continue;
+      if (item.id === opf.toc) continue;
+      const shown = item.path ?? item.href.split("#")[0] ?? item.href;
+      yield* report.message("OPF-097", itemLocation(item), shown);
     }
   }
   // Upstream registers each media overlay its item check sees before any other reference, and
