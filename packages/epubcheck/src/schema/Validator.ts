@@ -422,15 +422,20 @@ export class SchemaValidator {
         );
       }
       const nextNames = possible(p, "element").names;
-      const allowedLater = nextNames.some(
-        (next) => d.startTagOpen(skipElement(p, next), name).t !== "notAllowed",
-      );
-      if (allowedLater) {
+      // Like Jing, resume as if one of the expected elements had come first.
+      const resumes = nextNames
+        .map((next) => d.startTagOpen(skipElement(p, next), name))
+        .filter((resumed) => resumed.t !== "notAllowed");
+      if (resumes.length > 0) {
         report(
           `element ${elementName(element)} not allowed yet${expected(p, scope, false)}`,
           element,
         );
-        return undefined;
+        let resumed: Pattern | undefined;
+        for (const candidate of resumes) {
+          resumed = resumed === undefined ? candidate : b.choice(resumed, candidate);
+        }
+        return resumed;
       }
       report(
         `element ${elementName(element)} not allowed here${expected(p, scope, true)}`,

@@ -66,14 +66,47 @@ const parseDoctype = (raw: string): XmlDoctype => {
   };
 };
 
-const internalEntities = (subset: string | undefined) => {
-  const entities: Record<string, string> = {};
-  if (subset === undefined) return entities;
+export const decodeCharacterReferences = (text: string) =>
+  text.replace(/&#(x[0-9a-fA-F]+|\d+);/g, (reference, code: string) => {
+    const point = code.startsWith("x") ? Number.parseInt(code.slice(1), 16) : Number(code);
+    return point <= 0x10ffff ? String.fromCodePoint(point) : reference;
+  });
+
+const PREDEFINED: Readonly<Record<string, string>> = {
+  lt: "<",
+  gt: ">",
+  amp: "&",
+  apos: "'",
+  quot: '"',
+};
+
+// saxes inserts an entity's text verbatim, so the replacement text is expanded here as Xerces
+// would: character references when declared, then references in the result when used.
+const internalEntities = (subset: string | undefined, known: Readonly<Record<string, string>>) => {
+  const declared: Record<string, string> = {};
+  if (subset === undefined) return declared;
   for (const match of subset.matchAll(/<!ENTITY\s+([^\s%]+)\s+(["'])([\s\S]*?)\2\s*>/g)) {
     const [, name, , value] = match;
-    if (name !== undefined && value !== undefined && !(name in entities)) entities[name] = value;
+    if (name !== undefined && value !== undefined && !(name in declared)) {
+      declared[name] = decodeCharacterReferences(value);
+    }
   }
-  return entities;
+  const expand = (text: string, open: ReadonlySet<string>): string =>
+    text.replace(
+      /&(?:#(x[0-9a-fA-F]+|\d+)|([^\s&;#]+));/g,
+      (reference, code?: string, name?: string) => {
+        if (code !== undefined) return decodeCharacterReferences(reference);
+        if (name === undefined || open.has(name)) return reference;
+        const predefined = PREDEFINED[name];
+        if (predefined !== undefined) return predefined;
+        const value = declared[name];
+        if (value !== undefined) return expand(value, new Set([...open, name]));
+        return known[name] ?? reference;
+      },
+    );
+  return Object.fromEntries(
+    Object.entries(declared).map(([name, value]) => [name, expand(value, new Set([name]))]),
+  );
 };
 
 export interface ParseOptions {
@@ -159,11 +192,8 @@ export const parse = (source: string, options: ParseOptions = {}) => {
   });
   parser.on("doctype", (raw) => {
     doctype = parseDoctype(raw);
-    Object.assign(
-      parser.ENTITIES,
-      options.externalEntities?.(doctype) ?? {},
-      internalEntities(doctype.internalSubset),
-    );
+    const external = options.externalEntities?.(doctype) ?? {};
+    Object.assign(parser.ENTITIES, external, internalEntities(doctype.internalSubset, external));
   });
   parser.on("opentag", (tag) => {
     const element: XmlElement = {

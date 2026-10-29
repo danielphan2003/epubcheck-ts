@@ -27,11 +27,7 @@ const entitiesOf = (doctype: Xml.XmlDoctype, version: "2" | "3" | undefined) => 
     )) {
       const [, name, value] = match;
       if (name === undefined || value === undefined || PREDEFINED.has(name)) continue;
-      entities[name] = value.replace(/&#(x[0-9a-fA-F]+|\d+);/g, (_, code: string) =>
-        String.fromCodePoint(
-          code.startsWith("x") ? Number.parseInt(code.slice(1), 16) : Number(code),
-        ),
-      );
+      entities[name] = Xml.decodeCharacterReferences(value);
     }
     xhtmlEntities = entities;
   }

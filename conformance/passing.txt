@@ -538,6 +538,7 @@ epub3/08-navigation-document/navigation-document.feature:281 Allow a hidden nav 
 epub3/08-navigation-document/navigation-document.feature:286 Report a hidden attribute with a wrong value
 epub3/08-navigation-document/navigation-document.feature:36 Report an empty nav heading
 epub3/08-navigation-document/navigation-document.feature:44 Report a `p` element used as a nav heading
+epub3/08-navigation-document/navigation-document.feature:52 Report a missing list item label
 epub3/08-navigation-document/navigation-document.feature:60 Report an empty list item label
 epub3/08-navigation-document/navigation-document.feature:67 Allow multiple images in a list item label
 epub3/08-navigation-document/navigation-document.feature:73 Report a leaf list item with no link (just a span label)

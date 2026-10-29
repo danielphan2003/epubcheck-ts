@@ -410,6 +410,29 @@ const isUnique = (test: string, node: unknown, variables: Readonly<Record<string
   return value !== undefined && counts.get(value) === 1;
 };
 
+// Upstream's lookup of an item by ID, `/path[normalize-space(@a) = $v]`, scans the path once per
+// context node in fontoxpath; it is answered from an index of the path built once per document.
+const KEYED_LOOKUP = /^(\/[^[\]$()]+)\[normalize-space\(@([\w-]+)\)\s*=\s*\$([\w.-]+)\]$/;
+const keyedLookups = new Map<
+  string,
+  { readonly path: string; readonly attribute: string; readonly variable: string } | undefined
+>();
+
+// Upstream's repeated-itemref check, `normalize-space(./@a) = preceding-sibling::p/normalize-space(@b)`,
+// is quadratic in fontoxpath; it is answered from one pass over the siblings.
+const REPEATED =
+  /^normalize-space\(\.\/@([\w-]+)\)\s*=\s*preceding-sibling::(?:([\w.-]+):)?([\w.-]+)\/normalize-space\(@([\w-]+)\)$/;
+const repetitions = new Map<
+  string,
+  | {
+      readonly attribute: string;
+      readonly prefix: string | undefined;
+      readonly local: string;
+      readonly siblingAttribute: string;
+    }
+  | undefined
+>();
+
 export const validate = (schema: SchematronSchema, source: Xml.XmlDocument, baseUrl: string) => {
   registerExtensions();
   const built = build(source);
@@ -421,18 +444,87 @@ export const validate = (schema: SchematronSchema, source: Xml.XmlDocument, base
     currentContext: { node, base: baseUrl },
   });
 
+  const indexes = new Map<string, Map<string, Array<slimdom.Node>>>();
+  const keyedLookup = (expression: string, variables: Readonly<Record<string, unknown>>) => {
+    if (!keyedLookups.has(expression)) {
+      const [, path, attribute, variable] = KEYED_LOOKUP.exec(expression.trim()) ?? [];
+      keyedLookups.set(
+        expression,
+        path !== undefined && attribute !== undefined && variable !== undefined
+          ? { path, attribute, variable }
+          : undefined,
+      );
+    }
+    const idiom = keyedLookups.get(expression);
+    const value = idiom === undefined ? undefined : variables[idiom.variable];
+    const [key, ...rest] = Array.isArray(value) ? value : [value];
+    if (idiom === undefined || typeof key !== "string" || rest.length > 0) return undefined;
+    const indexKey = `${idiom.path}|${idiom.attribute}`;
+    let index = indexes.get(indexKey);
+    if (index === undefined) {
+      index = new Map<string, Array<slimdom.Node>>();
+      const nodes = evaluateXPathToNodes<slimdom.Node>(
+        idiom.path,
+        built.document,
+        null,
+        {},
+        options(built.document),
+      );
+      for (const node of nodes) {
+        const value = attributeValue(node, idiom.attribute, true) ?? "";
+        index.set(value, [...(index.get(value) ?? []), node]);
+      }
+      indexes.set(indexKey, index);
+    }
+    return index.get(key) ?? [];
+  };
+
+  const answers = new Map<string, WeakMap<slimdom.Node, boolean>>();
+  const isRepeated = (test: string, node: unknown) => {
+    if (!repetitions.has(test)) {
+      const [, attribute, prefix, local, siblingAttribute] = REPEATED.exec(test.trim()) ?? [];
+      repetitions.set(
+        test,
+        attribute !== undefined && local !== undefined && siblingAttribute !== undefined
+          ? { attribute, prefix, local, siblingAttribute }
+          : undefined,
+      );
+    }
+    const idiom = repetitions.get(test);
+    const parent = node instanceof slimdom.Element ? node.parentElement : null;
+    if (idiom === undefined || parent === null || !(node instanceof slimdom.Element)) {
+      return undefined;
+    }
+    const ns = idiom.prefix === undefined ? null : namespaceResolver(idiom.prefix);
+    if (idiom.prefix !== undefined && ns === null) return undefined;
+    const byNode = answers.get(test) ?? new WeakMap<slimdom.Node, boolean>();
+    answers.set(test, byNode);
+    if (!byNode.has(node)) {
+      const seen = new Set<string>();
+      for (const sibling of parent.children) {
+        byNode.set(sibling, seen.has(attributeValue(sibling, idiom.attribute, true) ?? ""));
+        if (sibling.namespaceURI === ns && sibling.localName === idiom.local) {
+          seen.add(attributeValue(sibling, idiom.siblingAttribute, true) ?? "");
+        }
+      }
+    }
+    return byNode.get(node);
+  };
+
   const bind = (lets: ReadonlyArray<Let>, context: unknown, variables: Record<string, unknown>) => {
     const bound = { ...variables };
     for (const binding of lets) {
       try {
-        bound[binding.name] = evaluateXPath(
-          rewrite(binding.value, bound),
-          context,
-          null,
-          bound,
-          evaluateXPath.ALL_RESULTS_TYPE,
-          options(context),
-        );
+        bound[binding.name] =
+          keyedLookup(binding.value, bound) ??
+          evaluateXPath(
+            rewrite(binding.value, bound),
+            context,
+            null,
+            bound,
+            evaluateXPath.ALL_RESULTS_TYPE,
+            options(context),
+          );
       } catch {
         bound[binding.name] = [];
       }
@@ -504,6 +596,7 @@ export const validate = (schema: SchematronSchema, source: Xml.XmlDocument, base
           try {
             outcome =
               isUnique(check.test, node, variables) ??
+              isRepeated(check.test, node) ??
               evaluateXPathToBoolean(
                 rewrite(check.test, variables),
                 node,

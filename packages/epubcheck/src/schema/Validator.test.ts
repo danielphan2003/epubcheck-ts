@@ -10,10 +10,11 @@ import * as XsdRegex from "./XsdRegex.ts";
 const SCHEMA = `
 default namespace = "urn:test"
 datatypes xsd = "http://www.w3.org/2001/XMLSchema-datatypes"
-start = element package { attribute version { "3.0" }, attribute id { xsd:NCName }?, metadata, manifest, spine }
+start = element package { attribute version { "3.0" }, attribute id { xsd:NCName }?, metadata, manifest, spine, guide? }
 metadata = element metadata { element title { xsd:token { minLength = "1" } }+ & element date { text }? }
 manifest = element manifest { element item { attribute href { text } }* }
 spine = element spine { attribute toc { text }, element itemref { empty }+ }
+guide = element guide { (element label { empty } | element span { empty }), element list { empty }? }
 `;
 
 const validate = (instance: string) => {
@@ -96,6 +97,19 @@ describe("SchemaValidator", () => {
         "<metadata><title>T</title><date/><date/></metadata><manifest/><spine toc='x'><itemref/></spine>",
       ),
       errors: ['element "date" not allowed here; expected the element end-tag or element "title"'],
+    },
+    {
+      name: "an element before a missing choice, resuming after the choice",
+      instance: wrap(`${VALID_BODY}<guide><list/></guide>`),
+      errors: ['element "list" not allowed yet; expected element "label" or "span"'],
+    },
+    {
+      name: "an element after the resumed position",
+      instance: wrap(`${VALID_BODY}<guide><list/><label/></guide>`),
+      errors: [
+        'element "list" not allowed yet; expected element "label" or "span"',
+        'element "label" not allowed here; expected the element end-tag',
+      ],
     },
   ])("reports $name", ({ instance, errors }) => {
     expect(validate(instance)).toEqual(errors);
