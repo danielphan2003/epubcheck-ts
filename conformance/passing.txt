@@ -32,6 +32,7 @@ epub-indexes/indexes-publication.feature:44 Verify an index publication
 epub-indexes/indexes-publication.feature:61 Verify a single-file index
 epub-indexes/indexes-publication.feature:76 Verify an index collection
 epub-multiple-renditions/multiple-rendition-publication.feature:18 Verify basic multiple rendition publication
+epub-multiple-renditions/multiple-rendition-publication.feature:25 Report a multiple-rendition publication with no 'metadata.xml' file
 epub-multiple-renditions/multiple-rendition-publication.feature:60 Verify a rendition mapping document with multiple nav elements
 epub-previews/previews-package-document.feature:18 an embedded EPUB preview collection
 epub-previews/previews-publication.feature:18 Verify a preview publication
@@ -44,15 +45,27 @@ epub2/ncx-publication.feature:56 Verify that leading/trailing spaces in an NCX `
 epub2/ocf-publication.feature:102 Verify a minimal packaged EPUB 2.0.1 publication
 epub2/ocf-publication.feature:18 Verify a minimal EPUB 2.0.1 publication
 epub2/ocf-publication.feature:22 Verify a minimal EPUB 2.0.1 publication even when a 3.0 profile is specified
+epub2/ocf-publication.feature:29 Report a file name with spaces
+epub2/ocf-publication.feature:37 Report an empty directory in the OCF structure
+epub2/ocf-publication.feature:45 Report a missing mimetype file
+epub2/ocf-publication.feature:50 Report trailing spaces in the mimetype file
 epub2/ocf-publication.feature:58 Ignore unknown files in the META-INF directory
 epub2/ocf-publication.feature:64 Allow alternative rootfiles in the 'container.xml' file
+epub2/ocf-publication.feature:68 Report a missing 'container.xml' file
+epub2/ocf-publication.feature:73 Report multiple OPF rootfiles in the 'container.xml' file
+epub2/ocf-publication.feature:78 Report a wrong media type on the 'rootfile' element of the 'container.xml' file
+epub2/ocf-publication.feature:83 Report a missing 'full-path' attribute on the rootfile element of the 'container.xml' file
+epub2/ocf-publication.feature:89 Report an empty 'full-path' attribute on the rootfile element of the 'container.xml' file
+epub2/ocf-publication.feature:95 Report a missing OPF document
 epub2/opf-package-document.feature:143 Verify conforming fallbacks
 epub2/opf-package-document.feature:17 the minimal OPF document is reported as valid
 epub2/opf-package-document.feature:174 a valid 'guide' element is allowed
 epub2/opf-package-document.feature:58 Ignore legacy OEB 1.2 Package doctype
 epub2/opf-package-document.feature:81 the unique identifier must not be empty
 epub2/opf-package-document.feature:93 Accet a 'dc:creator' metadata with an 'edc' role
+epub2/opf-publication.feature:159 Report a legacy OEBPS 1.2 publication
 epub2/opf-publication.feature:20 Report when checking an EPUB 2.0.1 explicitly against EPUB 3.x
+epub2/opf-publication.feature:29 Report a missing version attribute
 epub2/opf-publication.feature:39 Verify that the 'clr' MARC code is allowed in the `opf:role` attribute (issue 205)
 epub2/opf-publication.feature:48 Verify that package IDs with leading/trailing spaces are allowed (issue 332)
 epub2/opf-publication.feature:82 Verify that operating system files (`.DS_STORE`, `thumbs.db`) are ignored (issue 256)
@@ -136,16 +149,74 @@ epub3/03-resources/resources.feature:82 Verify PNG images are allowed
 epub3/03-resources/resources.feature:87 Verify WebP images are allowed
 epub3/03-resources/resources.feature:92 Verify AVIF images are allowed
 epub3/03-resources/resources.feature:97 Verify JPEG XL images are allowed
+epub3/04-ocf/filename-checker.feature:15 valid file name 'only-ascii' is accepted
+epub3/04-ocf/filename-checker.feature:16 valid file name 'not-ascii-é' is accepted
+epub3/04-ocf/filename-checker.feature:17 valid file name 'ideograph-䀀' is accepted
+epub3/04-ocf/filename-checker.feature:18 valid file name 'emoji-😊' is accepted
+epub3/04-ocf/filename-checker.feature:19 valid file name 'emoji-tag-sequence-🏴󠁧󠁢󠁥󠁮󠁧󠁿' is accepted
+epub3/04-ocf/filename-checker.feature:27 space (U+0009) is reported as warning
+epub3/04-ocf/filename-checker.feature:28 space (U+000A) is reported as warning
+epub3/04-ocf/filename-checker.feature:29 space (U+000C) is reported as warning
+epub3/04-ocf/filename-checker.feature:30 space (U+000D) is reported as warning
+epub3/04-ocf/filename-checker.feature:31 space (U+0020) is reported as warning
+epub3/04-ocf/filename-checker.feature:32 space (U+2009) is reported as warning
+epub3/04-ocf/filename-checker.feature:34 disallow FULL STOP as the last character
+epub3/04-ocf/filename-checker.feature:38 disallowed characters are reported
+epub3/04-ocf/filename-checker.feature:43 disallowed characters are all reported
+epub3/04-ocf/filename-checker.feature:48 disallowed characters are reported only once
+epub3/04-ocf/filename-checker.feature:60 disallowed character U+0022 is reported
+epub3/04-ocf/filename-checker.feature:61 disallowed character U+002A is reported
+epub3/04-ocf/filename-checker.feature:62 disallowed character U+003A is reported
+epub3/04-ocf/filename-checker.feature:63 disallowed character U+003C is reported
+epub3/04-ocf/filename-checker.feature:64 disallowed character U+003E is reported
+epub3/04-ocf/filename-checker.feature:65 disallowed character U+003F is reported
+epub3/04-ocf/filename-checker.feature:66 disallowed character U+005C is reported
+epub3/04-ocf/filename-checker.feature:67 disallowed character U+007C is reported
+epub3/04-ocf/filename-checker.feature:68 disallowed character U+007F is reported
+epub3/04-ocf/filename-checker.feature:69 disallowed character U+0000 is reported
+epub3/04-ocf/filename-checker.feature:70 disallowed character U+0080 is reported
+epub3/04-ocf/filename-checker.feature:71 disallowed character U+E000 is reported
+epub3/04-ocf/filename-checker.feature:72 disallowed character U+FDD0 is reported
+epub3/04-ocf/filename-checker.feature:73 disallowed character U+FFFD is reported
+epub3/04-ocf/filename-checker.feature:74 disallowed character U+FFFE is reported
+epub3/04-ocf/filename-checker.feature:75 disallowed character U+9FFFE is reported
+epub3/04-ocf/filename-checker.feature:76 disallowed character U+E0001 is reported
+epub3/04-ocf/filename-checker.feature:78 disallowed character U+F0001 is reported
+epub3/04-ocf/filename-checker.feature:79 disallowed character U+100000 is reported
+epub3/04-ocf/filename-checker.feature:81 VERTICAL LINE (|) is not disallowed in EPUB 2.0.1
+epub3/04-ocf/ocf.feature:102 Warn about spaces in file names (full-publication check)
 epub3/04-ocf/ocf.feature:118 Allow valid container URLs in XHTML
 epub3/04-ocf/ocf.feature:123 Allow percent-encoded URLs
 epub3/04-ocf/ocf.feature:27 Verify a file name containing a `+` character is allowed (issue 188)
+epub3/04-ocf/ocf.feature:287 Report a missing 'container.xml' file
+epub3/04-ocf/ocf.feature:293 Report a fatal error when checking an archive that is not an OCF
+epub3/04-ocf/ocf.feature:302 Report a missing OPF document
+epub3/04-ocf/ocf.feature:32 Report a duplicate filename after common case folding
 epub3/04-ocf/ocf.feature:363 Verify a minimal packaged EPUB
+epub3/04-ocf/ocf.feature:368 Report an unreadable ZIP file (empty file)
+epub3/04-ocf/ocf.feature:376 Report an unreadable ZIP file (no end header)
+epub3/04-ocf/ocf.feature:38 Report a duplicate filename after full case folding
+epub3/04-ocf/ocf.feature:383 Report an unreadable ZIP file (image file with an '.epub' extension)
+epub3/04-ocf/ocf.feature:390 Report a duplicate ZIP entry for the same file
 epub3/04-ocf/ocf.feature:396 Verify file names with non-ASCII UTF-8-encoded character are allowed
+epub3/04-ocf/ocf.feature:401 Report file names that are not encoded as UTF-8
 epub3/04-ocf/ocf.feature:407 Verify path names with non-ASCII UTF-8-encoded character are allowed
+epub3/04-ocf/ocf.feature:412 Report file names that are not encoded as UTF-8
+epub3/04-ocf/ocf.feature:421 Report a mimetype file with an incorrect value
+epub3/04-ocf/ocf.feature:428 Report a missing mimetype file
+epub3/04-ocf/ocf.feature:434 Report a missing mimetype file
+epub3/04-ocf/ocf.feature:44 Report a duplicate filename after Unicode canonical normalization (NFC)
+epub3/04-ocf/ocf.feature:440 Report a mimetype file with leading spaces
+epub3/04-ocf/ocf.feature:447 Report a mimetype file with a trailing newline
+epub3/04-ocf/ocf.feature:453 Report a mimetype file with trailing spaces
+epub3/04-ocf/ocf.feature:459 Report when the 'mimetype' entry has an extra field in its ZIP header
 epub3/04-ocf/ocf.feature:50 Allow a duplicate filename after Unicode compatibility normalization (NFKC)
 epub3/04-ocf/ocf.feature:55 Allow Unicode emoji tag set in file name
 epub3/04-ocf/ocf.feature:60 Verify a file name containing a diacritic (ü) can be referred with precomposed or composed characters
+epub3/04-ocf/ocf.feature:65 Report forbidden characters in file names
+epub3/04-ocf/ocf.feature:71 Report forbidden characters in file names even for non-publication resources
 epub3/04-ocf/ocf.feature:77 Allow forbidden characters in remote resource URLs
+epub3/04-ocf/ocf.feature:88 Inform about non-ASCII characters in file names (full-publication check)
 epub3/05-package-document/package-document.feature:111 Verify that three-character language codes are allowed (issue 615)
 epub3/05-package-document/package-document.feature:15 Verify that the Package Document can have any extension
 epub3/05-package-document/package-document.feature:236 'dc:source' valid values are allowed
@@ -162,6 +233,7 @@ epub3/05-package-document/package-document.feature:378 the 'link' 'hreflang' att
 epub3/05-package-document/package-document.feature:395 Allow a link to a resource referenced from the spine
 epub3/05-package-document/package-document.feature:400 Allow a link to a resource embedded in a content document
 epub3/05-package-document/package-document.feature:44 'id' attributes can have leading or trailing space
+epub3/05-package-document/package-document.feature:493 Report a manifest item path with unencoded spaces
 epub3/05-package-document/package-document.feature:537 The 'cover-image' item property is allowed on WebP images
 epub3/05-package-document/package-document.feature:563 Verify content documents are identified as containing mathml
 epub3/05-package-document/package-document.feature:618 Verify that inline CSS does not trigger an unrequired `remote-resources` property error
@@ -369,4 +441,5 @@ epub3/D-vocabularies/package-rendering-vocab.feature:81 A 'rendition:layout-pre-
 epub3/E-obsolete-features/deprecated-features.feature:181 an 'acquire' link can identify the full version of the publication
 epub3/E-obsolete-features/outdated-features.feature:172 Verify an NCX which does not link to all spine items
 epub3/E-obsolete-features/outdated-features.feature:64 Verify duplicating encryption declaration is allowed
+epub3/G-media-type-registrations/media-types-registrations.feature:13 Report when the '.epub' extension is not lower case
 localization/localization.feature:50 Case-conversion is locale-dependent
