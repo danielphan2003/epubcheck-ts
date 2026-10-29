@@ -36,6 +36,14 @@ export interface Container {
   readonly created: string | undefined;
   // None when the container has no such file; a failure when the file exists but cannot be read.
   readonly read: (path: string) => Effect.Effect<Option.Option<Uint8Array>, ResourceReadError>;
+  // How a packaged file is stored in the archive, for reports; undefined for directories.
+  readonly storage: (path: string) => Storage | undefined;
+}
+
+export interface Storage {
+  readonly compressedSize: number;
+  readonly size: number;
+  readonly compressed: boolean;
 }
 
 const pad = (value: number) => String(value).padStart(2, "0");
@@ -64,6 +72,16 @@ export const fromZip = (archive: Zip.ZipArchive): Container => {
         Effect.asSome,
         Effect.mapError((cause) => new ResourceReadError({ path, cause })),
       );
+    },
+    storage: (path) => {
+      const entry = byName.get(path.normalize("NFC"));
+      return entry === undefined
+        ? undefined
+        : {
+            compressedSize: entry.compressedSize,
+            size: entry.size,
+            compressed: entry.method !== 0,
+          };
     },
   };
 };
@@ -117,5 +135,6 @@ export const fromDirectory = Effect.fn("Container.fromDirectory")(function* (roo
           )
         : Effect.succeedNone;
     },
+    storage: () => undefined,
   } satisfies Container;
 });

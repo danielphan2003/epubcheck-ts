@@ -116,6 +116,8 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     readonly features: Collect.Features;
     readonly end: { readonly line: number; readonly column: number };
   }> = [];
+  // Style sheets, for the fonts the reports list.
+  const styleSheets: Array<{ readonly path: string; readonly css: string }> = [];
   for (const item of opf.items) {
     // An item for the package document itself is OPF-099, not a content document.
     if (item.path === undefined || item.path === opf.path) continue;
@@ -141,6 +143,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
     if (isCss) {
       const text = new TextDecoder().decode(bytes.value);
+      styleSheets.push({ path: item.path, css: text });
       const css = Collect.fromCss(text, item.path, context);
       references.push(...css.references);
       yield* reportFindings(css.findings);
@@ -294,7 +297,8 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       }
     }
   }
-  yield* reportFindings(ReferenceChecker.check(references, publication));
+  const result = ReferenceChecker.check(references, publication);
+  yield* reportFindings(result.findings);
   if (opf.version === "3") {
     yield* reportFindings(MediaOverlays.styleFindings(opf.metadata, documents));
     yield* reportFindings(
@@ -335,7 +339,34 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       yield* report.message("OPF-078", Report.location(opf.path));
     }
   }
+  // Fonts declared by `@font-face` rules, embedded or remote, for the reports.
+  const embeddedFonts = new Set<string>();
+  const remoteFonts = new Set<string>();
+  for (const { css } of styleSheets) {
+    for (const face of Collect.fontFaces(css)) {
+      if (face.family === undefined || face.urls.length === 0) continue;
+      if (face.urls.some((url) => /^https?:/i.test(url))) remoteFonts.add(face.family);
+      else embeddedFonts.add(face.family);
+    }
+  }
+  return {
+    scripted: new Set(
+      documents.filter((document) => document.features.scripts).map((document) => document.path),
+    ),
+    targets: result.targets,
+    embeddedFonts: [...embeddedFonts],
+    remoteFonts: [...remoteFonts],
+  } satisfies Resources;
 });
+
+// What the reports need from a checked publication's resources.
+export interface Resources {
+  readonly scripted: ReadonlySet<string>;
+  // What each resource references: container paths and remote URLs.
+  readonly targets: ReadonlyMap<string, ReadonlyArray<string>>;
+  readonly embeddedFonts: ReadonlyArray<string>;
+  readonly remoteFonts: ReadonlyArray<string>;
+}
 
 // A single content document: references need a publication, so only its URLs are checked.
 export const checkDocumentReferences = Effect.fn("Publication.checkDocumentReferences")(function* (

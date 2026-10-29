@@ -492,6 +492,20 @@ export const fromCss = (css: string, path: string, context: Context, offset = 0)
   return { references, findings, remote };
 };
 
+// `@font-face` rules of a style sheet: the font family and the URLs of its sources.
+export const fontFaces = (css: string) =>
+  [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/@font-face\s*\{([^}]*)\}/gi)].map((match) => {
+    const body = match[1] ?? "";
+    const family = /font-family\s*:\s*([^;]+)/i
+      .exec(body)?.[1]
+      ?.trim()
+      .replace(/^(["'])(.*)\1$/, "$2");
+    const urls = [...body.matchAll(/url\(\s*(["']?)([^"')]*?)\1\s*\)/gi)].map(
+      (url) => url[2] ?? "",
+    );
+    return { family, urls };
+  });
+
 // The URLs an SVG element links to: `xlink:href` in EPUB 2, and `href` too in EPUB 3.
 const svgHrefs = (element: Xml.XmlElement, epub3: boolean) => {
   const xlink = Xml.attribute(element, "href", XLINK_NS);

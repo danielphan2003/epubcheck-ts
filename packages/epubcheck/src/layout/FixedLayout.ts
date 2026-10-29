@@ -17,6 +17,35 @@ export const isFixed = (itemref: SpineItem, layouts: ReadonlyArray<string>) =>
     !itemref.properties.includes("rendition:layout-reflowable")) ||
   itemref.properties.includes("rendition:layout-pre-paginated");
 
+// A spine item's `rendition:<name>` value, for the reports: its own override, else the global value.
+const renditionOf = (
+  name: string,
+  properties: ReadonlyArray<string>,
+  global: string | undefined,
+  fallback: string,
+) => {
+  const prefix = `rendition:${name}-`;
+  for (const property of properties) {
+    if (property.startsWith(prefix) && property.length > prefix.length) {
+      return property.slice(prefix.length);
+    }
+  }
+  return global ?? fallback;
+};
+
+export const rendition = (
+  properties: ReadonlyArray<string>,
+  metadata: PackageDocument["metadata"],
+) => {
+  const layout = renditionOf("layout", properties, metadata.layouts[0], "reflowable");
+  return {
+    layout,
+    orientation: renditionOf("orientation", properties, metadata.orientation, "auto"),
+    spread: renditionOf("spread", properties, metadata.spread, "auto"),
+    fixed: layout === "pre-paginated" || layout === "roll",
+  };
+};
+
 // IDs of fixed-layout items: spine items with a fixed itemref, and the direct fallback of each.
 // Upstream's FallbackChainResolver passes the property down one level only, and not into a chain
 // that never resolves because it loops.

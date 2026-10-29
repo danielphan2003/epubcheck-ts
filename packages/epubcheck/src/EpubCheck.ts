@@ -12,6 +12,7 @@ import * as OpfChecker from "./opf/OpfChecker.ts";
 import * as PackageDocument from "./opf/PackageDocument.ts";
 import * as Profiles from "./profiles/Profiles.ts";
 import * as Publication from "./publication/Publication.ts";
+import * as Summary from "./publication/Summary.ts";
 import * as Url from "./references/Url.ts";
 import * as Report from "./report/Report.ts";
 
@@ -55,6 +56,8 @@ export type Override = NonNullable<CheckRequest["overrides"]>[string];
 export interface PublicationInfo {
   readonly version: EpubVersion;
   readonly metadata: PackageDocument.Metadata | undefined;
+  // The first rendition's resources, when its package document could be read.
+  readonly summary: Summary.PublicationSummary | undefined;
 }
 
 export interface CheckResult {
@@ -121,6 +124,7 @@ const make = Effect.gen(function* () {
     // Upstream counts files container.xml declares, manifest items with an ID (the last of each
     // ID) and no fragment, and the files EPUB 3 package metadata links to.
     const declared = new Set(ocf.value.declared.map((file) => file.normalize("NFC")));
+    let summary: Summary.PublicationSummary | undefined;
     for (const packageDocument of ocf.value.packageDocuments) {
       const bytes = yield* OcfChecker.readResource(ocf.value.container, packageDocument.path);
       if (Option.isNone(bytes)) continue;
@@ -139,11 +143,12 @@ const make = Effect.gen(function* () {
           if (link.path !== undefined) declared.add(link.path.normalize("NFC"));
         }
       }
-      yield* Publication.checkResources(
+      const resources = yield* Publication.checkResources(
         ocf.value.container,
         opfResult.value,
         packageDocument.profile,
       );
+      summary ??= yield* Summary.summarize(ocf.value.container, opfResult.value, resources);
     }
     // Container files no package document declares (OCF files aside) are reported as usages.
     for (const file of ocf.value.container.files) {
@@ -164,7 +169,7 @@ const make = Effect.gen(function* () {
     const publication =
       first === undefined
         ? undefined
-        : ({ version: first.version, metadata } satisfies PublicationInfo);
+        : ({ version: first.version, metadata, summary } satisfies PublicationInfo);
     return { publication, created, formatName };
   });
 
