@@ -1,3 +1,5 @@
+import * as Result from "effect/Result";
+
 import type { MessageId } from "../messages/MessageCatalog.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as Xml from "../xml/Xml.ts";
@@ -729,15 +731,17 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     }
   };
 
-  // `<?xml-stylesheet href="..."?>` links a style sheet to an SVG document.
+  // `<?xml-stylesheet href="..."?>` links a style sheet to an SVG document. Saxon's
+  // ProcInstParser reads the pseudo-attributes as an element's attributes, so any XML error voids
+  // the whole declaration.
   for (const instruction of isSvgDocument ? document.processingInstructions : []) {
     if (instruction.target !== "xml-stylesheet") continue;
-    const pseudo = (name: string) =>
-      new RegExp(`(?:^|\\s)${name}\\s*=\\s*(["'])(.*?)\\1`).exec(instruction.body)?.[2];
-    const type = pseudo("type");
+    const parsed = Xml.parse(`<e ${instruction.body}/>`);
+    if (Result.isFailure(parsed)) continue;
+    const type = Xml.attribute(parsed.success.root, "type");
     if (type !== undefined && type.toLowerCase() !== "text/css") continue;
     const at = { line: instruction.line, column: instruction.column };
-    const href = pseudo("href");
+    const href = Xml.attribute(parsed.success.root, "href");
     const resolved = href === undefined ? undefined : check(href, at);
     if (resolved !== undefined) {
       references.push({ ...resolved, type: "stylesheet", resource: false, path, ...at });
