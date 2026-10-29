@@ -19,7 +19,7 @@ const NPT_TIME = /^(?:\d+|[0-5]\d:[0-5]\d|\d+:[0-5]\d:[0-5]\d)(?:\.\d*)?$/;
 
 // Like the reference's URL library: each valid `%XX` becomes a byte, anything else stays as
 // it is, and invalid UTF-8 decodes to U+FFFD.
-const percentDecode = (value: string) => {
+export const percentDecode = (value: string) => {
   const encoder = new TextEncoder();
   const bytes: Array<number> = [];
   let index = 0;

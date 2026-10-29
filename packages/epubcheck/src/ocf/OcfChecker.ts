@@ -3,6 +3,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Result from "effect/Result";
+import * as JavaText from "../util/JavaText.ts";
 
 import * as Report from "../report/Report.ts";
 import * as Schemas from "../schema/Schemas.ts";
@@ -32,7 +33,6 @@ const canonicalCaseFold = (name: string) =>
   name.normalize("NFD").toLowerCase().toUpperCase().toLowerCase();
 
 // Java's String.trim strips U+0000 through U+0020 only.
-const javaTrim = (value: string) => value.replace(/^[\u0000- ]+|[\u0000- ]+$/g, "");
 
 // Container paths in container.xml are URLs relative to the container root.
 const resolveRootfile = (fullPath: string) => {
@@ -157,7 +157,7 @@ const checkMimetype = Effect.fn("OcfChecker.checkMimetype")(function* (
   }
   // Keep a byte order mark: upstream reads it as content.
   const content = new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes.value);
-  if (javaTrim(content) !== "application/epub+zip") yield* report.message("PKG-007", at, "");
+  if (JavaText.trim(content) !== "application/epub+zip") yield* report.message("PKG-007", at, "");
   else if (content !== "application/epub+zip") yield* report.message("PKG-007", at, "whitespace");
 });
 

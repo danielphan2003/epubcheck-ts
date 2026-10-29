@@ -1,10 +1,12 @@
 epub-accessibility/accessibility.feature:14 Verify an 'a11y' prefix used in metadata properties without being declared
+epub-accessibility/accessibility.feature:18 Report unknown 'a11y' metadata
 epub-accessibility/accessibility.feature:23 Verify an 'a11y:certifierCredential' property can be defined as a link
 epub-accessibility/accessibility.feature:27 Allow using the 'a11y:exemption' property in package metadata
 epub-accessibility/accessibility.feature:31 Allow using the 'a11y:contactEmail' property in package metadata
 epub-dictionaries/dictionaries-package-document.feature:121 The source/target languages of a multiple-dictionary publication can be defined in the collections
 epub-dictionaries/dictionaries-package-document.feature:125 The target language of a dictionary collection must be defined
 epub-dictionaries/dictionaries-package-document.feature:131 The source language of a dictionary collection must not be defined more than once
+epub-dictionaries/dictionaries-package-document.feature:145 A Search Key Map document must have the correct media type
 epub-dictionaries/dictionaries-package-document.feature:29 A publication with single EPUB Dictionary is valid
 epub-dictionaries/dictionaries-package-document.feature:47 A dictionary collection can be used to define multiple EPUB Dictionaries
 epub-dictionaries/dictionaries-package-document.feature:69 A dictionary collection must not contain child collections
@@ -54,10 +56,12 @@ epub-previews/previews-publication.feature:52 Verify an embedded preview
 epub-previews/previews-publication.feature:59 Report an embedded preview that does not have a manifest
 epub-previews/previews-publication.feature:65 Report an embedded preview without any links to preview content
 epub-region-nav/region-nav-publication.feature:18 Verify a basic data nav file
+epub-region-nav/region-nav-publication.feature:25 Report a data nav file that is not encoded as `application/xhtml+xml`
 epub-region-nav/region-nav-publication.feature:47 Report the inclusion of more than one data nav file
 epub-region-nav/region-nav-publication.feature:56 Verify a data nav that defines region-based navgiation
 epub-region-nav/region-nav-publication.feature:92 Verify subregion navigation using comics semantics
 epub-scriptable-components/scriptable-components-package-document.feature:19 A minimal embedded scriptable component is reported as valid
+epub-scriptable-components/scriptable-components-package-document.feature:23 The 'epubsc' prefix must be declared
 epub2/ncx-publication.feature:21 Report duplicate IDs in the NCX document
 epub2/ncx-publication.feature:28 Report invalid IDs in the NCX document
 epub2/ncx-publication.feature:50 Report an NCX `pageTarget` with a `type` attribute value that is not one of "front", "normal" or "special"
@@ -77,7 +81,13 @@ epub2/ocf-publication.feature:78 Report a wrong media type on the 'rootfile' ele
 epub2/ocf-publication.feature:83 Report a missing 'full-path' attribute on the rootfile element of the 'container.xml' file
 epub2/ocf-publication.feature:89 Report an empty 'full-path' attribute on the rootfile element of the 'container.xml' file
 epub2/ocf-publication.feature:95 Report a missing OPF document
+epub2/opf-package-document.feature:103 an identifier with a "uuid" scheme should be a valid UUID
+epub2/opf-package-document.feature:108 report an empty 'dc:date' metadata
+epub2/opf-package-document.feature:113 report a 'dc:date' value not conforming to ISO-8601
+epub2/opf-package-document.feature:118 report an empty 'dc:title' metadata
 epub2/opf-package-document.feature:143 Verify conforming fallbacks
+epub2/opf-package-document.feature:147 Report a 'fallback-style' attribute pointing to a non-existing ID
+epub2/opf-package-document.feature:159 Report a spine with only non-linear resources
 epub2/opf-package-document.feature:164 Report a spine with no 'toc' attribute
 epub2/opf-package-document.feature:17 the minimal OPF document is reported as valid
 epub2/opf-package-document.feature:174 a valid 'guide' element is allowed
@@ -88,17 +98,22 @@ epub2/opf-package-document.feature:28 Report a missing version attribute
 epub2/opf-package-document.feature:40 duplicate IDs are reported
 epub2/opf-package-document.feature:45 unknown elements are reported
 epub2/opf-package-document.feature:58 Ignore legacy OEB 1.2 Package doctype
+epub2/opf-package-document.feature:67 the unique identifier must not be empty
 epub2/opf-package-document.feature:75 the unique identifier must not be empty
 epub2/opf-package-document.feature:81 the unique identifier must not be empty
 epub2/opf-package-document.feature:93 Accet a 'dc:creator' metadata with an 'edc' role
+epub2/opf-package-document.feature:98 an identifier starting with "urn:uuid:" should be a valid UUID
 epub2/opf-publication.feature:105 Report a missing spine
 epub2/opf-publication.feature:111 Report a spine with no 'toc' attribute
+epub2/opf-publication.feature:123 Report repeated spine items (issue 182)
 epub2/opf-publication.feature:128 Report a 'page-map' attribute (invalid Adobe extension)
 epub2/opf-publication.feature:159 Report a legacy OEBPS 1.2 publication
 epub2/opf-publication.feature:20 Report when checking an EPUB 2.0.1 explicitly against EPUB 3.x
 epub2/opf-publication.feature:29 Report a missing version attribute
 epub2/opf-publication.feature:39 Verify that the 'clr' MARC code is allowed in the `opf:role` attribute (issue 205)
 epub2/opf-publication.feature:48 Verify that package IDs with leading/trailing spaces are allowed (issue 332)
+epub2/opf-publication.feature:52 the unique identifier must not be empty
+epub2/opf-publication.feature:65 Report a resource declared in the manifest but missing from the container
 epub2/opf-publication.feature:82 Verify that operating system files (`.DS_STORE`, `thumbs.db`) are ignored (issue 256)
 epub2/ops-content-document-svg.feature:21 Verify that namespaced extensions are allowed
 epub2/ops-content-document-svg.feature:26 Verify `font-face-src` is allowed (issue 196)
@@ -146,6 +161,8 @@ epub3/03-resources/resources.feature:317 Allow valid manifest fallback chain (si
 epub3/03-resources/resources.feature:32 Verify MP3 audio is allowed
 epub3/03-resources/resources.feature:322 Allow valid manifest fallback chain (waterfall)
 epub3/03-resources/resources.feature:327 Allow valid manifest fallback chain (n-to-1)
+epub3/03-resources/resources.feature:332 Report a circular manifest fallback chain (single doc)
+epub3/03-resources/resources.feature:338 Report a circular manifest fallback chain (full publication)
 epub3/03-resources/resources.feature:355 Allow foreign HTML `audio` with a `source` fallback
 epub3/03-resources/resources.feature:360 Allow remote foreign HTML `audio` with a remote `source` fallback
 epub3/03-resources/resources.feature:37 Verify AAC/MP4 audio is allowed
@@ -261,6 +278,7 @@ epub3/04-ocf/ocf.feature:65 Report forbidden characters in file names
 epub3/04-ocf/ocf.feature:71 Report forbidden characters in file names even for non-publication resources
 epub3/04-ocf/ocf.feature:77 Allow forbidden characters in remote resource URLs
 epub3/04-ocf/ocf.feature:88 Inform about non-ASCII characters in file names (full-publication check)
+epub3/05-package-document/package-document.feature:105 the 'xml:lang' language tag must be well-formed
 epub3/05-package-document/package-document.feature:111 Verify that three-character language codes are allowed (issue 615)
 epub3/05-package-document/package-document.feature:119 the 'package' 'unique-identifier' attribute must be a known ID
 epub3/05-package-document/package-document.feature:126 the 'package' 'unique-identifier' attribute must point to a 'dc:identifier' element
@@ -268,61 +286,98 @@ epub3/05-package-document/package-document.feature:133 the 'package' element mus
 epub3/05-package-document/package-document.feature:141 the 'package' element's 'metadata' child must be before the 'manifest' child
 epub3/05-package-document/package-document.feature:15 Verify that the Package Document can have any extension
 epub3/05-package-document/package-document.feature:155 attributes 'id', 'dir', and 'xml:lang' are not allowed on the 'metadata' element
+epub3/05-package-document/package-document.feature:166 the unique identifier must not be empty
 epub3/05-package-document/package-document.feature:175 'dc:identifier' must not be empty
 epub3/05-package-document/package-document.feature:182 'dc:language' must not be empty
 epub3/05-package-document/package-document.feature:189 'dc:title' must not be empty
 epub3/05-package-document/package-document.feature:196 a metadata's value must be defined
+epub3/05-package-document/package-document.feature:207 'dc:identifier' starting with "urn:uuid:" should be a valid UUID
 epub3/05-package-document/package-document.feature:216 'dc:title' must be specified
+epub3/05-package-document/package-document.feature:226 'dc:language' must be well-formed
 epub3/05-package-document/package-document.feature:236 'dc:source' valid values are allowed
 epub3/05-package-document/package-document.feature:244 Multiple 'dc:date' elements specified
 epub3/05-package-document/package-document.feature:250 'dc:date' can be specified as an ISO 8601:2004 value
 epub3/05-package-document/package-document.feature:254 'dc:date' can be specified as a single year
 epub3/05-package-document/package-document.feature:258 'dc:date' value can have leading/trailng whitespace
+epub3/05-package-document/package-document.feature:262 'dc:date' with an invalid ISO 8601:2004 syntax is reported
+epub3/05-package-document/package-document.feature:268 'dc:date' with an unknown format is reported
 epub3/05-package-document/package-document.feature:278 'dc:type' valid values are allowed
 epub3/05-package-document/package-document.feature:28 the 'dir' attribute value can be 'auto'
 epub3/05-package-document/package-document.feature:286 a metadata's property name must be defined
+epub3/05-package-document/package-document.feature:293 a metadata's property name must not be a list of values
+epub3/05-package-document/package-document.feature:301 a metadata's property name must be well-formed
 epub3/05-package-document/package-document.feature:306 'scheme' can be used to identify the value system
+epub3/05-package-document/package-document.feature:311 'scheme' must not be list of values
+epub3/05-package-document/package-document.feature:318 'scheme' must not be an unknown value with no prefix
 epub3/05-package-document/package-document.feature:327 'dc:modified' must be defined
 epub3/05-package-document/package-document.feature:334 'dc:modified' must be of the form 'CCYY-MM-DDThh:mm:ssZ'
+epub3/05-package-document/package-document.feature:344 Report a missing 'media-type' attribute on links to container resources
 epub3/05-package-document/package-document.feature:350 Allow a missing 'media-type' attribute on links to remote resources
 epub3/05-package-document/package-document.feature:355 the link 'rel' attribute can have multiple properties
+epub3/05-package-document/package-document.feature:36 'link' target must not reference a manifest ID
 epub3/05-package-document/package-document.feature:360 the link 'properties' attribute must not be empty
+epub3/05-package-document/package-document.feature:367 a link with an unknown 'properties' value is reported
 epub3/05-package-document/package-document.feature:373 the 'link' element can have an 'hreflang' attribute
 epub3/05-package-document/package-document.feature:378 the 'link' 'hreflang' attribute can be empty
+epub3/05-package-document/package-document.feature:383 the 'link' 'hreflang' language tag must not have leading/trailing whitespace
+epub3/05-package-document/package-document.feature:389 the 'link' 'hreflang' language tag must be well-formed
 epub3/05-package-document/package-document.feature:395 Allow a link to a resource referenced from the spine
 epub3/05-package-document/package-document.feature:400 Allow a link to a resource embedded in a content document
+epub3/05-package-document/package-document.feature:434 Report a self-referencing manifest (full publication check)
 epub3/05-package-document/package-document.feature:44 'id' attributes can have leading or trailing space
+epub3/05-package-document/package-document.feature:440 Report a self-referencing manifest (single file check)
 epub3/05-package-document/package-document.feature:456 a manifest item must declare a media type
+epub3/05-package-document/package-document.feature:469 item URLs must not have a fragment identifier
+epub3/05-package-document/package-document.feature:475 two manifest items cannot represent the same resource
+epub3/05-package-document/package-document.feature:481 Report duplicate declarations of a resource in the package document manifest
+epub3/05-package-document/package-document.feature:487 Report a resource declared in the package document but missing from the container
 epub3/05-package-document/package-document.feature:49 'id' attributes must be unique
 epub3/05-package-document/package-document.feature:493 Report a manifest item path with unencoded spaces
+epub3/05-package-document/package-document.feature:500 Report fonts declared in the package document but missing from the container
+epub3/05-package-document/package-document.feature:506 fallback attribute must point to an existing item ID
+epub3/05-package-document/package-document.feature:512 fallback attribute must not reference its item ID
 epub3/05-package-document/package-document.feature:517 Report usage of the EPUB 2 'fallback-style' attribute
+epub3/05-package-document/package-document.feature:527 An unknown item property in the default vocab is reported
 epub3/05-package-document/package-document.feature:537 The 'cover-image' item property is allowed on WebP images
 epub3/05-package-document/package-document.feature:542 The 'cover-image' item property must occur at most once
+epub3/05-package-document/package-document.feature:549 The 'cover-image' item property must only be used on images
 epub3/05-package-document/package-document.feature:55 'id' attributes must be unique after whitespace normalization
+epub3/05-package-document/package-document.feature:555 Report an unknown manifest item property
 epub3/05-package-document/package-document.feature:563 Verify content documents are identified as containing mathml
 epub3/05-package-document/package-document.feature:618 Verify that inline CSS does not trigger an unrequired `remote-resources` property error
 epub3/05-package-document/package-document.feature:64 'refines' attribute MUST be a relative URL
 epub3/05-package-document/package-document.feature:644 Verify that script data blocks do not require the `scripted` property to be defined in the manifest
 epub3/05-package-document/package-document.feature:683 one item must have the 'nav' property
 epub3/05-package-document/package-document.feature:690 at most one item must have the 'nav' property
+epub3/05-package-document/package-document.feature:697 the 'nav' property must be on an XHTML Content Document
 epub3/05-package-document/package-document.feature:709 Report a missing spine
 epub3/05-package-document/package-document.feature:71 'refines' attribute should use a fragment ID if refering to a Publication Resource
 epub3/05-package-document/package-document.feature:716 Report an empty spine
 epub3/05-package-document/package-document.feature:738 An SVG Content Document is allowed in the spine
+epub3/05-package-document/package-document.feature:743 An unknown 'itemref' ID is reported
 epub3/05-package-document/package-document.feature:750 Two spine 'itemref' elements cannot reference the same manifest item
+epub3/05-package-document/package-document.feature:757 Report a spine that does not contain at least one linear itemref
 epub3/05-package-document/package-document.feature:763 Verify an EPUB where non-linear content is reachable via the navigation document
 epub3/05-package-document/package-document.feature:768 Verify an EPUB where non-linear content is reachable via a hyperlink
 epub3/05-package-document/package-document.feature:78 'refines' attribute, when using fragment ID, must target an existing ID
+epub3/05-package-document/package-document.feature:85 'refines' references cycles are not allowed
 epub3/05-package-document/package-document.feature:94 the 'xml:lang' attribute can be empty
+epub3/05-package-document/package-document.feature:99 the 'xml:lang' language tag must not have leading/trailing whitespace
 epub3/05-package-document/vocabularies-association.feature:112 Report a `prefix` attribute on an XHTML `head` element
 epub3/05-package-document/vocabularies-association.feature:119 Report a `prefix` attribute on an XHTML embedded `svg` element
+epub3/05-package-document/vocabularies-association.feature:138 Report a prefix mapping to the Dublic Core elements namespace
 epub3/05-package-document/vocabularies-association.feature:149 Allow explicit declarations of reserved prefixes in package documents
 epub3/05-package-document/vocabularies-association.feature:157 Allow the reserved 'schema' prefix in package metadata properties
+epub3/05-package-document/vocabularies-association.feature:165 Report overriding of reserved prefixes in package documents
+epub3/05-package-document/vocabularies-association.feature:20 Report `prefix` re-mapping default vocabularies in a package document
+epub3/05-package-document/vocabularies-association.feature:26 Report `prefix` re-mapping default vocabularies in XHTML
 epub3/05-package-document/vocabularies-association.feature:37 Allow valid `prefix` attribute mappings in package documents
 epub3/05-package-document/vocabularies-association.feature:42 Allow valid `prefix` attribute mappings in XHTML content documents
 epub3/05-package-document/vocabularies-association.feature:47 Allow valid `prefix` attribute mappings in media overlays
 epub3/05-package-document/vocabularies-association.feature:52 Allow valid `prefix` attribute mappings in SVG content documents
+epub3/05-package-document/vocabularies-association.feature:57 Report syntax errors in the `prefix` attribute value
 epub3/05-package-document/vocabularies-association.feature:67 Allow declared prefixes used in the XHTML `epub:type` attribute
+epub3/05-package-document/vocabularies-association.feature:78 Report undeclared prefixes used in package metadata properties
 epub3/06-layouts/layouts.feature:101 'page-spread-*' properties can be used on pre-paginated content of a reflowable publication
 epub3/06-layouts/layouts.feature:136 Verify a minimal roll publication
 epub3/06-layouts/layouts.feature:149 Verify a roll publication item with a fixed layout document in its fallback chain
@@ -339,6 +394,7 @@ epub3/07-content-documents/content-documents-css.feature:112 Verify a fragment-o
 epub3/07-content-documents/content-documents-css.feature:18 Verify a minimal publication with a stylesheet
 epub3/07-content-documents/content-documents-css.feature:41 Verify a CSS document encoded in UTF-8 (declared with `@charset`)
 epub3/07-content-documents/content-documents-css.feature:65 Verify that namespace URIs in CSS are not recognized as remote resources (issue 237)
+epub3/07-content-documents/content-documents-css.feature:70 Report an attempt to `@import` a CSS file that declared in the package document but not present in the container
 epub3/07-content-documents/content-documents-css.feature:83 Verify valid CSS Selectors syntax
 epub3/07-content-documents/content-documents-fixed-layout.feature:103 Verify that the initial containing block rules are not checked on embedded svg elements
 epub3/07-content-documents/content-documents-fixed-layout.feature:15 Verify a fixed-layout SVG
@@ -627,6 +683,7 @@ epub3/D-vocabularies/meta-properties-vocab.feature:147 'pageBreakSource' metadat
 epub3/D-vocabularies/meta-properties-vocab.feature:155 'role' metadata can be used once or more to refine a creator, contributor, or publisher
 epub3/D-vocabularies/meta-properties-vocab.feature:160 'role' metadata cannot be used to refine properties other than creator, contributor, or publisher
 epub3/D-vocabularies/meta-properties-vocab.feature:17 'authority' metadata can refine a subject expression
+epub3/D-vocabularies/meta-properties-vocab.feature:175 'source-of' metadata can be used to refine the pagination source
 epub3/D-vocabularies/meta-properties-vocab.feature:182 'source-of' metadata value must be "pagination"
 epub3/D-vocabularies/meta-properties-vocab.feature:189 'source-of' metadata cannot be used as a primary metadata
 epub3/D-vocabularies/meta-properties-vocab.feature:196 'source-of' metadata must refine a 'dc:source' metadata entry
@@ -649,26 +706,34 @@ epub3/D-vocabularies/meta-properties-vocab.feature:75 'collection-type' metadata
 epub3/D-vocabularies/meta-properties-vocab.feature:85 'display-seq' metadata is allowed
 epub3/D-vocabularies/meta-properties-vocab.feature:90 'display-seq' metadata cannot be defined more than once to refine the same expression
 epub3/D-vocabularies/metadata-link-vocab.feature:19 an 'alternate' link can identify an alternate version of the Package Document
+epub3/D-vocabularies/metadata-link-vocab.feature:24 an 'alternate' link must not be paired with other keywords
 epub3/D-vocabularies/metadata-link-vocab.feature:31 a 'record' link can point to a local record
 epub3/D-vocabularies/metadata-link-vocab.feature:35 a 'record' link can point to a remote record
 epub3/D-vocabularies/metadata-link-vocab.feature:39 'record' link can be paired with other keywords
+epub3/D-vocabularies/metadata-link-vocab.feature:44 a 'record' link must have a 'media-type' attribute even when remote
 epub3/D-vocabularies/metadata-link-vocab.feature:50 a 'record' link cannot refine another property or resource
 epub3/D-vocabularies/metadata-link-vocab.feature:60 a 'voicing' link can identify the aural representation of metadata
 epub3/D-vocabularies/metadata-link-vocab.feature:65 a 'voicing' link must refine another property or resource
+epub3/D-vocabularies/metadata-link-vocab.feature:72 a 'voicing' link must have a 'media-type' attribute even when remote
+epub3/D-vocabularies/metadata-link-vocab.feature:78 a 'voicing' link resource must have an audio media type
 epub3/D-vocabularies/metadata-link-vocab.feature:87 a 'record' link type can be further identified with a 'properties' attribute
 epub3/D-vocabularies/package-rendering-vocab.feature:106 A 'rendition:layout-reflowable' property can be used as a spine override
 epub3/D-vocabularies/package-rendering-vocab.feature:113 A 'rendition:layout-reflowable' override in a roll publication is reported
 epub3/D-vocabularies/package-rendering-vocab.feature:127 The 'rendition:page-spread-center' property is allowed on a spine item
+epub3/D-vocabularies/package-rendering-vocab.feature:132 The 'rendition:page-spread-center' property as publication metadata is reported
 epub3/D-vocabularies/package-rendering-vocab.feature:140 A 'rendition:page-spread-center' property paired with (prefixed)'rendition:page-spread-right' is reported
 epub3/D-vocabularies/package-rendering-vocab.feature:146 A 'rendition:page-spread-center' property paired with (unprefixed) 'page-spread-left' is reported
 epub3/D-vocabularies/package-rendering-vocab.feature:157 The 'rendition:page-spread-left' property is allowed on a spine item
+epub3/D-vocabularies/package-rendering-vocab.feature:162 The 'rendition:page-spread-left' property as publication metadata is reported
 epub3/D-vocabularies/package-rendering-vocab.feature:170 A 'rendition:page-spread-left' property paired with (unprefixed) 'page-spread-left' is allowed
 epub3/D-vocabularies/package-rendering-vocab.feature:177 A 'rendition:page-spread-left' property paired with (prefixed)'rendition:page-spread-center' is reported
 epub3/D-vocabularies/package-rendering-vocab.feature:184 A 'rendition:page-spread-left' property paired with (unprefixed) 'page-spread-right' is reported
 epub3/D-vocabularies/package-rendering-vocab.feature:195 The 'rendition:page-spread-right' property is allowed on a spine item
+epub3/D-vocabularies/package-rendering-vocab.feature:200 The 'rendition:page-spread-right' property as publication metadata is reported
 epub3/D-vocabularies/package-rendering-vocab.feature:208 A 'rendition:page-spread-right' property paired with (unprefixed)'page-spread-right' is allowed
 epub3/D-vocabularies/package-rendering-vocab.feature:215 A 'rendition:page-spread-right' property paired with (prefixed)'rendition:page-spread-center' is reported
 epub3/D-vocabularies/package-rendering-vocab.feature:219 A 'rendition:page-spread-right' property paired with (unprefixed) 'page-spread-left' is reported
+epub3/D-vocabularies/package-rendering-vocab.feature:231 A custom rendition property using the 'rendition' prefix is reported
 epub3/D-vocabularies/package-rendering-vocab.feature:241 the 'page-spread-left' unprefixed property is allowed on spine items
 epub3/D-vocabularies/package-rendering-vocab.feature:248 the 'page-spread-right' unprefixed property is allowed on spine items
 epub3/D-vocabularies/package-rendering-vocab.feature:255 'page-spread-right' property paired with 'page-spread-left' is reported
@@ -682,9 +747,21 @@ epub3/D-vocabularies/package-rendering-vocab.feature:69 A 'rendition:layout' pro
 epub3/D-vocabularies/package-rendering-vocab.feature:81 A 'rendition:layout-pre-paginated' property can be used as a spine override
 epub3/D-vocabularies/package-rendering-vocab.feature:88 A 'rendition:layout-pre-paginated' override in a roll publication is reported
 epub3/D-vocabularies/package-rendering-vocab.feature:97 two 'rendition:layout' overrides in the same 'itemref' element are reported
+epub3/E-obsolete-features/deprecated-features.feature:118 'xsd' reserved prefix for package metadata is deprecated
+epub3/E-obsolete-features/deprecated-features.feature:139 report a deprecated reserved prefix both in declaration and properties
+epub3/E-obsolete-features/deprecated-features.feature:147 report a deprecated reserved prefix declaration even if unused
+epub3/E-obsolete-features/deprecated-features.feature:155 report a deprecated reserved prefix even if it is overridden
 epub3/E-obsolete-features/deprecated-features.feature:170 'meta-auth' metadata is deprecated
 epub3/E-obsolete-features/deprecated-features.feature:18 Report usage of the 'bindings' element as deprecated
 epub3/E-obsolete-features/deprecated-features.feature:181 an 'acquire' link can identify the full version of the publication
+epub3/E-obsolete-features/deprecated-features.feature:192 '*-record' links are deprecated
+epub3/E-obsolete-features/deprecated-features.feature:206 'xml-signature' links are deprecated
+epub3/E-obsolete-features/deprecated-features.feature:220 the 'rendition:align-x-center' property is deprecated
+epub3/E-obsolete-features/deprecated-features.feature:227 the 'rendition:spread' 'portrait' property value is deprecated
+epub3/E-obsolete-features/deprecated-features.feature:232 the 'rendition:spread-portrait' spine override is deprecated
+epub3/E-obsolete-features/deprecated-features.feature:240 the 'rendition:viewport' property is deprecated
+epub3/E-obsolete-features/deprecated-features.feature:246 the 'rendition:viewport' property syntax errors are reported
+epub3/E-obsolete-features/deprecated-features.feature:254 the 'rendition:viewport' property cannot be declared more than once
 epub3/E-obsolete-features/deprecated-features.feature:29 Report `epub:switch` is deprecated
 epub3/E-obsolete-features/deprecated-features.feature:36 Report `epub:switch` with invalid mathml
 epub3/E-obsolete-features/deprecated-features.feature:45 Report an `epub:switch` with a `default` before any `case` elements
@@ -694,22 +771,39 @@ epub3/E-obsolete-features/deprecated-features.feature:74 Report `epub:switch` el
 epub3/E-obsolete-features/deprecated-features.feature:83 Report `epub:case` without a `required-namespace` attribute
 epub3/E-obsolete-features/deprecated-features.feature:95 Report `epub:trigger` is deprecated
 epub3/E-obsolete-features/outdated-features.feature:103 a 'manifest' collection must be the child of another collection
+epub3/E-obsolete-features/outdated-features.feature:116 Report the OPF 2 meta element as outdated (USAGE)
+epub3/E-obsolete-features/outdated-features.feature:126 Report the OPF 2 guide element as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:134 'guide' should not contain two entries of the same type pointing to the same resource
 epub3/E-obsolete-features/outdated-features.feature:151 When an NCX document is present, it must be identified in the 'toc' attribute of the spine
 epub3/E-obsolete-features/outdated-features.feature:172 Verify an NCX which does not link to all spine items
+epub3/E-obsolete-features/outdated-features.feature:183 Report the 'rendition:flow' property  as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:191 a 'rendition:flow' property with an unknown value is reported
 epub3/E-obsolete-features/outdated-features.feature:198 the 'rendition:flow' property cannot be declared more than once
 epub3/E-obsolete-features/outdated-features.feature:205 the 'rendition:flow' property cannot be used in a 'meta' element to refine a publication resource
+epub3/E-obsolete-features/outdated-features.feature:214 Report the 'rendition:flow-auto' spine override as outdated (USAGE)
+epub3/E-obsolete-features/outdated-features.feature:222 Report the 'rendition:flow-paginated' spine override as outdated (USAGE)
+epub3/E-obsolete-features/outdated-features.feature:230 Report the 'rendition:flow-scrolled-continuous' spine override as outdated (USAGE)
+epub3/E-obsolete-features/outdated-features.feature:238 Report the 'rendition:flow-scrolled-doc' spine override as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:246 the 'rendition:flow' spine overrides values are mutually exclusive
+epub3/E-obsolete-features/outdated-features.feature:255 Report the 'rendition:orientation' property as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:263 a 'rendition:orientation' property with an unknown value is reported
 epub3/E-obsolete-features/outdated-features.feature:270 the 'rendition:orientation' property cannot be declared more than once
 epub3/E-obsolete-features/outdated-features.feature:277 the 'rendition:orientation' property cannot be used in a 'meta' element to refine a publication resource
+epub3/E-obsolete-features/outdated-features.feature:286 Report the 'rendition:orientation-auto' spine override as outdated (USAGE)
+epub3/E-obsolete-features/outdated-features.feature:294 Report the 'rendition:orientation-landscape' spine override as outdated (USAGE)
+epub3/E-obsolete-features/outdated-features.feature:302 Report the 'rendition:orientation-portrait' spine override as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:310 the 'rendition:orientation' spine overrides values are mutually exclusive
+epub3/E-obsolete-features/outdated-features.feature:319 Report the 'rendition:spread' property as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:327 a 'rendition:spread' property with an unknown value is reported
 epub3/E-obsolete-features/outdated-features.feature:334 the 'rendition:spread' property cannot be declared more than once
 epub3/E-obsolete-features/outdated-features.feature:341 the 'rendition:spread' property cannot be used in a 'meta' element to refine a publication resource
+epub3/E-obsolete-features/outdated-features.feature:350 Report the 'rendition:spread-auto' spine override as outdated (USAGE)
+epub3/E-obsolete-features/outdated-features.feature:358 Report the 'rendition:spread-both' spine override as outdated (USAGE)
+epub3/E-obsolete-features/outdated-features.feature:366 Report the 'rendition:spread-landscape' spine override as outdated (USAGE)
+epub3/E-obsolete-features/outdated-features.feature:374 Report the 'rendition:spread-none' spine override as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:382 the 'rendition:spread' spine overrides values are mutually exclusive
 epub3/E-obsolete-features/outdated-features.feature:64 Verify duplicating encryption declaration is allowed
+epub3/E-obsolete-features/outdated-features.feature:86 Report a collection element as outdated (USAGE)
 epub3/G-media-type-registrations/media-types-registrations.feature:13 Report when the '.epub' extension is not lower case
 localization/localization.feature:11 The default testing locale is English
 localization/localization.feature:16 The reporting locale can be configured

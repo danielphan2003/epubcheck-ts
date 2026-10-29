@@ -10,7 +10,6 @@ import type { Severity } from "./messages/MessageCatalog.ts";
 import * as ContentChecker from "./content/ContentChecker.ts";
 import * as OcfChecker from "./ocf/OcfChecker.ts";
 import * as OpfChecker from "./opf/OpfChecker.ts";
-import * as PackageDocument from "./opf/PackageDocument.ts";
 import * as Report from "./report/Report.ts";
 
 // Upstream checker modes: a full publication (packaged or expanded) or a single document.
@@ -85,20 +84,18 @@ const make = Effect.gen(function* () {
     for (const packageDocument of ocf.value.packageDocuments) {
       const bytes = yield* OcfChecker.readResource(ocf.value.container, packageDocument.path);
       if (Option.isNone(bytes)) continue;
-      const document = yield* OpfChecker.check(
+      const opfResult = yield* OpfChecker.check(
         bytes.value,
         packageDocument.path,
         packageDocument.version,
+        new Set(ocf.value.container.files),
       );
-      if (Option.isNone(document)) continue;
-      const opf = PackageDocument.read(
-        document.value,
-        packageDocument.path,
-        packageDocument.version,
-      );
+      if (Option.isNone(opfResult)) continue;
+      const opf = opfResult.value;
       for (const item of opf.items) {
         const kind = ContentChecker.kindOf(item.mediaType, item.properties, opf.version);
-        if (kind === undefined || item.path === undefined) continue;
+        // An item for the package document itself is OPF-099, not a content document.
+        if (kind === undefined || item.path === undefined || item.path === opf.path) continue;
         const content = yield* OcfChecker.readResource(ocf.value.container, item.path);
         if (Option.isSome(content))
           yield* ContentChecker.check(content.value, item.path, kind, opf.version);

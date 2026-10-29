@@ -92,3 +92,9 @@ export const formatMessage = (
 
 export const formatSuggestion = (id: MessageId, locale?: string | undefined) =>
   lookup(`${bundleKey(id)}_SUG`, locale) ?? "";
+
+// A keyed suggestion (`ID_SUG.key`), falling back to `ID_SUG.default`, used as a message argument.
+export const keyedSuggestion = (id: MessageId, key: string, locale?: string | undefined) =>
+  lookup(`${bundleKey(id)}_SUG.${key}`, locale) ??
+  lookup(`${bundleKey(id)}_SUG.default`, locale) ??
+  "";
