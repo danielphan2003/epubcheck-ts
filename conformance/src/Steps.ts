@@ -224,6 +224,13 @@ const assertNone = (world: World, severities: ReadonlyArray<Severity>, label: st
     : fail(`Unexpected ${label}: ${describeRemaining(remaining)}`);
 };
 
+// Upstream's step sets the fragment on a URL first, which drops tabs and newlines and trims the
+// characters Java counts as whitespace.
+const JAVA_WHITESPACE =
+  "[\\t\\n\\u000B\\f\\r\\u001C-\\u001F \\u1680\\u2000-\\u2006\\u2008-\\u200A\\u2028\\u2029\\u205F\\u3000]";
+const TRIM = new RegExp(`^${JAVA_WHITESPACE}+|${JAVA_WHITESPACE}+$`, "g");
+const asUrlFragment = (fragment: string) => fragment.replace(/[\t\n\r]/g, "").replace(TRIM, "");
+
 // The media types upstream's fragment steps name; any other name parses as generic XML.
 const MEDIA_TYPES: Readonly<Record<string, string>> = {
   HTML: "text/html",
@@ -347,8 +354,12 @@ export const steps: ReadonlyArray<StepDefinition> = [
       for (const [name, value] of world.viewport?.properties ?? []) {
         actual.set(name, [...(actual.get(name) ?? []), value]);
       }
+      // A multimap equals another with its names in any order, but each name's values in order.
       const render = (entries: Iterable<readonly [string, ReadonlyArray<string>]>) =>
-        [...entries].map(([name, values]) => `${name}=${values.join(",")}`).join(";");
+        [...entries]
+          .map(([name, values]) => `${name}=${values.join(",")}`)
+          .sort()
+          .join(";");
       return render(actual) === render(expected)
         ? noop
         : fail(`Expected viewport ${render(expected)} but got ${render(actual)}`);
@@ -366,7 +377,7 @@ export const steps: ReadonlyArray<StepDefinition> = [
     Schema.Tuple([Schema.String, Schema.String, Schema.String]),
     (world, [fragment, validity, type]) => {
       const mediaType = MEDIA_TYPES[type] ?? "";
-      const parsed = UrlFragment.parse(fragment, mediaType);
+      const parsed = UrlFragment.parse(asUrlFragment(fragment), mediaType);
       world.fragment = parsed;
       const actual = parsed.isValid ? "valid" : "invalid";
       return actual === validity
