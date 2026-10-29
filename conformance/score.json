@@ -1,9 +1,9 @@
 {
   "upstream": "v5.4.0",
-  "passed": 682,
+  "passed": 683,
   "total": 1251,
   "expectsMessages": {
-    "passed": 304,
+    "passed": 305,
     "total": 720
   },
   "areas": {
@@ -68,7 +68,7 @@
       "total": 100
     },
     "epub3/05-package-document": {
-      "passed": 61,
+      "passed": 62,
       "total": 130
     },
     "epub3/06-layouts": {

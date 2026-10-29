@@ -12,5 +12,8 @@ export const check = Effect.fn("OpfChecker.check")(function* (
     bytes,
     path,
     version === "2" ? Schemas.PACKAGE_20 : Schemas.PACKAGE_30,
+    undefined,
+    false,
+    version,
   );
 });

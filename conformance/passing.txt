@@ -286,6 +286,7 @@ epub3/05-package-document/package-document.feature:327 'dc:modified' must be def
 epub3/05-package-document/package-document.feature:334 'dc:modified' must be of the form 'CCYY-MM-DDThh:mm:ssZ'
 epub3/05-package-document/package-document.feature:350 Allow a missing 'media-type' attribute on links to remote resources
 epub3/05-package-document/package-document.feature:355 the link 'rel' attribute can have multiple properties
+epub3/05-package-document/package-document.feature:360 the link 'properties' attribute must not be empty
 epub3/05-package-document/package-document.feature:373 the 'link' element can have an 'hreflang' attribute
 epub3/05-package-document/package-document.feature:378 the 'link' 'hreflang' attribute can be empty
 epub3/05-package-document/package-document.feature:395 Allow a link to a resource referenced from the spine

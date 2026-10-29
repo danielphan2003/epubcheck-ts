@@ -45,14 +45,23 @@ interface Base {
 }
 
 // Jing's lenient URI check: escapes are `%` and two hex digits, there is at most one fragment,
-// no brackets, and a scheme, if any, is well formed. Spaces and other unsafe characters pass.
+// a scheme is well formed and followed by something, and a hierarchical path has no brackets.
+// Spaces and other unsafe characters pass.
 const isUri = (value: string) => {
-  if (/%(?![0-9A-Fa-f]{2})/.test(value)) return false;
-  if (value.split("#").length > 2 || /[[\]]/.test(value)) return false;
-  const colon = value.search(/[:/?#]/);
-  return (
-    colon < 0 || value[colon] !== ":" || /^[A-Za-z][A-Za-z0-9+.-]*$/.test(value.slice(0, colon))
-  );
+  if (/%(?![0-9A-Fa-f]{2})/.test(value) || value.split("#").length > 2) return false;
+  const delimiter = value.search(/[:/?#]/);
+  let rest = value;
+  if (delimiter >= 0 && value[delimiter] === ":") {
+    if (!/^[A-Za-z][A-Za-z0-9+.-]*$/.test(value.slice(0, delimiter))) return false;
+    rest = value.slice(delimiter + 1);
+    if (rest === "" || rest.startsWith("#")) return false;
+    // An opaque URI (`urn:...`, `mailto:...`) has no path to check.
+    if (!rest.startsWith("/")) return true;
+  }
+  // Brackets may enclose an IP literal host (`//[::1]`); the path may not hold any.
+  const authority = rest.startsWith("//") ? (/^\/\/[^/?#]*/.exec(rest)?.[0] ?? "") : "";
+  const path = rest.slice(authority.length).split(/[?#]/)[0] ?? "";
+  return !/[[\]]/.test(authority.replace(/\[[^[\]]*\]/, "") + path);
 };
 
 const regex = (pattern: RegExp) => (value: string) => pattern.test(value);
@@ -140,7 +149,7 @@ const bases: Readonly<Record<string, Base>> = {
   NMTOKENS: {
     lexical: "a list of XML NMTOKENs",
     whitespace: collapse,
-    // An empty list is lexically valid; a minLength facet rejects it, with its own message.
+    // An empty list is lexically valid; the built-in minimum length rejects it, with its message.
     test: (value) => value === "" || value.split(" ").every((token) => NMTOKEN.test(token)),
     length: (value) => (value === "" ? 0 : value.split(" ").length),
     list: true,
@@ -334,7 +343,12 @@ const xsd = (name: string, params: ReadonlyArray<Param>) => {
   }
   const base = bases[aliases[name] ?? name];
   if (base === undefined) return undefined;
-  const datatype = fromBase(key, base, params);
+  // XSD's built-in list types (NMTOKENS, IDREFS, ENTITIES) have a minimum length of 1.
+  const datatype = fromBase(
+    key,
+    base,
+    base.list === true ? [{ name: "minLength", value: "1" }, ...params] : params,
+  );
   return name === "QName" ? { ...datatype, contextDependent: true } : datatype;
 };
 

@@ -86,5 +86,6 @@ export const check = Effect.fn("ContentChecker.check")(function* (
     schemas,
     prepare,
     version === "3" && (kind === "xhtml" || kind === "nav" || kind === "svg"),
+    version,
   );
 });

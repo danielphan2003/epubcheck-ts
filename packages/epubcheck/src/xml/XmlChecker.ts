@@ -8,18 +8,18 @@ import * as Schemas from "../schema/Schemas.ts";
 import { sources } from "../schema/sources.generated.ts";
 import * as Xml from "./Xml.ts";
 
-// Upstream resolves the XHTML 1.x DTDs from bundled copies, so their named entities are
-// declared; all three use the XHTML 1.1 entity set.
-const XHTML_DTDS = new Set([
-  "-//W3C//DTD XHTML 1.1//EN",
-  "-//W3C//DTD XHTML 1.0 Strict//EN",
-  "-//W3C//DTD XHTML 1.0 Transitional//EN",
-]);
+// In EPUB 2, upstream resolves the XHTML 1.1 DTD's system ID from a bundled copy, which declares
+// its named entities, unless the public ID is another than XHTML 1.1's. Other DTDs, and every DTD
+// in EPUB 3, are not resolved, so named entities are undeclared.
+const XHTML11_PUBLIC_ID = "-//W3C//DTD XHTML 1.1//EN";
+const XHTML11_SYSTEM_ID = "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd";
 const PREDEFINED = new Set(["lt", "gt", "amp", "apos", "quot"]);
 let xhtmlEntities: Readonly<Record<string, string>> | undefined;
 
-const entitiesOf = (doctype: Xml.XmlDoctype) => {
-  if (doctype.publicId === undefined || !XHTML_DTDS.has(doctype.publicId)) return {};
+const entitiesOf = (doctype: Xml.XmlDoctype, version: "2" | "3" | undefined) => {
+  if (version !== "2") return {};
+  if (doctype.publicId !== undefined && doctype.publicId !== XHTML11_PUBLIC_ID) return {};
+  if (doctype.systemId !== XHTML11_SYSTEM_ID) return {};
   if (xhtmlEntities === undefined) {
     const entities: Record<string, string> = {};
     for (const match of (sources["20/dtd/xhtml11-ent.dtd"] ?? "").matchAll(
@@ -71,13 +71,13 @@ const validateDocument = (
   return { findings: prepared.findings ?? [], errors };
 };
 
-// The walks over a document recurse; one nested too deeply to walk yields undefined instead
-// of a stack overflow.
+// The preprocessing, NVDL and validation walks recurse, so a document nested more than about a
+// thousand levels deep overflows the stack; that yields undefined instead of a crash.
 const withinStack = <A>(run: () => A) => {
   try {
     return run();
   } catch (cause) {
-    if (cause instanceof RangeError) return undefined;
+    if (cause instanceof RangeError && cause.message.includes("call stack")) return undefined;
     throw cause;
   }
 };
@@ -93,9 +93,13 @@ export const check = Effect.fn("XmlChecker.check")(function* (
   prepare?: (document: Xml.XmlDocument) => Nvdl.Prepared,
   // EPUB 3 content documents: also check SVG against the strict grammar (RSC-025).
   informative = false,
+  // The publication's EPUB version, which decides the DTDs upstream resolves.
+  version?: "2" | "3",
 ) {
   const report = yield* Report.Report;
-  const parsed = Xml.parse(Xml.decode(bytes), { externalEntities: entitiesOf });
+  const parsed = Xml.parse(Xml.decode(bytes), {
+    externalEntities: (doctype) => entitiesOf(doctype, version),
+  });
   if (Result.isFailure(parsed)) {
     const { message, line, column } = parsed.failure;
     yield* report.message("RSC-016", Report.location(path, line, column), message);

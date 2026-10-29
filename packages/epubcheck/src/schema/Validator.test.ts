@@ -2,6 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Result from "effect/Result";
 
 import * as Xml from "../xml/Xml.ts";
+import * as Datatypes from "./Datatypes.ts";
 import * as Grammar from "./Grammar.ts";
 import { SchemaValidator } from "./Validator.ts";
 import * as XsdRegex from "./XsdRegex.ts";
@@ -113,5 +114,30 @@ describe("XsdRegex", () => {
     { pattern: "#.+", value: "#map", matches: true },
   ])("translates $pattern against $value", ({ pattern, value, matches }) => {
     expect(XsdRegex.compile(pattern)?.test(value)).toBe(matches);
+  });
+});
+
+describe("Datatypes", () => {
+  const context = { resolve: () => undefined };
+  const libraries = { whattf: () => undefined };
+  // Each verdict was checked against EPUBCheck 5.4.0 on a manifest `href`.
+  it.each([
+    { name: "anyURI", value: "../a b.xhtml", valid: true },
+    { name: "anyURI", value: "a[1]", valid: false },
+    { name: "anyURI", value: "a?b[1]#c[2]", valid: true },
+    { name: "anyURI", value: "x:y[0]", valid: true },
+    { name: "anyURI", value: "x:/a[1]", valid: false },
+    { name: "anyURI", value: "http://[::1]:80/a", valid: true },
+    { name: "anyURI", value: "http://[x/a", valid: false },
+    { name: "anyURI", value: "foo:", valid: false },
+    { name: "anyURI", value: "foo:#a", valid: false },
+    { name: "anyURI", value: "1x:foo", valid: false },
+    { name: "anyURI", value: "a#b#c", valid: false },
+    { name: "anyURI", value: "na%zzv.xhtml", valid: false },
+    { name: "NMTOKENS", value: "a b", valid: true },
+    { name: "NMTOKENS", value: "", valid: false },
+  ])("decides xsd:$name $value", ({ name, value, valid }) => {
+    const datatype = Datatypes.lookup(Datatypes.XSD_LIBRARY, name, [], libraries);
+    expect(datatype?.validate(value, context) === undefined).toBe(valid);
   });
 });
