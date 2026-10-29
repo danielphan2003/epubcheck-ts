@@ -427,7 +427,7 @@ const isUnique = (test: string, node: unknown, variables: Readonly<Record<string
 
 // Upstream's lookup of an item by ID, `/path[normalize-space(@a) = $v]`, scans the path once per
 // context node in fontoxpath; it is answered from an index of the path built once per document.
-const KEYED_LOOKUP = /^(\/[^[\]$()]+)\[normalize-space\(@([\w-]+)\)\s*=\s*\$([\w.-]+)\]$/;
+const KEYED_LOOKUP = /^(\/[^[\]$()|]+)\[normalize-space\(@([\w-]+)\)\s*=\s*\$([\w.-]+)\]$/;
 const keyedLookups = new Map<
   string,
   { readonly path: string; readonly attribute: string; readonly variable: string } | undefined
