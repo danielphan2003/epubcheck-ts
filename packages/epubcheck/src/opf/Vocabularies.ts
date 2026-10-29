@@ -12,7 +12,7 @@ export interface Vocab {
   readonly terms: ReadonlyMap<string, Status> | undefined;
 }
 
-export type PropertyContext = "meta" | "scheme" | "item" | "itemref" | "link-rel" | "link";
+export type PropertyContext = "meta" | "item" | "itemref" | "link-rel" | "link";
 
 const terms = (allowed: ReadonlyArray<string>, other: Readonly<Record<string, Status>> = {}) =>
   new Map<string, Status>([
@@ -50,7 +50,6 @@ const DEFAULT_VOCABS: Readonly<Record<PropertyContext, Vocab>> = {
       { "source-of": "outdated" },
     ),
   },
-  scheme: { uri: "", terms: new Map() },
   item: {
     uri: ITEM_URI,
     terms: terms([
@@ -149,7 +148,7 @@ export const RESERVED: Readonly<Record<string, Reserved>> = {
     uri: A11Y_URI,
     deprecated: false,
     terms: (context) => A11Y[context] ?? none(),
-    reservedIn: ["meta", "scheme", "link-rel", "link"],
+    reservedIn: ["meta", "link-rel", "link"],
   },
   dcterms: { uri: "http://purl.org/dc/terms/", deprecated: false, terms: unchecked },
   marc: { uri: "http://id.loc.gov/vocabulary/", deprecated: false, terms: unchecked },
@@ -181,11 +180,7 @@ const KNOWN_BY_URI = new Map<string, Reserved>([
       uri: "http://idpf.org/epub/vocab/sc/#",
       deprecated: false,
       terms: (context) =>
-        context === "meta" || context === "scheme"
-          ? SCRIPTED
-          : context === "itemref"
-            ? undefined
-            : none(),
+        context === "meta" ? SCRIPTED : context === "itemref" ? undefined : none(),
     },
   ],
 ]);

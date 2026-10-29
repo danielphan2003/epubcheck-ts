@@ -61,6 +61,7 @@ epub-region-nav/region-nav-publication.feature:47 Report the inclusion of more t
 epub-region-nav/region-nav-publication.feature:56 Verify a data nav that defines region-based navgiation
 epub-region-nav/region-nav-publication.feature:92 Verify subregion navigation using comics semantics
 epub-scriptable-components/scriptable-components-package-document.feature:19 A minimal embedded scriptable component is reported as valid
+epub-scriptable-components/scriptable-components-package-document.feature:23 The 'epubsc' prefix must be declared
 epub2/ncx-publication.feature:21 Report duplicate IDs in the NCX document
 epub2/ncx-publication.feature:28 Report invalid IDs in the NCX document
 epub2/ncx-publication.feature:50 Report an NCX `pageTarget` with a `type` attribute value that is not one of "front", "normal" or "special"
@@ -83,6 +84,7 @@ epub2/ocf-publication.feature:95 Report a missing OPF document
 epub2/opf-package-document.feature:103 an identifier with a "uuid" scheme should be a valid UUID
 epub2/opf-package-document.feature:108 report an empty 'dc:date' metadata
 epub2/opf-package-document.feature:113 report a 'dc:date' value not conforming to ISO-8601
+epub2/opf-package-document.feature:118 report an empty 'dc:title' metadata
 epub2/opf-package-document.feature:143 Verify conforming fallbacks
 epub2/opf-package-document.feature:147 Report a 'fallback-style' attribute pointing to a non-existing ID
 epub2/opf-package-document.feature:159 Report a spine with only non-linear resources
@@ -755,6 +757,7 @@ epub3/E-obsolete-features/deprecated-features.feature:181 an 'acquire' link can 
 epub3/E-obsolete-features/deprecated-features.feature:192 '*-record' links are deprecated
 epub3/E-obsolete-features/deprecated-features.feature:206 'xml-signature' links are deprecated
 epub3/E-obsolete-features/deprecated-features.feature:220 the 'rendition:align-x-center' property is deprecated
+epub3/E-obsolete-features/deprecated-features.feature:227 the 'rendition:spread' 'portrait' property value is deprecated
 epub3/E-obsolete-features/deprecated-features.feature:232 the 'rendition:spread-portrait' spine override is deprecated
 epub3/E-obsolete-features/deprecated-features.feature:240 the 'rendition:viewport' property is deprecated
 epub3/E-obsolete-features/deprecated-features.feature:246 the 'rendition:viewport' property syntax errors are reported

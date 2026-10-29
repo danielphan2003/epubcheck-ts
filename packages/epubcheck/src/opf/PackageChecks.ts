@@ -31,7 +31,8 @@ const normalizedUrl = (href: string, base: URL) => {
 
 // The media types upstream checks an item for: a MIME type its parser accepts, which also passes
 // its own pattern (where `+-^` is a range).
-const MIME_TYPE = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+\/[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+const TOKEN = "[!#$%&'*+.^_`|~0-9A-Za-z-]+";
+const MIME_TYPE = new RegExp(`^${TOKEN}/${TOKEN}(?:\\s*;\\s*${TOKEN}=(?:${TOKEN}|"[^"]*"))*$`);
 const ITEM_MEDIA_TYPE = /^[a-zA-Z0-9!#$&+-^_]+\/[a-zA-Z0-9!#$&+-^_]+$/;
 const isCheckedMediaType = (mediaType: string) =>
   MIME_TYPE.test(mediaType) && ITEM_MEDIA_TYPE.test(mediaType);
@@ -79,6 +80,14 @@ const nowhere = (id: MessageId, ...args: ReadonlyArray<string>): Finding => ({
 
 const isRemote = (href: string) =>
   /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href) && !href.startsWith("data:");
+
+// The package metadata, then that of each collection, which upstream checks the same way.
+const metadataElements = (root: Xml.XmlElement) => [
+  ...opfChildren(root, "metadata").slice(0, 1),
+  ...[...Xml.descendants(root)]
+    .filter((element) => element.ns === OPF_NS && element.local === "collection")
+    .flatMap((collection) => opfChildren(collection, "metadata").slice(0, 1)),
+];
 
 const opfChildren = (element: Xml.XmlElement | undefined, local: string) =>
   element === undefined
@@ -143,12 +152,11 @@ const manifestChecks = ({ opf, container }: Context) => {
       continue;
     }
     if (opf.version === "3") {
-      const checked = !isRemote(item.href) && isCheckedMediaType(item.mediaType);
+      const checked =
+        !isRemote(item.href) &&
+        !item.href.startsWith("data:") &&
+        isCheckedMediaType(item.mediaType);
       if (checked && item.href.includes("#")) findings.push(at(item.element, "OPF-091"));
-      for (const property of item.properties) {
-        if (!allowedFor(property, item.mediaType))
-          findings.push(at(item.element, "OPF-012", property, item.mediaType));
-      }
     }
     if (
       files !== undefined &&
@@ -157,6 +165,15 @@ const manifestChecks = ({ opf, container }: Context) => {
       !files.has(item.path.normalize("NFC"))
     ) {
       findings.push({ id: "RSC-001", args: [item.path], line: -1, column: -1, path: item.path });
+    }
+  }
+  // Upstream checks item properties as it reads each `item`, duplicates included.
+  if (opf.version === "3") {
+    for (const item of opf.items) {
+      for (const property of item.properties) {
+        if (!allowedFor(property, item.mediaType))
+          findings.push(at(item.element, "OPF-012", property, item.mediaType));
+      }
     }
   }
   const fallbackOf = (item: ManifestItem) => (Xml.attribute(item.element, "fallback") ?? "").trim();
@@ -238,11 +255,9 @@ const metadataChecks = ({ document, opf, container }: Context) => {
   const root = document.root;
   const metadata = opfChildren(root, "metadata")[0];
   const dcElements = (local: string) =>
-    metadata === undefined
-      ? []
-      : [...Xml.descendants(metadata)].filter(
-          (element) => element.ns === DC_NS && element.local === local,
-        );
+    metadataElements(root)
+      .flatMap((element) => [...Xml.descendants(element)])
+      .filter((element) => element.ns === DC_NS && element.local === local);
 
   const uniqueIdentifier = Xml.attribute(root, "unique-identifier");
   if (uniqueIdentifier === undefined || uniqueIdentifier === "") findings.push(at(root, "OPF-048"));
@@ -251,8 +266,10 @@ const metadataChecks = ({ document, opf, container }: Context) => {
     const id = Xml.attribute(element, "id");
     return id !== undefined && id !== "" && id.trim() === uniqueIdentifier;
   });
-  const unique = uniques[0];
-  if (unique === undefined && container !== undefined) {
+  const declared = dcElements("identifier").some(
+    (element) => Xml.attribute(element, "id") === uniqueIdentifier,
+  );
+  if (!declared && container !== undefined) {
     findings.push(
       nowhere(
         "OPF-030",
@@ -270,6 +287,18 @@ const metadataChecks = ({ document, opf, container }: Context) => {
       !isJavaUuid(value.replaceAll("urn:uuid:", ""))
     ) {
       findings.push(atEnd(identifier, "OPF-085", value));
+    }
+  }
+
+  // EPUB 2: an empty title or language is OPF-055, any other empty Dublin Core element OPF-072.
+  if (opf.version === "2") {
+    for (const element of metadataElements(root).flatMap((parent) => [
+      ...Xml.descendants(parent),
+    ])) {
+      if (element.ns !== DC_NS || Xml.textContent(element).trim() !== "") continue;
+      if (element.local === "title" || element.local === "language") {
+        findings.push(atEnd(element, "OPF-055", element.local));
+      } else findings.push(atEnd(element, "OPF-072", element.name));
     }
   }
 
@@ -311,8 +340,10 @@ const hasRefinesCycle = (metadata: Xml.XmlElement, prefixes: Vocabularies.Prefix
       continue;
     }
     const id = Xml.attribute(element, "id") ?? "";
-    const target = Xml.attribute(element, "refines") ?? "";
-    if (id !== "" && target.startsWith("#")) refines.set(id, target.slice(1));
+    // Upstream follows a `refines` without `#` as written.
+    const written = Xml.attribute(element, "refines") ?? "";
+    const target = written.startsWith("#") ? written.slice(1) : written;
+    if (id !== "" && target !== "") refines.set(id, target);
   }
   for (const start of refines.keys()) {
     const seen = new Set<string>();
@@ -364,20 +395,31 @@ const vocabularyChecks = ({ document, opf }: Context) => {
     findings.push(...problemsAt(element, parsed.problems, locate));
     return parsed.properties;
   };
-  const metadata = opfChildren(root, "metadata")[0];
-  for (const meta of opfChildren(metadata, "meta")) {
+  const metadatas = metadataElements(root);
+  for (const meta of metadatas.flatMap((metadata) => opfChildren(metadata, "meta"))) {
     if (Xml.attribute(meta, "name") !== undefined) {
       findings.push(at(meta, "OBS-001", "element", 'OPF 2 "meta"'));
       continue;
     }
-    // Upstream checks a `meta` at its end tag.
-    property(meta, "property", "meta", false, atEnd);
-    property(meta, "scheme", "scheme", false, atEnd);
+    // Upstream checks a `meta` at its end tag, and its `scheme` with the same vocabularies.
+    const properties = property(meta, "property", "meta", false, atEnd);
+    property(meta, "scheme", "meta", false, atEnd);
+    if (
+      properties.some((parsed) => parsed.token === "rendition:spread") &&
+      Xml.textContent(meta).trim() === "portrait"
+    ) {
+      findings.push(
+        atEnd(meta, "OPF-086", "rendition:spread portrait", keyedSuggestion("OPF-086", "")),
+      );
+    }
   }
   // Upstream's link checks, in its order: a data URL or a link into the package document itself
   // stops there, and an unparsable URL skips to the language tag.
   const packageUrl = new URL(opf.path, CONTAINER);
-  for (const link of opfChildren(metadata, "link")) {
+  const links = metadatas.flatMap((metadata, index) =>
+    opfChildren(metadata, "link").map((link) => ({ link, topLevel: index === 0 })),
+  );
+  for (const { link, topLevel } of links) {
     const href = Xml.attribute(link, "href");
     const url = href === undefined ? null : URL.parse(href, packageUrl);
     if (url?.protocol === "data:") continue;
@@ -400,10 +442,11 @@ const vocabularyChecks = ({ document, opf }: Context) => {
       if (rels.has("alternate") && relCount > 1) findings.push(at(link, "OPF-089"));
       const mediaType = Xml.attribute(link, "media-type");
       if (mediaType === undefined) {
-        // `file:` URLs count as local, as in upstream's isSameOrigin.
-        if (url.origin === CONTAINER.origin || url.protocol === "file:")
-          findings.push(at(link, "OPF-093"));
-        else if (rels.has("record") || rels.has("voicing"))
+        // `file:` URLs count as local, as in upstream's isSameOrigin; collection links are not
+        // checked for a missing media type.
+        if (url.origin === CONTAINER.origin || url.protocol === "file:") {
+          if (topLevel) findings.push(at(link, "OPF-093"));
+        } else if (rels.has("record") || rels.has("voicing"))
           findings.push(at(link, "OPF-094", Xml.attribute(link, "rel") ?? ""));
       } else if (rels.has("voicing") && !mediaType.startsWith("audio/")) {
         findings.push(at(link, "OPF-095", mediaType));
