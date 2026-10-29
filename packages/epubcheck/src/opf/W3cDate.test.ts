@@ -11,6 +11,9 @@ describe("W3cDate.problem", () => {
     { value: "2020-01-01T10:00:00.123Z", problem: undefined },
     { value: "1500-02-29", problem: undefined },
     { value: "2019-02-29T10:00+01:00", problem: undefined },
+    // Java reads any decimal digit.
+    { value: "\u0662\u0660\u0662\u0664-01-01", problem: undefined },
+    { value: "2024-01-01T\u0661\u0662Z", problem: "Unexpected: Z" },
     { value: "", problem: "zero-length string" },
     { value: "   ", problem: "Empty Date" },
     { value: "abcd", problem: '[For input string: "abcd"] is not an integer' },

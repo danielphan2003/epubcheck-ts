@@ -2,6 +2,7 @@ import { keyedSuggestion, type MessageId } from "../messages/MessageCatalog.ts";
 import * as Xml from "../xml/Xml.ts";
 import { checkLanguageTag } from "./LanguageTag.ts";
 import type { ManifestItem, PackageDocument } from "./PackageDocument.ts";
+import * as JavaDigits from "./JavaDigits.ts";
 import * as Vocabularies from "./Vocabularies.ts";
 import * as W3cDate from "./W3cDate.ts";
 
@@ -127,8 +128,10 @@ const manifestChecks = ({ opf, container }: Context) => {
     Xml.attribute(item.element, "href") === undefined
       ? undefined
       : normalizedUrl(item.href, packageUrl);
-  const kept = new Map(opf.items.map((item) => [urlOf(item), item] as const));
-  for (const item of opf.items) {
+  // Upstream holds items by ID first: a repeated ID keeps its first position with the last item.
+  const items = [...byId.values()];
+  const kept = new Map(items.map((item) => [urlOf(item), item] as const));
+  for (const item of items) {
     const url = urlOf(item);
     if (url === undefined) continue;
     if (kept.get(url) !== item) {
@@ -226,13 +229,7 @@ const isJavaUuid = (value: string) => {
   return (
     value.length <= 36 &&
     parts.length === 5 &&
-    parts.every((part) => {
-      const digits = part.replace(/^\+/, "").replace(/^0+(?=.)/, "");
-      return (
-        /^[0-9a-fA-F]+$/.test(digits) &&
-        (digits.length < 16 || (digits.length === 16 && /^[0-7]/.test(digits)))
-      );
-    })
+    parts.every((part) => JavaDigits.parse(part, 16, JavaDigits.MAX_LONG) !== undefined)
   );
 };
 
@@ -296,17 +293,23 @@ const metadataChecks = ({ document, opf, container }: Context) => {
       if (lang !== undefined && problem !== undefined)
         findings.push(at(element, "OPF-092", lang, problem));
     }
-    if (metadata !== undefined && hasRefinesCycle(metadata))
+    const prefixes = Vocabularies.parsePrefixes(Xml.attribute(root, "prefix"));
+    if (metadata !== undefined && hasRefinesCycle(metadata, prefixes))
       findings.push(atEnd(metadata, "OPF-065"));
   }
   return findings;
 };
 
 // Upstream follows `refines` between `meta` elements only, with the attribute as written.
-const hasRefinesCycle = (metadata: Xml.XmlElement) => {
+// A `meta` whose property does not parse is not registered, so it refines nothing.
+const hasRefinesCycle = (metadata: Xml.XmlElement, prefixes: Vocabularies.Prefixes) => {
   const refines = new Map<string, string>();
   for (const element of opfChildren(metadata, "meta")) {
     if (Xml.attribute(element, "name") !== undefined) continue;
+    const property = Xml.attribute(element, "property");
+    if (Vocabularies.parseProperties(property, "meta", prefixes, false).properties.length === 0) {
+      continue;
+    }
     const id = Xml.attribute(element, "id") ?? "";
     const target = Xml.attribute(element, "refines") ?? "";
     if (id !== "" && target.startsWith("#")) refines.set(id, target.slice(1));

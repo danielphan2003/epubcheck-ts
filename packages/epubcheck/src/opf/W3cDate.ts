@@ -1,3 +1,5 @@
+import * as JavaDigits from "./JavaDigits.ts";
+
 // Upstream's check of `dc:date` against http://www.w3.org/TR/NOTE-datetime (OPF-053, OPF-054).
 // It reads the fields between `-`, `T`, `:`, `.`, `+` and `Z` leniently (any digit count, an
 // optional time zone), then a strict Gregorian calendar rejects impossible values. Problems are
@@ -24,9 +26,11 @@ const DATE_STEPS: ReadonlyArray<readonly [Field, string | undefined]> = [
 
 const notInteger = (token: string) => `[For input string: "${token}"] is not an integer`;
 
-// Java's Integer.parseInt.
-const integer = (token: string) =>
-  /^\d+$/.test(token) && Number(token) <= 2147483647 ? Number(token) : undefined;
+// Java's Integer.parseInt; tokens never hold a sign, since `+` and `-` delimit them.
+const integer = (token: string) => {
+  const value = JavaDigits.parse(token, 10, JavaDigits.MAX_INT);
+  return value === undefined || token.startsWith("+") ? undefined : Number(value);
+};
 
 // The fields a date names, whether a non-zero time zone offset applies, or what is wrong.
 const read = (value: string) => {
