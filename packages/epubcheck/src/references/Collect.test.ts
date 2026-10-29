@@ -24,6 +24,8 @@ describe("Collect.cssUrls", () => {
         { url: "b.css", kind: "import", fontFace: false, line: 2, column: 9 },
       ],
     },
+    // Upstream's parser does not read `url (` as a URL, so there is nothing to import.
+    { name: "a spaced import", css: '@import url ("a.css");', urls: [] },
     { name: "a namespace", css: "@namespace epub url(http://www.idpf.org/2007/ops);", urls: [] },
     { name: "a comment", css: "/* url(a.png) */ p { color: red }", urls: [] },
     { name: "a string", css: 'p::before { content: "see url(a.png)"; }', urls: [] },

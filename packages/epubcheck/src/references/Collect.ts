@@ -202,7 +202,9 @@ export const cssUrls = (css: string) => {
   const push = (url: string, position: { readonly line: number; readonly column: number }) => {
     const rule = statement();
     components++;
-    if (rule === "@namespace" || (rule === "@import" && components > 1)) return;
+    if (rule === "@namespace") return;
+    // `@import` takes a URL only as its first component (not `url (...)`, say).
+    if (rule === "@import" && (components > 1 || !/^@import\s*$/i.test(prelude))) return;
     urls.push({
       url,
       kind: rule === "@import" ? "import" : "url",
@@ -228,7 +230,7 @@ export const cssUrls = (css: string) => {
     if (char === '"' || char === "'") {
       const value = string();
       // A string is a URL only as the argument of `@import`.
-      if (statement() === "@import" && components === 0) push(value, position);
+      if (statement() === "@import") push(value, position);
       else components++;
       continue;
     }

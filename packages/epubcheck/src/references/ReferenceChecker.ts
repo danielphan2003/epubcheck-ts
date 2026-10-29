@@ -29,6 +29,13 @@ const isRemoteMediaType = (mediaType: string) =>
 // Hyperlinks and citations are not publication resources.
 const NAVIGATION = new Set<ReferenceType>(["hyperlink", "cite"]);
 
+// What a hyperlink may point to; links to other types are reported as such by a later check.
+const isLinkable = (mediaType: string, version: "2" | "3") =>
+  mediaType === "application/xhtml+xml" ||
+  mediaType === (version === "3" ? "image/svg+xml" : "application/x-dtbook+xml") ||
+  mediaType === "text/x-oeb1-document" ||
+  mediaType === "text/html";
+
 const essence = (mediaType: string) => (mediaType.split(";")[0] ?? "").trim().toLowerCase();
 const isContent = (mediaType: string) =>
   essence(mediaType) === "application/xhtml+xml" || essence(mediaType) === "image/svg+xml";
@@ -62,9 +69,14 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
   const undeclared = new Set<string>();
   for (const reference of references) {
     const { target, type } = reference;
-    // Data URLs are resources of their own, with no manifest entry to check. The package
-    // document is a resource too, of a type no reference may point to (checked later).
-    if (target.kind === "data") continue;
+    // Data URLs are resources of their own, never in the spine. The package document is a
+    // resource too, of a type no reference may point to (checked later).
+    if (target.kind === "data") {
+      if (type === "hyperlink" && isLinkable(target.mediaType, publication.version)) {
+        findings.push(finding(reference, "RSC-011"));
+      }
+      continue;
+    }
     if (target.kind === "local" && target.path === publication.packagePath) continue;
     const item = itemOf(reference, publication);
     if (target.kind === "remote") {
@@ -97,9 +109,9 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
       }
       continue;
     }
+    if (type === "hyperlink" && !isLinkable(item.mediaType, publication.version)) continue;
     if (type === "hyperlink" && !publication.spine.has(item)) {
-      // Links to other media types are reported as such instead, by a later check.
-      if (isContent(item.mediaType)) findings.push(finding(reference, "RSC-011"));
+      findings.push(finding(reference, "RSC-011"));
       continue;
     }
     const fragment = reference.fragment;
