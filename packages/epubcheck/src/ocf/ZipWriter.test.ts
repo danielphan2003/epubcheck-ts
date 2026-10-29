@@ -10,10 +10,6 @@ describe("ZipWriter.write", () => {
 
   it.effect("writes an archive the reader reads back, mimetype first and stored", () =>
     Effect.gen(function* () {
-      const entries = [
-        { name: "mimetype", data: encode("application/epub+zip") },
-        { name: "EPUB/content é.xhtml", data: encode("<html/>".repeat(100)) },
-      ];
       // 2024-05-06 07:08:10 local time.
       const modified = DateTime.toEpochMillis(
         DateTime.makeZonedUnsafe(
@@ -21,7 +17,11 @@ describe("ZipWriter.write", () => {
           { timeZone: DateTime.zoneMakeLocal(), adjustForTimeZone: true },
         ),
       );
-      const archive = yield* Zip.parse(yield* ZipWriter.write(entries, modified));
+      const entries = [
+        { name: "mimetype", data: encode("application/epub+zip"), modified },
+        { name: "EPUB/content é.xhtml", data: encode("<html/>".repeat(100)), modified },
+      ];
+      const archive = yield* Zip.parse(yield* ZipWriter.write(entries));
       expect(archive.entries.map((entry) => [entry.name, entry.method])).toEqual([
         ["mimetype", 0],
         ["EPUB/content é.xhtml", 8],

@@ -1,9 +1,8 @@
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
-// Writes a ZIP archive the way upstream's `--save` packages an expanded EPUB: `mimetype` stored,
-// every other entry deflated, all dated when the archive is made. The caller puts `mimetype`
-// first.
+// Writes a ZIP archive the way upstream's `--save` packages an expanded EPUB: `mimetype` stored
+// and every other entry deflated. The caller puts `mimetype` first.
 
 const CRC_TABLE = Array.from({ length: 256 }, (_, index) => {
   let value = index;
@@ -39,20 +38,18 @@ const dosTimestamp = (millis: number) => {
 export interface Entry {
   readonly name: string;
   readonly data: Uint8Array;
+  // The source file's modification time, in epoch milliseconds.
+  readonly modified: number;
 }
 
-export const write = Effect.fn("ZipWriter.write")(function* (
-  entries: ReadonlyArray<Entry>,
-  // When the archive is made, in epoch milliseconds.
-  modified: number,
-) {
-  const { time, date } = dosTimestamp(modified);
+export const write = Effect.fn("ZipWriter.write")(function* (entries: ReadonlyArray<Entry>) {
   const encoder = new TextEncoder();
   const locals: Array<Uint8Array> = [];
   const centrals: Array<Uint8Array> = [];
   let offset = 0;
   for (const entry of entries) {
     const name = encoder.encode(entry.name);
+    const { time, date } = dosTimestamp(entry.modified);
     const crc = crc32(entry.data);
     const stored = entry.name === "mimetype";
     const body = stored ? entry.data : yield* deflateRaw(entry.data);

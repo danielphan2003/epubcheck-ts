@@ -5,10 +5,10 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import type * as PlatformError from "effect/PlatformError";
 
 import * as EpubCheck from "../EpubCheck.ts";
 import * as MessageCatalog from "../messages/MessageCatalog.ts";
-import * as Container from "../ocf/Container.ts";
 import * as ZipWriter from "../ocf/ZipWriter.ts";
 import * as Dates from "../report/Dates.ts";
 import * as Groups from "../report/Groups.ts";
@@ -468,18 +468,36 @@ const readCustomMessages = Effect.fn("Cli.readCustomMessages")(function* (
   return overrides;
 });
 
-// Packages an expanded EPUB next to its directory, `mimetype` first, like upstream's `--save`.
+// Upstream's Archive skips system files and version-control directories.
+const IGNORED_FILES = new Set([".DS_Store", "._DS_Store", "Thumbs.db", "ehthumbs.db"]);
+const IGNORED_DIRECTORIES = new Set([".svn", ".git"]);
+
+// Packages an expanded EPUB next to its directory like upstream's `--save`: files in directory
+// listing order, depth-first, then `mimetype` moved first, each dated by its modification time.
 const saveArchive = Effect.fn("Cli.saveArchive")(function* (directory: string) {
   const fs = yield* FileSystem.FileSystem;
-  const container = yield* Container.fromDirectory(directory);
-  const names = ["mimetype", ...container.files.filter((file) => file !== "mimetype")];
+  const path = yield* Path.Path;
   const entries: Array<ZipWriter.Entry> = [];
-  for (const name of names) {
-    const data = yield* container.read(name);
-    if (Option.isSome(data)) entries.push({ name, data: data.value });
-  }
-  const archive = yield* ZipWriter.write(entries, yield* Clock.currentTimeMillis);
-  yield* fs.writeFile(`${directory.replace(/[\\/]+$/, "")}.epub`, archive).pipe(Effect.orDie);
+  // Recursive, so its type is spelled out.
+  const walk: (dir: string, prefix: string) => Effect.Effect<void, PlatformError.PlatformError> =
+    Effect.fnUntraced(function* (dir: string, prefix: string) {
+      for (const name of yield* fs.readDirectory(dir)) {
+        const file = path.join(dir, name);
+        const info = yield* fs.stat(file);
+        if (info.type === "File" && !IGNORED_FILES.has(name)) {
+          const modified = Option.getOrUndefined(info.mtime)?.getTime() ?? 0;
+          entries.push({ name: `${prefix}${name}`, data: yield* fs.readFile(file), modified });
+        } else if (info.type === "Directory" && !IGNORED_DIRECTORIES.has(name)) {
+          yield* walk(file, `${prefix}${name}/`);
+        }
+      }
+    });
+  yield* walk(directory, "");
+  const archive = yield* ZipWriter.write([
+    ...entries.filter((entry) => entry.name === "mimetype"),
+    ...entries.filter((entry) => entry.name !== "mimetype"),
+  ]);
+  yield* fs.writeFile(`${directory.replace(/[\\/]+$/, "")}.epub`, archive);
 });
 
 const listChecks = () =>
@@ -630,13 +648,8 @@ const run = Effect.fn("Cli.run")(function* (
     if (expanded && options.save) {
       if (errors > 0) out.err(text(locale, "deleting_archive"));
       else {
-        yield* saveArchive(absolute).pipe(
-          // Upstream skips the archive when the directory cannot be read.
-          Effect.catchTags({
-            SymbolicLinkError: () => Effect.void,
-            ResourceReadError: () => Effect.void,
-          }),
-        );
+        // Upstream skips the archive when the directory cannot be read.
+        yield* saveArchive(absolute).pipe(Effect.catchTags({ PlatformError: () => Effect.void }));
       }
     }
   }
