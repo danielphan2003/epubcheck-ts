@@ -31,8 +31,9 @@ const normalizedUrl = (href: string, base: URL) => {
   return `${url.protocol}//${url.host}${path}${search}${hash}`;
 };
 
-// Upstream normalizes an item's media type (no space around `;`, parameters without a value
-// dropped, quotes removed from token values) and then tests a pattern in which `+-^` is a range.
+// Upstream normalizes an item's media type like MIMEType.normalize (essence trimmed and in lower
+// case, parameters without a value dropped, a value quoted unless it is a token) and then tests
+// a pattern in which `+-^` is a range, so a quoted value fails it.
 const TOKEN = "[!#$%&'*+.^_`|~0-9A-Za-z-]+";
 const ITEM_MEDIA_TYPE = /^[a-zA-Z0-9!#$&+-^_]+\/[a-zA-Z0-9!#$&+-^_]+$/;
 const normalizedMediaType = (value: string) => {
@@ -40,13 +41,16 @@ const normalizedMediaType = (value: string) => {
   const type = new RegExp(`^\\s*(${TOKEN}/${TOKEN})\\s*$`).exec(essence)?.[1];
   if (type === undefined) return undefined;
   const kept = parameters.flatMap((parameter) => {
-    const [, name, raw = ""] =
-      new RegExp(`^\\s*(${TOKEN})=(${TOKEN}|"[^"]*")\\s*$`).exec(parameter) ?? [];
-    if (name === undefined) return [];
-    const unquoted = raw.startsWith('"') ? raw.slice(1, -1) : raw;
-    return [`${name}=${new RegExp(`^${TOKEN}$`).test(unquoted) ? unquoted : raw}`];
+    const separator = parameter.indexOf("=");
+    const name = parameter.slice(0, separator).trim();
+    const raw = parameter.slice(separator + 1).trim();
+    if (separator < 0 || !new RegExp(`^${TOKEN}$`).test(name) || raw === "") return [];
+    const quoted = raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"');
+    const text = quoted ? raw.slice(1, -1) : raw;
+    const written = text !== "" && new RegExp(`^${TOKEN}$`).test(text) ? text : `"${text}"`;
+    return [`${name.toLowerCase()}=${written}`];
   });
-  return [type, ...kept].join(";");
+  return [type.toLowerCase(), ...kept].join(";");
 };
 const isCheckedMediaType = (mediaType: string) => {
   const normalized = normalizedMediaType(mediaType);
@@ -160,8 +164,21 @@ const manifestChecks = ({ opf, container }: Context) => {
   for (const item of items) {
     const url = urlOf(item);
     if (url === undefined) continue;
+    // Upstream looks every item up in the container, duplicates included.
+    if (
+      files !== undefined &&
+      item.path !== undefined &&
+      !isRemote(item.href) &&
+      !files.has(item.path.normalize("NFC"))
+    ) {
+      findings.push({ id: "RSC-001", args: [item.path], line: -1, column: -1, path: item.path });
+    }
     if (kept.get(url) !== item) {
-      findings.push(at(item.element, "OPF-074", item.path ?? url ?? item.href));
+      // Upstream quotes the item's path, with its normalized fragment in a full publication.
+      const fragment = files !== undefined && url.includes("#") ? url.slice(url.indexOf("#")) : "";
+      findings.push(
+        at(item.element, "OPF-074", item.path === undefined ? url : item.path + fragment),
+      );
       continue;
     }
     if (url === packageKey) {
@@ -174,14 +191,6 @@ const manifestChecks = ({ opf, container }: Context) => {
         !item.href.startsWith("data:") &&
         isCheckedMediaType(item.mediaType);
       if (checked && item.href.includes("#")) findings.push(at(item.element, "OPF-091"));
-    }
-    if (
-      files !== undefined &&
-      item.path !== undefined &&
-      !isRemote(item.href) &&
-      !files.has(item.path.normalize("NFC"))
-    ) {
-      findings.push({ id: "RSC-001", args: [item.path], line: -1, column: -1, path: item.path });
     }
   }
   // Upstream checks properties as it reads each `item` that it registers (an `href`, and an `id`

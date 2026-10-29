@@ -350,7 +350,10 @@ export const parseProperties = (
       problems.push({ id: "OPF-028", args: [prefix] });
       continue;
     }
-    if (vocab?.deprecated === true) problems.push({ id: "OPF-086c", args: [prefix] });
+    // Only the deprecated vocabulary's own prefix name is deprecated, not another one mapped to it.
+    if (vocab?.deprecated === true && RESERVED[prefix]?.uri === vocab.uri) {
+      problems.push({ id: "OPF-086c", args: [prefix] });
+    }
     const known = prefix === "" ? DEFAULT_VOCABS[context].terms : vocab?.terms(context);
     const status = known?.get(name) ?? (known === undefined ? "allowed" : undefined);
     if (status === undefined) {
