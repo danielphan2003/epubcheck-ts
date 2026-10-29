@@ -44,17 +44,35 @@ export const terminalLayer = Layer.sync(Terminal, () => {
 const LOCALES = Object.keys(bundles).filter((locale) => locale !== "default");
 
 // Like Java's ResourceBundle: the requested locale, then the default locale, then English.
+// Traditional Chinese (`zh-Hant`) finds the Taiwanese bundle.
 const resolveLocale = (requested: string | undefined, fallback: string) => {
   for (const tag of [requested, fallback]) {
     if (tag === undefined) continue;
     const parts = tag.split(/[-_]/);
-    for (let length = parts.length; length > 0; length--) {
-      const candidate = parts.slice(0, length).join("-").toLowerCase();
+    const traditional = parts[0]?.toLowerCase() === "zh" && parts[1]?.toLowerCase() === "hant";
+    const candidates = traditional && parts.length === 2 ? [...parts, "TW"] : parts;
+    for (let length = candidates.length; length > 0; length--) {
+      const candidate = candidates
+        .slice(0, length)
+        .filter((part) => part.length !== 4)
+        .join("-")
+        .toLowerCase();
       const match = LOCALES.find((locale) => locale.toLowerCase() === candidate);
       if (match !== undefined) return match;
     }
   }
   return "en";
+};
+
+// Java's Locale.forLanguageTag keeps the well-formed subtags before the first ill-formed one
+// (`de_DE` has none, so the default locale applies).
+const languageTag = (tag: string) => {
+  const subtags = tag.split("-");
+  const end = subtags.findIndex((subtag, index) =>
+    index === 0 ? !/^[A-Za-z]{2,8}$/.test(subtag) : !/^[A-Za-z0-9]{1,8}$/.test(subtag),
+  );
+  const kept = end < 0 ? subtags : subtags.slice(0, end);
+  return kept.length === 0 ? undefined : kept.join("-");
 };
 
 const text = (locale: string, key: string, ...args: ReadonlyArray<string>) => {
@@ -88,7 +106,8 @@ export interface CliOptions {
   readonly displayHelp: boolean;
   readonly displayVersion: boolean;
   readonly listChecks: { readonly target: string | undefined } | undefined;
-  readonly customMessages: string | undefined;
+  // The override file; one named by the environment variable is used only if it exists.
+  readonly customMessages: { readonly path: string; readonly fromEnvironment: boolean } | undefined;
 }
 
 export interface CliEnvironment {
@@ -150,7 +169,9 @@ const parseArgs = (argv: ReadonlyArray<string>, environment: CliEnvironment, out
   let version: EpubCheck.EpubVersion = "3";
   let profile: CliOptions["profile"];
   let reportingLevel: ReportingLevel = "INFO";
-  let report: CliOptions["report"];
+  // Upstream keeps the report's format and target apart: `-r` sets only the target.
+  let format: ReportFormat | undefined;
+  let target: ReportTarget | undefined;
   let maxOfEachMessage = Groups.DEFAULT_MAX_OF_EACH_MESSAGE;
   let failOnWarnings = false;
   let save = false;
@@ -158,9 +179,10 @@ const parseArgs = (argv: ReadonlyArray<string>, environment: CliEnvironment, out
   let displayVersion = false;
   let listChecks: CliOptions["listChecks"];
   const formats = new Set<ReportFormat>();
-  // The environment variable only names a file that exists; `run` checks that.
-  let customMessages =
-    environment.customMessageFile === "" ? undefined : environment.customMessageFile;
+  let customMessages: CliOptions["customMessages"] =
+    environment.customMessageFile === undefined || environment.customMessageFile === ""
+      ? undefined
+      : { path: environment.customMessageFile, fromEnvironment: true };
   const help = () => out.out(text(locale, "help_text", EpubCheck.VERSION));
   const stop = (exitCode: number) => ({ exitCode });
 
@@ -227,8 +249,7 @@ const parseArgs = (argv: ReadonlyArray<string>, environment: CliEnvironment, out
       case "json":
       case "x":
       case "xmp": {
-        const format = flag.startsWith("o") ? "xml" : flag.startsWith("x") ? "xmp" : "json";
-        let target: ReportTarget;
+        format = flag.startsWith("o") ? "xml" : flag.startsWith("x") ? "xmp" : "json";
         if (next !== undefined && !next.startsWith("-")) {
           index++;
           target = { kind: "file", path: next };
@@ -240,7 +261,6 @@ const parseArgs = (argv: ReadonlyArray<string>, environment: CliEnvironment, out
           return stop(1);
         } else target = { kind: "beside", path };
         formats.add(format);
-        report = { format, target };
         break;
       }
       case "q":
@@ -252,13 +272,16 @@ const parseArgs = (argv: ReadonlyArray<string>, environment: CliEnvironment, out
         break;
       case "r":
       case "redir":
-        if (next !== undefined) index++;
+        if (next !== undefined) {
+          index++;
+          target = { kind: "file", path: next };
+        }
         break;
       case "c":
       case "customMessages":
         if (next === undefined) break;
         if (next.toLowerCase() === "none") customMessages = undefined;
-        else if (!next.startsWith("-")) customMessages = next;
+        else if (!next.startsWith("-")) customMessages = { path: next, fromEnvironment: false };
         else {
           out.err(text(locale, "expected_message_filename", next));
           help();
@@ -286,7 +309,7 @@ const parseArgs = (argv: ReadonlyArray<string>, environment: CliEnvironment, out
           return stop(1);
         }
         index++;
-        locale = resolveLocale(next, environment.defaultLocale);
+        locale = resolveLocale(languageTag(next), environment.defaultLocale);
         break;
       case "maxOfEachMessage":
       case "maxofeachmessage":
@@ -331,7 +354,7 @@ const parseArgs = (argv: ReadonlyArray<string>, environment: CliEnvironment, out
     version,
     profile,
     reportingLevel,
-    report,
+    report: format === undefined || target === undefined ? undefined : { format, target },
     maxOfEachMessage,
     locale,
     failOnWarnings,
@@ -512,11 +535,14 @@ const run = Effect.fn("Cli.run")(function* (
   // Where messages about the container itself are located.
   const containerPath = strip(expanded ? archive : absolute);
   const preamble = yield* Report.make({ locale, reportingLevel: options.reportingLevel });
-  const fromEnvironment = environment.customMessageFile === options.customMessages;
-  const custom = options.customMessages;
+  const used = options.customMessages;
+  const custom =
+    used === undefined ||
+    (used.fromEnvironment && !(yield* exists(path.resolve(environment.cwd, used.path))))
+      ? undefined
+      : used.path;
   const overrides =
-    custom === undefined ||
-    (fromEnvironment && !(yield* exists(path.resolve(environment.cwd, custom))))
+    custom === undefined
       ? undefined
       : yield* readCustomMessages(
           path.resolve(environment.cwd, custom),
@@ -527,12 +553,14 @@ const run = Effect.fn("Cli.run")(function* (
   const startedAt = yield* Clock.currentTimeMillis;
   let exitCode = 1;
   let stdoutClosed = false;
-  let messages: ReadonlyArray<Report.Message> = yield* preamble.messages;
+  // Upstream reads the override file before it knows an expanded EPUB's archive.
+  const early = new Set(yield* preamble.messages);
+  let messages: ReadonlyArray<Report.Message> = [...early];
   let result: EpubCheck.CheckResult | undefined;
   const count = (severity: Report.Message["severity"]) =>
     messages.filter((message) => message.severity === severity).length;
   const consoleLine = (message: Report.Message) => {
-    const name = strip(epubFileName);
+    const name = strip(early.has(message) ? raw : epubFileName);
     const where =
       result === undefined
         ? message.location.path

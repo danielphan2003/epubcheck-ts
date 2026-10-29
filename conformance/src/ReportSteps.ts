@@ -42,6 +42,8 @@ const query = Effect.fn("ReportSteps.query")(function* (world: World, path: stri
   const found: unknown = JSONPath({ path, json, wrap: true });
   const matches: ReadonlyArray<unknown> = Array.isArray(found) ? found : [];
   const definite = !/\.\.|\[\?|\*|,/.test(path);
+  // Jayway fails on a definite path that matches nothing.
+  if (definite && matches.length === 0) return yield* fail(`No JSON at ${path}`);
   return definite ? matches[0] : matches;
 });
 
