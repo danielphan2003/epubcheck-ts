@@ -1,3 +1,4 @@
+import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as Xml from "../xml/Xml.ts";
 import { percentDecode } from "../util/UrlFragment.ts";
 
@@ -11,6 +12,7 @@ export interface ManifestItem {
   readonly href: string;
   // Container path of the resource, or undefined for remote resources and unparsable hrefs.
   readonly path: string | undefined;
+  // Normalized, as upstream stores it, so every check sees the same spelling.
   readonly mediaType: string;
   readonly properties: ReadonlyArray<string>;
   // The ID of the manifest fallback, if any.
@@ -71,7 +73,7 @@ export const read = (
         id: (Xml.attribute(element, "id") ?? "").trim(),
         href,
         path: href === "" ? undefined : resolve(href, path),
-        mediaType: (Xml.attribute(element, "media-type") ?? "").trim(),
+        mediaType: MediaTypes.normalize(Xml.attribute(element, "media-type") ?? ""),
         properties: (Xml.attribute(element, "properties") ?? "")
           .split(/[ \t\n\v\f\r]+/)
           .filter((token) => token !== ""),

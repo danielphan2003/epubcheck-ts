@@ -10,6 +10,7 @@ describe("MediaTypes", () => {
     { value: 'audio/mp4;codecs="mp4a.40.2"', normalized: "audio/mp4;codecs=mp4a.40.2" },
     { value: 'text/css;charset="a b"', normalized: 'text/css;charset="a b"' },
     { value: "text/css;charset", normalized: "text/css" },
+    { value: "audio/mp4;codecs=aac;Codecs=x", normalized: "audio/mp4;codecs=aac" },
     { value: "not a type", normalized: "" },
   ])("normalizes $value", ({ value, normalized }) => {
     expect(MediaTypes.normalize(value)).toBe(normalized);
@@ -36,10 +37,13 @@ describe("MediaTypes", () => {
     expect(MediaTypes.preferred(value, path)).toBe(preferred);
   });
 
+  // A 1x1 RGB PNG's signature and IHDR chunk, without its CRC.
   const png = new Uint8Array([
     0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0, 0, 1,
-    0, 0, 0, 1,
+    0, 0, 0, 1, 8, 2, 0, 0, 0,
   ]);
+  const gif = new TextEncoder().encode("GIF89a\x01\x00\x01\x00\x00\x00\x00");
+  const jpeg = new Uint8Array([0xff, 0xd8, 0, 0, 0, 0, 0, 0]);
   // Each answer is EPUBCheck 5.4.0's BitmapChecker.
   it.each([
     { name: "a PNG", bytes: png, path: "a.png", type: "image/png", ids: [] },
@@ -57,6 +61,49 @@ describe("MediaTypes", () => {
       bytes: png,
       path: "img/a",
       type: "image/png",
+      ids: ["PKG-021"],
+    },
+    {
+      name: "a truncated IHDR",
+      bytes: png.subarray(0, 28),
+      path: "a.png",
+      type: "image/png",
+      ids: ["PKG-021"],
+    },
+    {
+      name: "a PNG 0 pixels wide",
+      bytes: png.map((byte, index) => (index === 19 ? 0 : byte)),
+      path: "a.png",
+      type: "image/png",
+      ids: ["PKG-021"],
+    },
+    {
+      name: "a 16-bit palette PNG",
+      bytes: png.map((byte, index) => (index === 24 ? 16 : index === 25 ? 3 : byte)),
+      path: "a.png",
+      type: "image/png",
+      ids: ["PKG-021"],
+    },
+    { name: "a GIF header alone", bytes: gif, path: "a.gif", type: "image/gif", ids: ["PKG-021"] },
+    {
+      name: "a GIF with an image descriptor",
+      bytes: new Uint8Array([...gif, 0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0]),
+      path: "a.gif",
+      type: "image/gif",
+      ids: [],
+    },
+    {
+      name: "JPEG bytes named .png",
+      bytes: jpeg,
+      path: "a.png",
+      type: "image/png",
+      ids: ["OPF-029", "PKG-022"],
+    },
+    {
+      name: "a JPEG without a frame",
+      bytes: jpeg,
+      path: "a.jpg",
+      type: "image/jpeg",
       ids: ["PKG-021"],
     },
     {

@@ -31,7 +31,7 @@ const checkImage = Effect.fn("Publication.checkImage")(function* (
   bytes: Uint8Array,
 ) {
   const report = yield* Report.Report;
-  const problems = MediaTypes.imageProblems(bytes, path, MediaTypes.normalize(item.mediaType));
+  const problems = MediaTypes.imageProblems(bytes, path, item.mediaType);
   for (const { id, args } of problems) yield* report.message(id, Report.location(path), ...args);
 });
 
@@ -75,7 +75,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
           : undefined,
   };
   const references: Array<Collect.Reference> = [];
-  let scripted = false;
+  let scripts = false;
   for (const item of opf.items) {
     // An item for the package document itself is OPF-099, not a content document.
     if (item.path === undefined || item.path === opf.path) continue;
@@ -106,7 +106,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     references.push(...collected.references);
     ids.set(nfc(item.path), Collect.ids(document.value));
     yield* reportFindings(collected.findings);
-    if (collected.features.scripted) scripted = true;
+    if (collected.features.scripts) scripts = true;
     if (opf.version === "3") {
       const { root } = document.value;
       yield* reportFindings(
@@ -120,7 +120,6 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       );
     }
   }
-  yield* reportFindings(ReferenceChecker.check(references, publication));
   const report = yield* Report.Report;
   const itemLocation = (item: ManifestItem) =>
     Report.location(opf.path, item.element.line, item.element.column);
@@ -135,7 +134,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     for (const item of opf.items) {
       const href = item.href.trim();
       if (item.path !== undefined || href === "" || /^data:/i.test(href)) continue;
-      const type = MediaTypes.normalize(item.mediaType);
+      const type = item.mediaType;
       if (
         /^(?:audio|video|font)\/|^application\/font-/.test(type) ||
         type === "application/x-shockwave-flash" ||
@@ -143,12 +142,14 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       ) {
         continue;
       }
-      if (spine.has(item.id)) yield* report.message("RSC-006", itemLocation(item), href);
+      const name = Url.humanName(href);
+      if (spine.has(item.id)) yield* report.message("RSC-006", itemLocation(item), name);
       else if (!referenced.has(Url.remoteKey(href))) {
-        yield* report.message(scripted ? "RSC-006b" : "RSC-006", itemLocation(item), href);
+        yield* report.message(scripts ? "RSC-006b" : "RSC-006", itemLocation(item), name);
       }
     }
   }
+  yield* reportFindings(ReferenceChecker.check(references, publication));
 });
 
 // A single content document: references need a publication, so only its URLs are checked.

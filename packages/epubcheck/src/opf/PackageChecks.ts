@@ -35,8 +35,6 @@ const normalizedUrl = (href: string, base: URL) => {
 // Upstream checks a normalized media type against a pattern in which `+-^` is a range, so a
 // quoted parameter value fails it.
 const ITEM_MEDIA_TYPE = /^[a-zA-Z0-9!#$&+-^_]+\/[a-zA-Z0-9!#$&+-^_]+$/;
-const isCheckedMediaType = (mediaType: string) =>
-  ITEM_MEDIA_TYPE.test(MediaTypes.normalize(mediaType));
 
 export interface Finding {
   readonly id: MessageId;
@@ -179,12 +177,10 @@ const manifestChecks = ({ opf, container }: Context) => {
     const schemeFindings = urlSchemeFindings(item.element, item.href, opf.version);
     findings.push(...schemeFindings);
     if (opf.version === "3" && schemeFindings.every((finding) => finding.id !== "RSC-029")) {
-      if (isCheckedMediaType(item.mediaType)) {
+      if (ITEM_MEDIA_TYPE.test(item.mediaType)) {
         const preferred = MediaTypes.preferred(item.mediaType, item.href);
         if (preferred !== undefined) {
-          findings.push(
-            at(item.element, "OPF-090", preferred, MediaTypes.normalize(item.mediaType)),
-          );
+          findings.push(at(item.element, "OPF-090", preferred, item.mediaType));
         }
         if (!isRemote(item.href) && item.href.includes("#")) {
           findings.push(at(item.element, "OPF-091"));
@@ -245,22 +241,16 @@ const CONTENT_DOCUMENT_TYPES = new Set(["application/xhtml+xml", "image/svg+xml"
 // An EPUB 3 spine item that is not a content document needs a fallback chain to one; upstream
 // reports it at the manifest item.
 const spineFallbackFinding = (item: ManifestItem, byId: ReadonlyMap<string, ManifestItem>) => {
-  const type = MediaTypes.normalize(item.mediaType);
-  if (CONTENT_DOCUMENT_TYPES.has(type)) return [];
-  if (item.fallback === undefined) return [at(item.element, "OPF-043", type)];
+  if (CONTENT_DOCUMENT_TYPES.has(item.mediaType)) return [];
+  if (item.fallback === undefined) return [at(item.element, "OPF-043", item.mediaType)];
   const seen = new Set<string>();
   let current: ManifestItem | undefined = item;
   while (current?.fallback !== undefined && !seen.has(current.id)) {
     seen.add(current.id);
     current = byId.get(current.fallback);
-    if (
-      current !== undefined &&
-      CONTENT_DOCUMENT_TYPES.has(MediaTypes.normalize(current.mediaType))
-    ) {
-      return [];
-    }
+    if (current !== undefined && CONTENT_DOCUMENT_TYPES.has(current.mediaType)) return [];
   }
-  return [at(item.element, "OPF-044", type)];
+  return [at(item.element, "OPF-044", item.mediaType)];
 };
 
 const spineChecks = ({ document, opf }: Context) => {

@@ -69,6 +69,8 @@ const XML_NS = "http://www.w3.org/XML/1998/namespace";
 
 export interface Features {
   readonly scripted: boolean;
+  // A JavaScript `script` or an event handler (upstream's HAS_SCRIPTS); forms are only scripted.
+  readonly scripts: boolean;
   readonly svg: boolean;
   readonly mathml: boolean;
   readonly switch: boolean;
@@ -364,6 +366,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
   const epub3 = context.version === "3";
   const isSvgDocument = document.root.ns === SVG_NS;
   let scripted = false;
+  let scripts = false;
   let svg = false;
   let mathml = false;
   let hasSwitch = false;
@@ -555,7 +558,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
           break;
         }
         case "script":
-          if (isScript(element)) scripted = true;
+          if (isScript(element)) scripted = scripts = true;
           if (epub3) addResource(element, Xml.attribute(element, "src"), "script");
           break;
         case "style":
@@ -655,7 +658,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
           }
           break;
         case "script":
-          if (isScript(element)) scripted = true;
+          if (isScript(element)) scripted = scripts = true;
           // Upstream reads `src`, which SVG scripts do not have, so their `href` is not checked.
           if (epub3) addResource(element, Xml.attribute(element, "src"), "script");
           break;
@@ -678,7 +681,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     }
     if (epub3) {
       if (element.attributes.some((attribute) => EVENT_HANDLERS.has(attribute.local.toLowerCase())))
-        scripted = true;
+        scripted = scripts = true;
       const types = (Xml.attribute(element, "type", OPS_NS) ?? "").split(/\s+/);
       if (types.includes("index")) index = true;
       if (types.includes("glossary")) glossary = true;
@@ -720,7 +723,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     const pseudo = (name: string) =>
       new RegExp(`(?:^|\\s)${name}\\s*=\\s*(["'])(.*?)\\1`).exec(instruction.body)?.[2];
     const type = pseudo("type");
-    if (type !== undefined && MediaTypes.parse(type).essence !== "text/css") continue;
+    if (type !== undefined && type.toLowerCase() !== "text/css") continue;
     const at = { line: instruction.line, column: instruction.column };
     const href = pseudo("href");
     const resolved = href === undefined ? undefined : check(href, at);
@@ -748,6 +751,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
 
   const features: Features = {
     scripted,
+    scripts,
     svg,
     mathml,
     switch: hasSwitch,

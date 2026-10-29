@@ -129,3 +129,18 @@ describe("Url.encodePath", () => {
     expect(Url.encodePath(path)).toBe(encoded);
   });
 });
+
+// Each name is EPUBCheck 5.4.0's for a remote manifest item.
+describe("Url.humanName", () => {
+  it.each([
+    {
+      href: "HTTPS://Example.ORG:443/a%20b.css?q%20r#f%20g",
+      name: "https://example.org/a b.css?q r#f g",
+    },
+    { href: "https://u%20s:p@example.org/x.css", name: "https://u s:p@example.org/x.css" },
+    { href: "https://example.org/%E2%82%AC.css", name: "https://example.org/€.css" },
+    { href: "http://example.org:8080/x?", name: "http://example.org:8080/x?" },
+  ])("names $href", ({ href, name }) => {
+    expect(Url.humanName(href)).toBe(name);
+  });
+});

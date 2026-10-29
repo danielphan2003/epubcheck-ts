@@ -137,6 +137,26 @@ const normalizeRemote = (url: URL) => {
 export const nameOf = (target: Target) =>
   target.kind === "local" ? encodePath(target.path) : target.url;
 
+// How upstream names a remote manifest item: galimatias's human form, percent-decoded.
+export const humanName = (href: string) => {
+  const url = parse(href.trim(), CONTAINER);
+  if (url === undefined) return href;
+  const user = url.username + (url.password === "" ? "" : `:${url.password}`);
+  const authority =
+    url.host === "" && !url.href.startsWith(`${url.protocol}//`)
+      ? ""
+      : `//${user === "" ? "" : `${percentDecode(user)}@`}${url.host}`;
+  const part = (prefix: string, value: string) =>
+    value === "" && !url.href.includes(prefix) ? "" : prefix + percentDecode(value.slice(1));
+  return (
+    url.protocol +
+    authority +
+    percentDecode(url.pathname) +
+    part("?", url.search) +
+    part("#", url.hash)
+  );
+};
+
 // A remote manifest item's key, as references to it resolve.
 export const remoteKey = (href: string) => {
   const url = parse(href.trim(), CONTAINER);

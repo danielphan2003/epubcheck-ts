@@ -6,24 +6,21 @@ import type { MessageId } from "../messages/MessageCatalog.ts";
 export interface MediaType {
   // `type/subtype`, lowercased.
   readonly essence: string;
-  // Parameter names lowercased, values as written.
+  // Parameter names lowercased, values as written; the first of repeated names wins.
   readonly parameters: ReadonlyMap<string, string>;
 }
 
 export const parse = (value: string): MediaType => {
-  const [essence = "", ...parameters] = value.split(";");
-  return {
-    essence: essence.trim().toLowerCase(),
-    parameters: new Map(
-      parameters.flatMap((parameter) => {
-        const separator = parameter.indexOf("=");
-        if (separator < 0) return [];
-        const name = parameter.slice(0, separator).trim().toLowerCase();
-        const raw = parameter.slice(separator + 1).trim();
-        return [[name, raw.replace(/^"(.*)"$/, "$1")] as const];
-      }),
-    ),
-  };
+  const [essence = "", ...rest] = value.split(";");
+  const parameters = new Map<string, string>();
+  for (const parameter of rest) {
+    const separator = parameter.indexOf("=");
+    if (separator < 0) continue;
+    const name = parameter.slice(0, separator).trim().toLowerCase();
+    const raw = parameter.slice(separator + 1).trim();
+    if (!parameters.has(name)) parameters.set(name, raw.replace(/^"(.*)"$/, "$1"));
+  }
+  return { essence: essence.trim().toLowerCase(), parameters };
 };
 
 // Upstream's MIMEType.normalize, which items' media types go through: the essence trimmed and in
@@ -34,17 +31,18 @@ export const normalize = (value: string) => {
   const [essence = "", ...parameters] = value.split(";");
   const type = new RegExp(`^\\s*(${TOKEN}/${TOKEN})\\s*$`).exec(essence)?.[1];
   if (type === undefined) return "";
-  const kept = parameters.flatMap((parameter) => {
+  const kept = new Map<string, string>();
+  for (const parameter of parameters) {
     const separator = parameter.indexOf("=");
-    const name = parameter.slice(0, separator).trim();
+    const name = parameter.slice(0, separator).trim().toLowerCase();
     const raw = parameter.slice(separator + 1).trim();
-    if (separator < 0 || !new RegExp(`^${TOKEN}$`).test(name) || raw === "") return [];
+    if (separator < 0 || !new RegExp(`^${TOKEN}$`).test(name) || raw === "") continue;
+    if (kept.has(name)) continue;
     const quoted = raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"');
     const text = quoted ? raw.slice(1, -1) : raw;
-    const written = text !== "" && new RegExp(`^${TOKEN}$`).test(text) ? text : `"${text}"`;
-    return [`${name.toLowerCase()}=${written}`];
-  });
-  return [type.toLowerCase(), ...kept].join(";");
+    kept.set(name, text !== "" && new RegExp(`^${TOKEN}$`).test(text) ? text : `"${text}"`);
+  }
+  return [type.toLowerCase(), ...[...kept].map(([name, text]) => `${name}=${text}`)].join(";");
 };
 
 // Upstream compares normalized media types with exact strings, so any other parameter makes a
@@ -147,7 +145,7 @@ export const sameEssence = (left: string, right: string) =>
 
 // Bitmaps upstream checks (BitmapChecker); WebP and others are not.
 export const isBitmap = (value: string) =>
-  ["image/gif", "image/jpeg", "image/png"].includes(parse(value).essence);
+  ["image/gif", "image/jpeg", "image/png"].includes(normalize(value));
 
 // The formats ImageIO's readers recognize, by their format names, and the suffixes they take.
 type ImageFormat = "JPEG" | "png" | "gif" | "bmp" | "tif";
@@ -171,7 +169,7 @@ const ascii = (bytes: Uint8Array, text: string, offset = 0) =>
   );
 
 const sniff = (bytes: Uint8Array): ImageFormat | undefined => {
-  if (startsWith(bytes, [0xff, 0xd8, 0xff])) return "JPEG";
+  if (startsWith(bytes, [0xff, 0xd8])) return "JPEG";
   if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "png";
   if (ascii(bytes, "GIF87a") || ascii(bytes, "GIF89a")) return "gif";
   if (ascii(bytes, "BM")) return "bmp";
@@ -182,10 +180,38 @@ const sniff = (bytes: Uint8Array): ImageFormat | undefined => {
 // Whether a reader gets as far as the image's dimensions.
 const readable = (format: ImageFormat, bytes: Uint8Array) => {
   switch (format) {
-    case "png":
-      return bytes.length >= 24 && ascii(bytes, "IHDR", 12);
-    case "gif":
-      return bytes.length >= 10;
+    case "png": {
+      // ImageIO's PNG reader validates the whole IHDR chunk.
+      if (bytes.length < 29 || !ascii(bytes, "IHDR", 12)) return false;
+      const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const [depth = 0, color = 0, compression, filter, interlace = 0] = bytes.subarray(24, 29);
+      return (
+        view.getUint32(8) === 13 &&
+        view.getInt32(16) > 0 &&
+        view.getInt32(20) > 0 &&
+        [1, 2, 4, 8, 16].includes(depth) &&
+        (color === 0 || (color === 3 && depth <= 8) || ([2, 4, 6].includes(color) && depth >= 8)) &&
+        compression === 0 &&
+        filter === 0 &&
+        interlace <= 1
+      );
+    }
+    case "gif": {
+      // ImageIO reads up to the first image descriptor, past the color tables and extensions.
+      const table = (packed: number) => (packed & 0x80 ? 3 << ((packed & 7) + 1) : 0);
+      let offset = 13 + table(bytes[10] ?? 0);
+      while (offset < bytes.length) {
+        const block = bytes[offset];
+        if (block === 0x2c) {
+          return offset + 10 + table(bytes[offset + 9] ?? 0) <= bytes.length;
+        }
+        if (block !== 0x21) return false;
+        offset += 2;
+        while (offset < bytes.length && bytes[offset] !== 0) offset += (bytes[offset] ?? 0) + 1;
+        offset += 1;
+      }
+      return false;
+    }
     case "bmp":
       return bytes.length >= 26;
     case "tif":
