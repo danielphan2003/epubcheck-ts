@@ -18,6 +18,8 @@ export interface Prepared {
   readonly errors: ReadonlyArray<SchemaError>;
   // Findings with their own message IDs, such as HTM-061 for an invalid `data-*` name.
   readonly findings?: ReadonlyArray<Finding>;
+  // The root itself was rejected, so there is nothing left for the schemas.
+  readonly rejectedRoot?: boolean;
 }
 
 export interface Finding {
@@ -43,12 +45,15 @@ const withChildren = (
   children,
 });
 
-// allowOnlyHTML: inside an SVG `title`, only XHTML elements may appear.
-const titleChildren = (element: Xml.XmlElement, errors: Array<SchemaError>) =>
-  element.children.filter((child) => {
-    if (child.kind === "text" || child.ns === XHTML_NS) return true;
-    errors.push(rejected(child));
-    return false;
+// allowOnlyHTML: inside an SVG `title`, only XHTML elements may appear, at any depth.
+const titleChildren = (element: Xml.XmlElement, errors: Array<SchemaError>): Array<Xml.XmlNode> =>
+  element.children.flatMap((child): Array<Xml.XmlNode> => {
+    if (child.kind === "text") return [child];
+    if (child.ns !== XHTML_NS) {
+      errors.push(rejected(child));
+      return [];
+    }
+    return [withChildren(child, titleChildren(child, errors))];
   });
 
 const FOREIGN_ATTRIBUTE_NS = new Set(["", OPS_NS, XLINK_NS, XML_NS, XMLNS_NS]);
@@ -81,6 +86,31 @@ export const svg = (document: Xml.XmlDocument, version: "2" | "3"): Prepared => 
     document: { ...document, root: allowForeign(document.root, errors, version === "3") },
     errors,
   };
+};
+
+// epub-svg-30-informative.nvdl: every outermost SVG subtree is checked against the strict SVG
+// grammar on its own, keeping only SVG elements and attributes without a namespace.
+export const svgSections = (document: Xml.XmlDocument) => {
+  const strip = (element: Xml.XmlElement): Xml.XmlElement =>
+    withChildren(
+      element,
+      element.children.flatMap((child): ReadonlyArray<Xml.XmlNode> => {
+        if (child.kind === "text") return [child];
+        return child.ns === SVG_NS ? [strip(child)] : [];
+      }),
+      // Namespace declarations are kept: Jing names expected elements with the instance's prefixes.
+      element.attributes.filter((attribute) => attribute.ns === "" || attribute.ns === XMLNS_NS),
+    );
+  const sections: Array<Xml.XmlDocument> = [];
+  const visit = (element: Xml.XmlElement) => {
+    if (element.ns === SVG_NS) {
+      sections.push({ ...document, doctype: undefined, root: strip(element) });
+      return;
+    }
+    for (const child of element.children) if (child.kind === "element") visit(child);
+  };
+  visit(document.root);
+  return sections;
 };
 
 export const xhtml30 = (document: Xml.XmlDocument): Prepared => {
@@ -126,8 +156,7 @@ export const xhtml20 = (document: Xml.XmlDocument): Prepared => {
     ];
   };
   const [root] = visit(document.root);
-  return {
-    document: root !== undefined && root.kind === "element" ? { ...document, root } : document,
-    errors,
-  };
+  return root !== undefined && root.kind === "element"
+    ? { document: { ...document, root }, errors }
+    : { document, errors, rejectedRoot: true };
 };

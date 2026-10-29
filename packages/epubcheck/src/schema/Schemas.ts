@@ -32,6 +32,12 @@ const relaxngValidator = (path: string) => {
   return validator;
 };
 
+// A schema that does not compile validates nothing, so tests check every one the checkers use.
+export const compileErrors = (path: string) => {
+  const compiled = Grammar.compile({ read }, path, { whattf: lenient }, Rng.parse);
+  return Result.isSuccess(compiled) ? [] : compiled.failure;
+};
+
 const schematronSchema = (path: string) => {
   if (schematron.has(path)) return schematron.get(path);
   const source = read(path);

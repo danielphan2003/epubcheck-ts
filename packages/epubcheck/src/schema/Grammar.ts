@@ -126,6 +126,8 @@ export const compile = (
     return fix(ast);
   };
 
+  // Includes being expanded, to reject an include of itself, directly or not.
+  const including = new Set<string>();
   const addComponents = (scope: Scope, components: ReadonlyArray<Component>) => {
     for (const component of components) {
       switch (component.kind) {
@@ -139,6 +141,10 @@ export const compile = (
           addComponents(scope, component.components);
           break;
         case "include": {
+          if (including.has(component.href)) {
+            errors.push(`recursive inclusion of URL "${component.href}"`);
+            break;
+          }
           const included = load(component.href, component.defaultNamespace);
           if (included.kind !== "grammar") {
             errors.push(`included file is not a grammar: ${component.href}`);
@@ -154,7 +160,9 @@ export const compile = (
           };
           collectNames(component.components);
           const filtered = new Scope(scope.parent);
+          including.add(component.href);
           addComponents(filtered, included.components);
+          including.delete(component.href);
           for (const [name, definitions] of filtered.definitions) {
             if (overridden.has(name)) continue;
             for (const definition of definitions)

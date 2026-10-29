@@ -89,6 +89,51 @@ export const decode = (bytes: Uint8Array) => {
   return new TextDecoder("utf-8").decode(bytes);
 };
 
+// Xerces rejects an entity reference without its `;`, which saxes reports later and less
+// precisely; this finds the first one outside markup that is not parsed as text.
+const unterminatedReference = (source: string): XmlError | undefined => {
+  const skipped =
+    /<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>|<!DOCTYPE(?:[^[>]|\[[\s\S]*?\])*>/gy;
+  let index = 0;
+  while (index < source.length) {
+    skipped.lastIndex = index;
+    const skip = skipped.exec(source);
+    if (skip !== null) {
+      index += skip[0].length;
+      continue;
+    }
+    if (source[index] === "&") {
+      const reference = /^&(#x[0-9a-fA-F]+|#\d+|[A-Za-z_:][\w.:-]*)(;?)/.exec(
+        source.slice(index, index + 80),
+      );
+      if (reference !== null && reference[2] === "") {
+        const before = source.slice(0, index + reference[0].length).split("\n");
+        return {
+          message: `The reference to entity "${reference[1]}" must end with the ';' delimiter.`,
+          line: before.length,
+          column: (before.at(-1)?.length ?? 0) + 1,
+        };
+      }
+    }
+    index++;
+  }
+  return undefined;
+};
+
+// The name of the entity reference ending just before `offset`.
+const referenceBefore = (source: string, offset: number) =>
+  /&([^&;\s]+);$/.exec(source.slice(Math.max(0, offset - 80), offset))?.[1];
+
+const offsetOf = (source: string, line: number, column: number) => {
+  let offset = 0;
+  for (let current = 1; current < line; current++) {
+    const next = source.indexOf("\n", offset);
+    if (next < 0) return source.length;
+    offset = next + 1;
+  }
+  return offset + column - 1;
+};
+
 export const parse = (source: string, options: ParseOptions = {}) => {
   const parser = new SaxesParser({ xmlns: true, position: true });
   const stack: Array<XmlElement> = [];
@@ -155,14 +200,27 @@ export const parse = (source: string, options: ParseOptions = {}) => {
   parser.on("text", appendText);
   parser.on("cdata", appendText);
   parser.on("error", (cause) => {
-    error ??= {
-      message: cause.message.replace(/^[^:]*:\d+:\d+: /, ""),
-      line: parser.line,
-      column: parser.column + 1,
-    };
+    if (error !== undefined) return;
+    const line = parser.line;
+    const column = parser.column + 1;
+    let message = cause.message.replace(/^(?:[^:\n]*:)?\d+:\d+: /, "");
+    if (message === "undefined entity.") {
+      const name = referenceBefore(source, offsetOf(source, line, column));
+      if (name !== undefined) message = `The entity "${name}" was referenced, but not declared.`;
+    }
+    error = { message, line, column };
   });
 
   parser.write(source).close();
+  const unterminated = unterminatedReference(source);
+  if (
+    unterminated !== undefined &&
+    (error === undefined ||
+      unterminated.line < error.line ||
+      (unterminated.line === error.line && unterminated.column <= error.column))
+  ) {
+    return Result.fail(unterminated);
+  }
   if (error !== undefined) return Result.fail(error);
   if (root === undefined)
     return Result.fail({ message: "document has no root element", line: 1, column: 1 });

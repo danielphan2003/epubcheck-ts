@@ -29,6 +29,22 @@ export const containsName = (nc: NameClass, name: QName): boolean => {
   }
 };
 
+// How specifically a name class matches `name`: 2 by name, 1 by namespace, 0 by any name, and
+// -1 when it does not match.
+export const nameSpecificity = (nc: NameClass, name: QName): number => {
+  if (!containsName(nc, name)) return -1;
+  switch (nc.t) {
+    case "name":
+      return 2;
+    case "nsName":
+      return 1;
+    case "anyName":
+      return 0;
+    case "choice":
+      return Math.max(nameSpecificity(nc.a, name), nameSpecificity(nc.b, name));
+  }
+};
+
 export const nameClassKey = (nc: NameClass): string => {
   switch (nc.t) {
     case "name":

@@ -80,5 +80,11 @@ export const check = Effect.fn("ContentChecker.check")(function* (
   version: "2" | "3",
 ) {
   const { schemas, prepare } = validation(kind, version);
-  return yield* XmlChecker.check(bytes, path, schemas, prepare);
+  return yield* XmlChecker.check(
+    bytes,
+    path,
+    schemas,
+    prepare,
+    version === "3" && (kind === "xhtml" || kind === "nav" || kind === "svg"),
+  );
 });

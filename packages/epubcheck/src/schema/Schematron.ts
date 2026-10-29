@@ -11,13 +11,17 @@ import type { SchemaError } from "./Validator.ts";
 // parameters, lets, asserts, reports, and value-of/name in messages.
 
 const SCH_NS = "http://purl.oclc.org/dsdl/schematron";
+// Schematron 1.5, which upstream's EPUB 2 NCX and XHTML schemas still use.
+const SCH15_NS = "http://www.ascc.net/xml/schematron";
+const isSchematron = (ns: string) => ns === SCH_NS || ns === SCH15_NS;
 const XSL_NS = "http://www.w3.org/1999/XSL/Transform";
 const EXTENSIONS_NS = "urn:epubcheck-ts:xpath";
 
 type MessagePart =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "value-of"; readonly select: string }
-  | { readonly kind: "name" };
+  // `<name/>`: the name of the context node, or of the first node `path` selects.
+  | { readonly kind: "name"; readonly path: string | undefined };
 
 interface Let {
   readonly name: string;
@@ -77,12 +81,17 @@ const registerExtensions = () => {
     }
   };
   // fontoxpath lacks the three-argument fn:matches; XPath regexes are close enough to JavaScript's.
+  // XPath allows escapes like `\-` that JavaScript rejects in Unicode mode, so retry without it.
   const matches = (input: string | null, pattern: string, flags = "") => {
-    try {
-      return new RegExp(pattern, `u${flags.replace(/[^ims]/g, "")}`).test(input ?? "");
-    } catch {
-      return false;
+    const options = flags.replace(/[^ims]/g, "");
+    for (const mode of [`u${options}`, options]) {
+      try {
+        return new RegExp(pattern, mode).test(input ?? "");
+      } catch {
+        // Try the next mode.
+      }
     }
+    return false;
   };
   registerCustomXPathFunction(
     { namespaceURI: EXTENSIONS_NS, localName: "matches" },
@@ -154,15 +163,19 @@ const parseMessage = (element: Xml.XmlElement, params: ReadonlyMap<string, strin
       parts.push({ kind: "text", text: node.text });
       return;
     }
-    if ((node.ns === SCH_NS || node.ns === XSL_NS) && node.local === "value-of") {
+    if ((isSchematron(node.ns) || node.ns === XSL_NS) && node.local === "value-of") {
       parts.push({
         kind: "value-of",
         select: substituteParams(Xml.attribute(node, "select") ?? "", params),
       });
       return;
     }
-    if (node.ns === SCH_NS && node.local === "name") {
-      parts.push({ kind: "name" });
+    if (isSchematron(node.ns) && node.local === "name") {
+      const path = Xml.attribute(node, "path");
+      parts.push({
+        kind: "name",
+        path: path === undefined ? undefined : substituteParams(path, params),
+      });
       return;
     }
     for (const child of node.children) visit(child);
@@ -172,7 +185,7 @@ const parseMessage = (element: Xml.XmlElement, params: ReadonlyMap<string, strin
 };
 
 const childrenNamed = (element: Xml.XmlElement, local: string) =>
-  Xml.childElements(element).filter((child) => child.ns === SCH_NS && child.local === local);
+  Xml.childElements(element).filter((child) => isSchematron(child.ns) && child.local === local);
 
 const parseLets = (element: Xml.XmlElement, params: ReadonlyMap<string, string>) =>
   childrenNamed(element, "let").map((child) => ({
@@ -191,7 +204,7 @@ const parsePattern = (
     lets: parseLets(rule, params),
     checks: Xml.childElements(rule)
       .filter(
-        (child) => child.ns === SCH_NS && (child.local === "assert" || child.local === "report"),
+        (child) => isSchematron(child.ns) && (child.local === "assert" || child.local === "report"),
       )
       .map((child) => ({
         kind: child.local === "assert" ? ("assert" as const) : ("report" as const),
@@ -222,7 +235,7 @@ export const parse = (source: string, file: string, read: (path: string) => stri
 
   const collect = (element: Xml.XmlElement) => {
     for (const child of Xml.childElements(element)) {
-      if (child.ns !== SCH_NS) continue;
+      if (!isSchematron(child.ns)) continue;
       switch (child.local) {
         case "ns":
           namespaces[Xml.attribute(child, "prefix") ?? ""] = Xml.attribute(child, "uri") ?? "";
@@ -380,7 +393,20 @@ export const validate = (schema: SchematronSchema, source: Xml.XmlDocument, base
     parts
       .map((part) => {
         if (part.kind === "text") return part.text;
-        if (part.kind === "name") return node instanceof slimdom.Element ? node.nodeName : "";
+        if (part.kind === "name") {
+          if (part.path === undefined) return node instanceof slimdom.Element ? node.nodeName : "";
+          try {
+            return evaluateXPathToString(
+              `name((${rewrite(part.path, variables)})[1])`,
+              node,
+              null,
+              variables,
+              options(node),
+            );
+          } catch {
+            return "";
+          }
+        }
         try {
           return evaluateXPathToString(
             rewrite(part.select, variables),

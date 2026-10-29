@@ -58,6 +58,7 @@ epub-region-nav/region-nav-publication.feature:47 Report the inclusion of more t
 epub-region-nav/region-nav-publication.feature:56 Verify a data nav that defines region-based navgiation
 epub-region-nav/region-nav-publication.feature:92 Verify subregion navigation using comics semantics
 epub-scriptable-components/scriptable-components-package-document.feature:19 A minimal embedded scriptable component is reported as valid
+epub2/ncx-publication.feature:21 Report duplicate IDs in the NCX document
 epub2/ncx-publication.feature:28 Report invalid IDs in the NCX document
 epub2/ncx-publication.feature:50 Report an NCX `pageTarget` with a `type` attribute value that is not one of "front", "normal" or "special"
 epub2/ncx-publication.feature:56 Verify that leading/trailing spaces in an NCX `uid` attribute are allowed
@@ -101,12 +102,15 @@ epub2/opf-publication.feature:48 Verify that package IDs with leading/trailing s
 epub2/opf-publication.feature:82 Verify that operating system files (`.DS_STORE`, `thumbs.db`) are ignored (issue 256)
 epub2/ops-content-document-svg.feature:21 Verify that namespaced extensions are allowed
 epub2/ops-content-document-svg.feature:26 Verify `font-face-src` is allowed (issue 196)
+epub2/ops-content-document-xhtml.feature:102 Report nested `a` tags (issue 287)
 epub2/ops-content-document-xhtml.feature:111 Verify that `lang` attribute is allowed (issue 215)
 epub2/ops-content-document-xhtml.feature:118 Verify `usemap` fragment reference is allowed (issue 696)
 epub2/ops-content-document-xhtml.feature:125 Verify HTML elements are allowed inside of `foreignObject` (issue 166)
 epub2/ops-content-document-xhtml.feature:129 Verify `foreignObject` allowed outside `switch` and `body` allowed inside `foreignObject` (issues 222, 223, 20)
+epub2/ops-content-document-xhtml.feature:19 Report the absence of a namespace declaration
 epub2/ops-content-document-xhtml.feature:27 Verify a minimal XHTML OPS Document
 epub2/ops-content-document-xhtml.feature:48 Verify valid character references
+epub2/ops-content-document-xhtml.feature:52 Report unknown entity references
 epub2/ops-content-document-xhtml.feature:58 Report HTML5 elements used in OPS XHTML Content Documents
 epub2/ops-content-document-xhtml.feature:67 Verify empty `class` attributes are allowed (issue 733)
 epub2/ops-content-document-xhtml.feature:74 Report the use of a custom namespaced attribute
@@ -280,7 +284,6 @@ epub3/05-package-document/package-document.feature:327 'dc:modified' must be def
 epub3/05-package-document/package-document.feature:334 'dc:modified' must be of the form 'CCYY-MM-DDThh:mm:ssZ'
 epub3/05-package-document/package-document.feature:350 Allow a missing 'media-type' attribute on links to remote resources
 epub3/05-package-document/package-document.feature:355 the link 'rel' attribute can have multiple properties
-epub3/05-package-document/package-document.feature:360 the link 'properties' attribute must not be empty
 epub3/05-package-document/package-document.feature:373 the 'link' element can have an 'hreflang' attribute
 epub3/05-package-document/package-document.feature:378 the 'link' 'hreflang' attribute can be empty
 epub3/05-package-document/package-document.feature:395 Allow a link to a resource referenced from the spine
@@ -295,6 +298,7 @@ epub3/05-package-document/package-document.feature:542 The 'cover-image' item pr
 epub3/05-package-document/package-document.feature:55 'id' attributes must be unique after whitespace normalization
 epub3/05-package-document/package-document.feature:563 Verify content documents are identified as containing mathml
 epub3/05-package-document/package-document.feature:618 Verify that inline CSS does not trigger an unrequired `remote-resources` property error
+epub3/05-package-document/package-document.feature:64 'refines' attribute MUST be a relative URL
 epub3/05-package-document/package-document.feature:644 Verify that script data blocks do not require the `scripted` property to be defined in the manifest
 epub3/05-package-document/package-document.feature:683 one item must have the 'nav' property
 epub3/05-package-document/package-document.feature:690 at most one item must have the 'nav' property
@@ -351,9 +355,11 @@ epub3/07-content-documents/content-documents-svg.feature:156 Report `foreignObje
 epub3/07-content-documents/content-documents-svg.feature:16 Verify that SVG Content Documents can be referenced in the spine
 epub3/07-content-documents/content-documents-svg.feature:163 Report HTML validation errors within `foreignObject` content
 epub3/07-content-documents/content-documents-svg.feature:172 Verify `title` valid content model
+epub3/07-content-documents/content-documents-svg.feature:177 Report `title` with non-HTML elements
 epub3/07-content-documents/content-documents-svg.feature:186 Report HTML validation errors within `title` content
 epub3/07-content-documents/content-documents-svg.feature:20 Verify that the need for a `viewbox` declaration does not apply to non-fixed layout SVGs
 epub3/07-content-documents/content-documents-svg.feature:24 Verify that an SVG Content Document can have any extension
+epub3/07-content-documents/content-documents-svg.feature:29 Verify that SVG validation erors are reported as USAGE
 epub3/07-content-documents/content-documents-svg.feature:37 Allow `epub:type` on structural, shape, and text elements
 epub3/07-content-documents/content-documents-svg.feature:43 Report an `epub:type` attribute used on an element where it is not allowed
 epub3/07-content-documents/content-documents-svg.feature:49 Report an unknown `epub:*` attribute used in SVG
@@ -363,6 +369,7 @@ epub3/07-content-documents/content-documents-svg.feature:73 Verify `data-*` attr
 epub3/07-content-documents/content-documents-svg.feature:79 Verify that empty `font-face` declarations are allowed
 epub3/07-content-documents/content-documents-svg.feature:85 Verify links are allowed
 epub3/07-content-documents/content-documents-svg.feature:96 Verify that `image` elements can have an `xlink:href` URL pointing to a fragment
+epub3/07-content-documents/content-documents-xhtml.feature:104 Report unknown entity references
 epub3/07-content-documents/content-documents-xhtml.feature:113 Report duplicate `id` attribute values
 epub3/07-content-documents/content-documents-xhtml.feature:119 Verify `id` attribute with non-alphanumeric in its value
 epub3/07-content-documents/content-documents-xhtml.feature:123 Verify that ID-referencing attributes can refer to non-NCName IDs
@@ -380,8 +387,10 @@ epub3/07-content-documents/content-documents-xhtml.feature:174 Verify the DPUB-A
 epub3/07-content-documents/content-documents-xhtml.feature:178 Verify ARIA attributes allowed on SVG elements
 epub3/07-content-documents/content-documents-xhtml.feature:182 'doc-pagefooter' role is allowed on elements allowing any role
 epub3/07-content-documents/content-documents-xhtml.feature:186 'doc-pagefooter' role is reported when not allowed
+epub3/07-content-documents/content-documents-xhtml.feature:191 'doc-pagefooter' elements cannot be named
 epub3/07-content-documents/content-documents-xhtml.feature:197 'doc-pageheader' role is allowed on elements allowing any role
 epub3/07-content-documents/content-documents-xhtml.feature:201 'doc-pageheader' role is reported when not allowed
+epub3/07-content-documents/content-documents-xhtml.feature:206 'doc-pageheader' elements cannot be named
 epub3/07-content-documents/content-documents-xhtml.feature:215 Verify the value of HTML boolean attributes and enumerated attributes are parsed in a case-insensitive manner
 epub3/07-content-documents/content-documents-xhtml.feature:22 Minimal Content Document
 epub3/07-content-documents/content-documents-xhtml.feature:221 Verify that a base url can be set
@@ -422,6 +431,10 @@ epub3/07-content-documents/content-documents-xhtml.feature:475 Verify that `view
 epub3/07-content-documents/content-documents-xhtml.feature:482 Verify that microdata attributes are allowed on elements
 epub3/07-content-documents/content-documents-xhtml.feature:486 Report use of microdata attributes on elements where they are not allowed
 epub3/07-content-documents/content-documents-xhtml.feature:50 Report empty `title` element
+epub3/07-content-documents/content-documents-xhtml.feature:505 the `border="0"` attribute on `img` elements is obsolete but conforming
+epub3/07-content-documents/content-documents-xhtml.feature:512 the `charset="utf-8"` attribute on `script` elements is obsolete but conforming
+epub3/07-content-documents/content-documents-xhtml.feature:519 the `type="text/css"` attribute on `style` elements is obsolete but conforming
+epub3/07-content-documents/content-documents-xhtml.feature:526 the `name` attribute on `a` elements is obsolete but conforming
 epub3/07-content-documents/content-documents-xhtml.feature:535 Report the obsolete `typemustmatch` attribute
 epub3/07-content-documents/content-documents-xhtml.feature:541 Report the obsolete `contextmenu` attribute
 epub3/07-content-documents/content-documents-xhtml.feature:547 Report the obsolete `dropzone` attribute
@@ -436,6 +449,7 @@ epub3/07-content-documents/content-documents-xhtml.feature:596 Verify passing sc
 epub3/07-content-documents/content-documents-xhtml.feature:609 Report an "importmap" script with an "src" attribute
 epub3/07-content-documents/content-documents-xhtml.feature:616 Verify non-HTML `source` elements are skipped
 epub3/07-content-documents/content-documents-xhtml.feature:623 Verify use of `style` element in the header
+epub3/07-content-documents/content-documents-xhtml.feature:632 Report `style` element in the body
 epub3/07-content-documents/content-documents-xhtml.feature:640 Verify the `style` attribute is allowed with valid syntax
 epub3/07-content-documents/content-documents-xhtml.feature:65 Verify versionless HTML `doctype`
 epub3/07-content-documents/content-documents-xhtml.feature:651 Verify that an SVG image can be referenced from `img`, `object` and `iframe` elements
@@ -481,13 +495,16 @@ epub3/07-content-documents/content-documents-xhtml.feature:912 Verify inclusion 
 epub3/07-content-documents/content-documents-xhtml.feature:916 Verify conforming SVG markup does not create false-positives
 epub3/07-content-documents/content-documents-xhtml.feature:920 Verify the SVG IDs can be any valid HTML ID
 epub3/07-content-documents/content-documents-xhtml.feature:925 Verify that `epub:type` attribute can be used on SVG
+epub3/07-content-documents/content-documents-xhtml.feature:929 Verify that SVG validation erors are reported as USAGE
 epub3/07-content-documents/content-documents-xhtml.feature:936 Verify unprefixed HTML elements allowed inside prefixed `foreignObject`
 epub3/07-content-documents/content-documents-xhtml.feature:940 Verify that the `requiredExtensions` attribute can have any value
 epub3/07-content-documents/content-documents-xhtml.feature:944 Report `foreignObject` with a body element
 epub3/07-content-documents/content-documents-xhtml.feature:950 Report HTML validation errors within `foreignObject` content
 epub3/07-content-documents/content-documents-xhtml.feature:956 Report `foreignObject` without flow content
 epub3/07-content-documents/content-documents-xhtml.feature:962 Verify `title` valid content model
+epub3/07-content-documents/content-documents-xhtml.feature:966 Report `title` with non-HTML elements
 epub3/07-content-documents/content-documents-xhtml.feature:974 Report HTML validation errors within `title` content
+epub3/07-content-documents/content-documents-xhtml.feature:98 Report entity references not ending with a semicolon
 epub3/07-content-documents/content-documents-xhtml.feature:980 Verify RDF elements can be embedded in SVG
 epub3/08-navigation-document/navigation-document.feature:102 Allow nav hyperlinks to have leading and trailig spaces
 epub3/08-navigation-document/navigation-document.feature:109 Report a nav list without content

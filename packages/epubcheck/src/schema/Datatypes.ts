@@ -129,14 +129,15 @@ const bases: Readonly<Record<string, Base>> = {
   NMTOKENS: {
     lexical: "a list of XML NMTOKENs",
     whitespace: collapse,
-    test: (value) => value !== "" && value.split(" ").every((token) => NMTOKEN.test(token)),
+    // An empty list is lexically valid; a minLength facet rejects it, with its own message.
+    test: (value) => value === "" || value.split(" ").every((token) => NMTOKEN.test(token)),
     length: (value) => (value === "" ? 0 : value.split(" ").length),
     list: true,
   },
   IDREFS: {
     lexical: "a list of XML names without colons",
     whitespace: collapse,
-    test: (value) => value !== "" && value.split(" ").every((token) => NCNAME.test(token)),
+    test: (value) => value === "" || value.split(" ").every((token) => NCNAME.test(token)),
     length: (value) => (value === "" ? 0 : value.split(" ").length),
     list: true,
   },

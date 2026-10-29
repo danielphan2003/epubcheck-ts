@@ -1,7 +1,14 @@
 import * as Xml from "../xml/Xml.ts";
 import { isWhitespace } from "./Datatypes.ts";
 import type { CompiledSchema } from "./Grammar.ts";
-import { containsName, Derivatives, type NameClass, type Pattern, type QName } from "./Pattern.ts";
+import {
+  containsName,
+  Derivatives,
+  type NameClass,
+  nameSpecificity,
+  type Pattern,
+  type QName,
+} from "./Pattern.ts";
 
 // Validates a parsed document against a compiled RELAX NG schema, reporting errors with the
 // wording and recovery of Jing, which upstream EPUBCheck uses (messages from Jing's
@@ -236,7 +243,11 @@ const textTargets = (p: Pattern, into: Array<Pattern>, seen = new Set<number>())
 const textDetail = (p: Pattern, value: string) => {
   const targets: Array<Pattern> = [];
   textTargets(p, targets);
-  const values = targets.flatMap((target) => (target.t === "value" ? [`"${target.value}"`] : []));
+  // Jing sorts the allowed values before listing them.
+  const values = targets
+    .flatMap((target) => (target.t === "value" ? [target.value] : []))
+    .sort()
+    .map((value) => `"${value}"`);
   const failures = targets.flatMap((target) => {
     if (target.t !== "data") return [];
     const failure = target.dt.validate(value, { resolve: () => undefined });
@@ -505,7 +516,15 @@ export class SchemaValidator {
         if (resumed !== undefined) return validateContent(resumed, element, scope, false);
         // Recover like Jing: check the element against every declaration of its name (or, if
         // there is none, allow only text and attributes), then carry on as if it were absent.
-        const declarations = this.declarations(name);
+        // Jing recovers with the most specific declarations only, so wildcard declarations do
+        // not hide attribute and content errors.
+        const candidates = this.declarations(name);
+        const best = Math.max(
+          ...candidates.map((candidate) => nameSpecificity(candidate.nc, name)),
+        );
+        const declarations = candidates.filter(
+          (candidate) => nameSpecificity(candidate.nc, name) === best,
+        );
         const content =
           declarations.length > 0
             ? declarations.map((candidate) => candidate.content()).reduce((x, y) => b.choice(x, y))

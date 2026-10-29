@@ -248,6 +248,8 @@ class Parser {
       this.isKeyword("start") ||
       this.isKeyword("div") ||
       this.isKeyword("include") ||
+      // A grammar-level annotation element (`a:documentation [ ... ]`).
+      (this.token.t === "cname" && this.isOp("[", this.peekAt(1))) ||
       (this.token.t === "ident" &&
         (this.isOp("=", this.peekAt(1)) ||
           this.isOp("|=", this.peekAt(1)) ||
