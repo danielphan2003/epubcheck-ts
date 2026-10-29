@@ -52,7 +52,8 @@ export const parse = (value: string) => {
         skip();
         continue;
       }
-      if (raw === "") continue;
+      // A value that ends the input with `=` is dropped, as if it had none.
+      if (raw === "" || (index === chars.length && raw.endsWith("="))) continue;
       text = raw.replace(/[ \t\n\r]+$/, "");
     }
     if (text !== undefined && !parameters.has(name)) parameters.set(name, text);
@@ -119,12 +120,14 @@ const CORE = new Set([
   "application/smil+xml",
 ]);
 
-export const isCore = (value: string) => CORE.has(normalize(value));
+// These compare exactly, as upstream does: manifest types arrive normalized, and data URL types
+// as written.
+export const isCore = (value: string) => CORE.has(value);
 
 // The font types `@font-face` may use in EPUB 3 (CSS-007).
-export const isCoreFont = (value: string) => BLESSED_FONTS.has(normalize(value));
+export const isCoreFont = (value: string) => BLESSED_FONTS.has(value);
 
-export const isAudio = (value: string) => normalize(value).startsWith("audio/");
+export const isAudio = (value: string) => value.startsWith("audio/");
 
 // Upstream's isScriptType, case-insensitive.
 const JAVASCRIPT = new Set([
@@ -177,8 +180,7 @@ export const preferred = (value: string, path: string) => {
 };
 
 // Bitmaps upstream checks (BitmapChecker); WebP and others are not.
-export const isBitmap = (value: string) =>
-  ["image/gif", "image/jpeg", "image/png"].includes(normalize(value));
+export const isBitmap = (value: string) => ["image/gif", "image/jpeg", "image/png"].includes(value);
 
 // The formats ImageIO's readers recognize, by their format names, and the suffixes they take.
 type ImageFormat = "JPEG" | "png" | "gif" | "bmp" | "tif";

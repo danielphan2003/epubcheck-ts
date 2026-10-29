@@ -18,15 +18,18 @@ describe("MediaTypes", () => {
     { value: "text/css;x=€;y=c", normalized: "text/css;y=c" },
     { value: "text /css", normalized: "" },
     { value: "text/css x", normalized: "" },
+    { value: "font/ttf;a=b=", normalized: "font/ttf" },
+    { value: "font/ttf;a=b=;c=d", normalized: 'font/ttf;a="b=";c=d' },
     { value: "not a type", normalized: "" },
   ])("normalizes $value", ({ value, normalized }) => {
     expect(MediaTypes.normalize(value)).toBe(normalized);
   });
 
-  // Upstream compares normalized types with exact strings.
+  // Upstream compares types with exact strings: normalized ones, or a data URL's as written.
   it.each([
     { value: "audio/mp4", core: true },
-    { value: "audio/ogg; codecs=opus", core: true },
+    { value: "audio/ogg;codecs=opus", core: true },
+    { value: "IMAGE/PNG", core: false },
     { value: "audio/mp4;codecs=mp4a.40.2", core: false },
     { value: "image/png;x=y", core: false },
     { value: "application/x-dtbncx+xml", core: false },

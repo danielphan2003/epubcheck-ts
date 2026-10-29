@@ -1,3 +1,5 @@
+import { domainToUnicode } from "node:url";
+
 import { percentDecode } from "../util/UrlFragment.ts";
 
 // URL parsing as upstream does it while it reads a document: each URL string is resolved against
@@ -137,7 +139,12 @@ const normalizeRemote = (url: URL) => {
 export const nameOf = (target: Target) =>
   target.kind === "local" ? encodePath(target.path) : target.url;
 
-// How upstream names a remote manifest item: galimatias's human form, percent-decoded.
+const host = (url: URL) =>
+  (url.hostname.startsWith("[") ? url.hostname : domainToUnicode(url.hostname)) +
+  (url.port === "" ? "" : `:${url.port}`);
+
+// How upstream names a remote manifest item: galimatias's human form, percent-decoded, with
+// Unicode domains.
 export const humanName = (href: string) => {
   const url = parse(href.trim(), CONTAINER);
   if (url === undefined) return href;
@@ -145,7 +152,7 @@ export const humanName = (href: string) => {
   const authority =
     url.host === "" && !url.href.startsWith(`${url.protocol}//`)
       ? ""
-      : `//${user === "" ? "" : `${percentDecode(user)}@`}${url.host}`;
+      : `//${user === "" ? "" : `${percentDecode(user)}@`}${host(url)}`;
   const part = (prefix: string, value: string) =>
     value === "" && !url.href.includes(prefix) ? "" : prefix + percentDecode(value.slice(1));
   return (

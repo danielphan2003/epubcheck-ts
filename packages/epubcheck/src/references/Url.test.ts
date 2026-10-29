@@ -140,6 +140,8 @@ describe("Url.humanName", () => {
     { href: "https://u%20s:p@example.org/x.css", name: "https://u s:p@example.org/x.css" },
     { href: "https://example.org/%E2%82%AC.css", name: "https://example.org/€.css" },
     { href: "http://example.org:8080/x?", name: "http://example.org:8080/x?" },
+    { href: "https://xn--bcher-kva.example/a%20b.png", name: "https://bücher.example/a b.png" },
+    { href: "https://[::1]:8080/x.png", name: "https://[::1]:8080/x.png" },
   ])("names $href", ({ href, name }) => {
     expect(Url.humanName(href)).toBe(name);
   });

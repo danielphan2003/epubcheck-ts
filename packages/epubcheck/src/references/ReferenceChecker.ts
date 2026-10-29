@@ -114,12 +114,14 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
   const undeclared = new Set<string>();
   for (const reference of references) {
     const { target, type } = reference;
-    // Data URLs are resources of their own, never in the spine. The package document is a
-    // resource too, of a type no reference may point to (checked later).
+    // Data URLs are resources of their own, registered with their type normalized, never in the
+    // spine. The package document is a resource too, of a type no reference may point to (checked
+    // later).
     if (target.kind === "data") {
-      if (type === "hyperlink" && isLinkable(target.mediaType, publication.version)) {
+      const mediaType = MediaTypes.normalize(target.mediaType);
+      if (type === "hyperlink" && isLinkable(mediaType, publication.version)) {
         findings.push(finding(reference, "RSC-011"));
-      } else if (type !== "hyperlink") resourceFindings(reference, target.mediaType);
+      } else if (type !== "hyperlink") resourceFindings(reference, mediaType);
       continue;
     }
     if (target.kind === "local" && target.path === publication.packagePath) continue;
