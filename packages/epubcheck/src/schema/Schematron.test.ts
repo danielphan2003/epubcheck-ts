@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Result from "effect/Result";
 
+import * as Xml from "../xml/Xml.ts";
 import * as Schematron from "./Schematron.ts";
 import { sources } from "./sources.generated.ts";
 
@@ -17,5 +18,25 @@ describe("Schematron", () => {
       expect(parsed.success.patterns.length).toBeGreaterThan(0);
     }
     expect(Schematron.staticErrors(parsed.success)).toEqual([]);
+  });
+});
+
+describe("Schematron.validate", () => {
+  const SCHEMA = `<schema xmlns="http://purl.oclc.org/dsdl/schematron" queryBinding="xslt2">
+    <pattern><rule context="t"><assert test="normalize-space()">empty</assert></rule></pattern>
+    <pattern><rule context="i"><assert test="normalize-space(@v) = 'a'">not a</assert></rule></pattern>
+  </schema>`;
+  // XPath's whitespace is space, tab, CR and LF only; NBSP and U+3000 are content.
+  it.each([
+    { name: "a space-only title", instance: "<r><t> \t\n</t></r>", messages: ["empty"] },
+    { name: "an NBSP-only title", instance: "<r><t>\u00a0</t></r>", messages: [] },
+    { name: "a padded attribute", instance: "<r><i v=' a\t'/></r>", messages: [] },
+    { name: "an NBSP-padded attribute", instance: "<r><i v='a\u3000'/></r>", messages: ["not a"] },
+  ])("normalizes whitespace in $name", ({ instance, messages }) => {
+    const schema = Schematron.parse(SCHEMA, "test.sch", () => undefined);
+    const document = Xml.parse(instance);
+    if (Result.isFailure(schema) || Result.isFailure(document)) throw new Error("bad fixture");
+    const errors = Schematron.validate(schema.success, document.success, "file:///test.xml");
+    expect(errors.map((error) => error.message)).toEqual(messages);
   });
 });

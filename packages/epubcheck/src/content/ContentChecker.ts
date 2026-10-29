@@ -7,17 +7,19 @@ import * as XmlChecker from "../xml/XmlChecker.ts";
 
 export type ContentKind = "xhtml" | "nav" | "svg" | "mo" | "ncx";
 
+// EPUB 2 has no navigation documents or media overlays, so upstream checks neither there.
 export const kindOf = (
   mediaType: string,
   properties: ReadonlyArray<string>,
+  version: "2" | "3",
 ): ContentKind | undefined => {
   switch (mediaType) {
     case "application/xhtml+xml":
-      return properties.includes("nav") ? "nav" : "xhtml";
+      return version === "3" && properties.includes("nav") ? "nav" : "xhtml";
     case "image/svg+xml":
       return "svg";
     case "application/smil+xml":
-      return "mo";
+      return version === "3" ? "mo" : undefined;
     case "application/x-dtbncx+xml":
       return "ncx";
     default:

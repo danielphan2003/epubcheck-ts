@@ -378,6 +378,16 @@ export class SchemaValidator {
       return items.length === 0 ? "" : `; expected ${orList(items)}`;
     };
 
+    const expectedAttributes = (p: Pattern, scope: Scope) => {
+      const candidates = possible(p, "attribute");
+      const { formatted, suffix } = formatNames(candidates.names, scope, true);
+      const list = formatted.length === 0 ? "" : `attribute ${orList(formatted)}${suffix}`;
+      if (list === "") return "";
+      return candidates.wildcard
+        ? `; expected ${list} or an attribute from another namespace`
+        : `; expected ${list}`;
+    };
+
     const elementName = (element: Xml.XmlElement) => `"${element.name}"`;
 
     const startTagError = (
@@ -428,7 +438,7 @@ export class SchemaValidator {
         .filter((resumed) => resumed.t !== "notAllowed");
       if (resumes.length > 0) {
         report(
-          `element ${elementName(element)} not allowed yet${expected(p, scope, false)}`,
+          `element ${elementName(element)} not allowed yet${expected(p, scope, true)}`,
           element,
         );
         let resumed: Pattern | undefined;
@@ -511,15 +521,10 @@ export class SchemaValidator {
         } else if (candidates.names.length === 0 && !candidates.wildcard) {
           report(`found attribute "${attribute.name}", but no attributes allowed here`, element);
         } else {
-          const { formatted, suffix } = formatNames(candidates.names, scope, true);
-          const list = formatted.length === 0 ? "" : `attribute ${orList(formatted)}${suffix}`;
-          const detail =
-            list === ""
-              ? ""
-              : candidates.wildcard
-                ? `; expected ${list} or an attribute from another namespace`
-                : `; expected ${list}`;
-          report(`attribute "${attribute.name}" not allowed here${detail}`, element);
+          report(
+            `attribute "${attribute.name}" not allowed here${expectedAttributes(state, scope)}`,
+            element,
+          );
         }
       }
       return state;
@@ -581,7 +586,7 @@ export class SchemaValidator {
           );
         } else {
           report(
-            `element ${elementName(element)} missing one or more required attributes`,
+            `element ${elementName(element)} missing one or more required attributes${expectedAttributes(attributed, scope)}`,
             element,
           );
         }

@@ -14,7 +14,10 @@ start = element package { attribute version { "3.0" }, attribute id { xsd:NCName
 metadata = element metadata { element title { xsd:token { minLength = "1" } }+ & element date { text }? }
 manifest = element manifest { element item { attribute href { text } }* }
 spine = element spine { attribute toc { text }, element itemref { empty }+ }
-guide = element guide { (element label { empty } | element span { empty }), element list { empty }? }
+guide = element guide {
+  (element label { empty } | element span { attribute for { text } | attribute ref { text } }),
+  element list { (element dt { empty }, element dd { empty })* }?
+}
 `;
 
 const validate = (instance: string) => {
@@ -109,6 +112,18 @@ describe("SchemaValidator", () => {
       errors: [
         'element "list" not allowed yet; expected element "label" or "span"',
         'element "label" not allowed here; expected the element end-tag',
+      ],
+    },
+    {
+      name: "an element allowed later where the parent may also end",
+      instance: wrap(`${VALID_BODY}<guide><label/><list><dd/></list></guide>`),
+      errors: ['element "dd" not allowed yet; expected the element end-tag or element "dt"'],
+    },
+    {
+      name: "a missing attribute from a choice",
+      instance: wrap(`${VALID_BODY}<guide><span/></guide>`),
+      errors: [
+        'element "span" missing one or more required attributes; expected attribute "for" or "ref"',
       ],
     },
   ])("reports $name", ({ instance, errors }) => {

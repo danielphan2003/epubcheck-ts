@@ -97,7 +97,7 @@ const make = Effect.gen(function* () {
         packageDocument.version,
       );
       for (const item of opf.items) {
-        const kind = ContentChecker.kindOf(item.mediaType, item.properties);
+        const kind = ContentChecker.kindOf(item.mediaType, item.properties, opf.version);
         if (kind === undefined || item.path === undefined) continue;
         const content = yield* OcfChecker.readResource(ocf.value.container, item.path);
         if (Option.isSome(content))

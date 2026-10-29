@@ -61,6 +61,9 @@ const {
   registerCustomXPathFunction,
 } = fontoxpath;
 
+// XPath's whitespace is space, tab, CR and LF; JavaScript's `\s` and `trim` also take NBSP.
+const normalizeSpace = (value: string) => value.replace(/[ \t\n\r]+/g, " ").replace(/^ | $/g, "");
+
 let extensionsRegistered = false;
 const registerExtensions = () => {
   if (extensionsRegistered) return;
@@ -107,6 +110,13 @@ const registerExtensions = () => {
     (_: unknown, input: string | null, pattern: string, flags: string) =>
       matches(input, pattern, flags),
   );
+  // fontoxpath's normalize-space strips JavaScript whitespace, NBSP included.
+  registerCustomXPathFunction(
+    { namespaceURI: EXTENSIONS_NS, localName: "normalize-space" },
+    ["xs:string?"],
+    "xs:string",
+    (_: unknown, value: string | null) => normalizeSpace(value ?? ""),
+  );
   registerCustomXPathFunction(
     { namespaceURI: EXTENSIONS_NS, localName: "resolve-uri" },
     ["xs:string?"],
@@ -140,6 +150,11 @@ const rewrite = (expression: string, lets: Readonly<Record<string, unknown>> = {
       .replace(/(?<![\w:-])current\(\s*\)/g, `Q{${EXTENSIONS_NS}}current()`)
       .replace(/(?<![\w:-])resolve-uri\(/g, `Q{${EXTENSIONS_NS}}resolve-uri(`)
       .replace(/(?<![\w:-])matches\(/g, `Q{${EXTENSIONS_NS}}matches(`)
+      .replace(
+        /(?<![\w:}-])normalize-space\(\s*\)/g,
+        `Q{${EXTENSIONS_NS}}normalize-space(string(.))`,
+      )
+      .replace(/(?<![\w:}-])normalize-space\(/g, `Q{${EXTENSIONS_NS}}normalize-space(`)
       // fontoxpath binds `math` to its math functions before asking the resolver; the schemas
       // only use it for MathML names.
       .replace(/(?<![\w:.-])math:(?=[A-Za-z_*])/g, `Q{${MATHML_NS}}`)
@@ -373,7 +388,7 @@ const attributeValue = (node: unknown, attribute: string, normalize: boolean) =>
   if (!(node instanceof slimdom.Element)) return undefined;
   const value = node.getAttribute(attribute);
   if (value === null) return normalize ? "" : undefined;
-  return normalize ? value.replace(/[ \t\n\r]+/g, " ").trim() : value;
+  return normalize ? normalizeSpace(value) : value;
 };
 
 // Undefined when the test is not the idiom, or its variable is not a bound node list.
@@ -537,14 +552,28 @@ export const validate = (schema: SchematronSchema, source: Xml.XmlDocument, base
     node: slimdom.Node,
     variables: Record<string, unknown>,
   ) =>
-    parts
-      .map((part) => {
-        if (part.kind === "text") return part.text;
-        if (part.kind === "name") {
-          if (part.path === undefined) return node instanceof slimdom.Element ? node.nodeName : "";
+    normalizeSpace(
+      parts
+        .map((part) => {
+          if (part.kind === "text") return part.text;
+          if (part.kind === "name") {
+            if (part.path === undefined)
+              return node instanceof slimdom.Element ? node.nodeName : "";
+            try {
+              return evaluateXPathToString(
+                `name((${rewrite(part.path, variables)})[1])`,
+                node,
+                null,
+                variables,
+                options(node),
+              );
+            } catch {
+              return "";
+            }
+          }
           try {
             return evaluateXPathToString(
-              `name((${rewrite(part.path, variables)})[1])`,
+              rewrite(part.select, variables),
               node,
               null,
               variables,
@@ -553,22 +582,9 @@ export const validate = (schema: SchematronSchema, source: Xml.XmlDocument, base
           } catch {
             return "";
           }
-        }
-        try {
-          return evaluateXPathToString(
-            rewrite(part.select, variables),
-            node,
-            null,
-            variables,
-            options(node),
-          );
-        } catch {
-          return "";
-        }
-      })
-      .join("")
-      .replace(/\s+/g, " ")
-      .trim();
+        })
+        .join(""),
+    );
 
   const globals = bind(schema.lets, built.document, {});
   for (const pattern of schema.patterns) {

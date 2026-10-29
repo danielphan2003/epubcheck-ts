@@ -9,16 +9,14 @@ import { sources } from "../schema/sources.generated.ts";
 import * as Xml from "./Xml.ts";
 
 // In EPUB 2, upstream resolves the XHTML 1.1 DTD's system ID from a bundled copy, which declares
-// its named entities, unless the public ID is another than XHTML 1.1's. Other DTDs, and every DTD
-// in EPUB 3, are not resolved, so named entities are undeclared.
-const XHTML11_PUBLIC_ID = "-//W3C//DTD XHTML 1.1//EN";
+// its named entities, whatever the public ID. Other DTDs, and every DTD in EPUB 3, are not
+// resolved, so named entities are undeclared.
 const XHTML11_SYSTEM_ID = "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd";
 const PREDEFINED = new Set(["lt", "gt", "amp", "apos", "quot"]);
 let xhtmlEntities: Readonly<Record<string, string>> | undefined;
 
 const entitiesOf = (doctype: Xml.XmlDoctype, version: "2" | "3" | undefined) => {
   if (version !== "2") return {};
-  if (doctype.publicId !== undefined && doctype.publicId !== XHTML11_PUBLIC_ID) return {};
   if (doctype.systemId !== XHTML11_SYSTEM_ID) return {};
   if (xhtmlEntities === undefined) {
     const entities: Record<string, string> = {};
