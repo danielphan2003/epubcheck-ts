@@ -28,6 +28,43 @@ describe("Xml.parse", () => {
   });
 });
 
+// Each position is where EPUBCheck 5.4.0 reports HTM-004 and HTM-003.
+describe("Xml.parse doctype", () => {
+  it.each([
+    {
+      name: "a public ID",
+      doctype: '<!DOCTYPE html PUBLIC "a" "b">',
+      at: [1, 30],
+      entities: [],
+    },
+    {
+      name: "an internal subset",
+      doctype:
+        '<!DOCTYPE html SYSTEM "b" [\n<!ENTITY e SYSTEM "e.txt">\n<!ENTITY % p PUBLIC "x" "p">\n]>',
+      at: [1, 27],
+      entities: [
+        ["e", 2, 27],
+        ["%p", 3, 29],
+      ],
+    },
+    {
+      name: "declarations in comments and literals",
+      doctype:
+        '<!DOCTYPE html [\n<!-- <!ENTITY c SYSTEM "c"> -->\n<!ENTITY v "<!ENTITY w SYSTEM \'w\'>">\n]>',
+      at: [1, 16],
+      entities: [],
+    },
+  ])("locates $name", ({ doctype, at, entities }) => {
+    const parsed = Xml.parse(`${doctype}<html/>`);
+    if (Result.isFailure(parsed)) throw new Error(parsed.failure.message);
+    const found = parsed.success.doctype;
+    expect([found?.line, found?.column]).toEqual(at);
+    expect(found?.externalEntities.map(({ name, line, column }) => [name, line, column])).toEqual(
+      entities,
+    );
+  });
+});
+
 describe("Xml.parse errors", () => {
   // Xerces' messages and positions, which upstream reports as RSC-016.
   it.each([

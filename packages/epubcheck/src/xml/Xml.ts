@@ -40,9 +40,15 @@ export interface XmlDoctype {
   readonly publicId: string | undefined;
   readonly systemId: string | undefined;
   readonly internalSubset: string | undefined;
-  // Where the DOCTYPE declaration ends.
+  // Where upstream's DTD events are located: after the external ID and any space.
   readonly line: number;
   readonly column: number;
+  // External entities declared in the internal subset, each at the end of its declaration.
+  readonly externalEntities: ReadonlyArray<{
+    readonly name: string;
+    readonly line: number;
+    readonly column: number;
+  }>;
 }
 
 export interface ProcessingInstruction {
@@ -66,7 +72,49 @@ export interface XmlError {
   readonly column: number;
 }
 
-const parseDoctype = (raw: string, line: number, column: number): XmlDoctype => {
+const EXTERNAL_ID =
+  /^\s*[^\s[>]+(?:\s+(?:PUBLIC\s+(?:"[^"]*"|'[^']*')(?:\s+(?:"[^"]*"|'[^']*'))?|SYSTEM\s+(?:"[^"]*"|'[^']*')))?\s*/;
+
+// External entities of an internal subset as Xerces reports them: a parameter entity named with
+// its `%`, at the offset just after its declaration. Comments, processing instructions and
+// quoted literals are not declarations.
+const externalEntities = (subset: string) => {
+  const found: Array<{ readonly name: string; readonly end: number }> = [];
+  let index = 0;
+  while (index < subset.length) {
+    const close = subset.startsWith("<!--", index)
+      ? "-->"
+      : subset.startsWith("<?", index)
+        ? "?>"
+        : undefined;
+    if (close !== undefined) {
+      const end = subset.indexOf(close, index + 2);
+      index = end < 0 ? subset.length : end + close.length;
+      continue;
+    }
+    if (!subset.startsWith("<!", index)) {
+      index++;
+      continue;
+    }
+    let end = index + 2;
+    let quote: string | undefined;
+    while (end < subset.length && (quote !== undefined || subset[end] !== ">")) {
+      const char = subset[end];
+      if (quote === undefined && (char === '"' || char === "'")) quote = char;
+      else if (char === quote) quote = undefined;
+      end++;
+    }
+    const entity = /^<!ENTITY\s+(%\s+)?([^\s%"'>]+)\s+(?:SYSTEM|PUBLIC)[\s"']/.exec(
+      subset.slice(index, end + 1),
+    );
+    if (entity !== null)
+      found.push({ name: (entity[1] === undefined ? "" : "%") + entity[2], end: end + 1 });
+    index = end + 1;
+  }
+  return found;
+};
+
+const parseDoctype = (raw: string) => {
   const match =
     /^\s*([^\s[>]+)(?:\s+(?:PUBLIC\s+(["'])(.*?)\2(?:\s+(["'])(.*?)\4)?|SYSTEM\s+(["'])(.*?)\6))?\s*(?:\[([\s\S]*)\])?\s*$/.exec(
       raw,
@@ -76,8 +124,6 @@ const parseDoctype = (raw: string, line: number, column: number): XmlDoctype => 
     publicId: match?.[3],
     systemId: match?.[5] ?? match?.[7],
     internalSubset: match?.[8],
-    line,
-    column,
   };
 };
 
@@ -228,14 +274,6 @@ const decodeUcs4 = (bytes: Uint8Array, littleEndian: boolean) => {
   }
   return text;
 };
-
-// Names of external entities (`SYSTEM` or `PUBLIC`) declared in an internal subset.
-export const externalEntityNames = (doctype: XmlDoctype) =>
-  [
-    ...(doctype.internalSubset ?? "").matchAll(
-      /<!ENTITY\s+(?:%\s+)?([^\s%]+)\s+(?:SYSTEM|PUBLIC)\b/g,
-    ),
-  ].map((match) => match[1] ?? "");
 
 // Xerces rejects an entity reference without its `;`, which saxes reports later and less
 // precisely; this finds the first one outside markup that is not parsed as text.
@@ -454,8 +492,18 @@ export const parse = (source: string, options: ParseOptions = {}) => {
   };
   let broken = new Map<string, string>();
   parser.on("doctype", (raw) => {
-    doctype = parseDoctype(raw, parser.line, parser.column + 1);
     const rawOffset = source.indexOf("<!DOCTYPE") + "<!DOCTYPE".length;
+    const parts = parseDoctype(raw);
+    const subsetOffset =
+      parts.internalSubset === undefined ? 0 : rawOffset + raw.indexOf(parts.internalSubset);
+    doctype = {
+      ...parts,
+      ...positionAt(rawOffset + (EXTERNAL_ID.exec(raw)?.[0].length ?? 0)),
+      externalEntities: externalEntities(parts.internalSubset ?? "").map(({ name, end }) => ({
+        name,
+        ...positionAt(subsetOffset + end),
+      })),
+    };
     // An external ID needs a system literal after a public one; saxes does not check.
     const publicOnly = /^\s*[^\s[>]+\s+PUBLIC\s+(?:"[^"]*"|'[^']*')(?!\s*["'])/d.exec(raw);
     if (publicOnly !== null) {
@@ -465,8 +513,6 @@ export const parse = (source: string, options: ParseOptions = {}) => {
       });
     }
     const external = options.externalEntities?.(doctype) ?? {};
-    const subsetOffset =
-      doctype.internalSubset === undefined ? 0 : rawOffset + raw.indexOf(doctype.internalSubset);
     const internal = internalEntities(doctype.internalSubset, external, subsetOffset);
     if (internal.error !== undefined) {
       fail({ message: internal.error.message, ...positionAt(internal.error.offset) });

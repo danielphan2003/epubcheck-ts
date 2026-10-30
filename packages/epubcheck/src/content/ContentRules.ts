@@ -19,130 +19,89 @@ const DISCOURAGED = new Set(["base", "embed", "rp"]);
 const XLINKED = new Set(["a", "font-face-uri", "image", "use"]);
 
 // Alternate style tags (EPUB Alternate Style Tags 1.0) that cannot apply together.
-const CONFLICTING_TAGS: ReadonlyArray<readonly [string, string]> = [
+const CONFLICTING_TAGS = [
   ["day", "night"],
   ["horizontal", "vertical"],
-];
+] as const;
 
-// URI schemes registered with IANA (permanent and provisional) that content links use.
+// Upstream's URISchemes, the schemes a remote link may use without HTM-025.
 const REGISTERED_SCHEMES = new Set([
-  "about",
+  "aaa",
+  "aaas",
   "acap",
-  "acct",
-  "attachment",
-  "bitcoin",
-  "blob",
-  "callto",
   "cap",
   "cid",
-  "coap",
-  "coaps",
-  "content",
   "crid",
   "data",
   "dav",
   "dict",
   "dns",
-  "doi",
-  "dtn",
-  "ed2k",
-  "facetime",
   "fax",
-  "feed",
   "file",
-  "finger",
-  "fish",
   "ftp",
-  "geo",
-  "git",
   "go",
   "gopher",
   "h323",
   "http",
   "https",
-  "iax",
   "icap",
   "im",
   "imap",
   "info",
   "ipp",
-  "ipps",
   "irc",
-  "irc6",
-  "ircs",
   "iris",
-  "isbn",
-  "issn",
-  "jabber",
+  "iris.beep",
+  "iris.xpc",
+  "iris.xpcs",
+  "iris.lwz",
   "javascript",
   "ldap",
-  "ldaps",
-  "magnet",
   "mailto",
-  "maps",
-  "market",
-  "message",
   "mid",
-  "mms",
   "modem",
-  "ms-help",
   "msrp",
   "msrps",
   "mtqp",
-  "mumble",
   "mupdate",
   "news",
   "nfs",
   "nntp",
-  "notes",
   "opaquelocktoken",
   "pop",
   "pres",
-  "prospero",
-  "proxy",
-  "redis",
-  "rediss",
-  "rsync",
-  "rtmp",
   "rtsp",
-  "rtsps",
-  "sftp",
+  "service",
+  "shttp",
   "sip",
   "sips",
-  "skype",
-  "smb",
-  "sms",
-  "snews",
   "snmp",
   "soap.beep",
   "soap.beeps",
-  "spotify",
-  "ssh",
-  "steam",
-  "svn",
   "tag",
   "tel",
   "telnet",
   "tftp",
+  "thismessage",
   "tip",
-  "tn3270",
-  "turn",
-  "turns",
   "tv",
-  "udp",
-  "unreal",
   "urn",
-  "uuid",
   "vemmi",
-  "videotex",
-  "view-source",
-  "wais",
-  "webcal",
-  "ws",
-  "wss",
+  "xmlrpc.beep",
+  "xmlrpc.beeps",
   "xmpp",
   "z39.50r",
   "z39.50s",
+  "afs",
+  "dtn",
+  "iax",
+  "mailserver",
+  "pack",
+  "tn3270",
+  "prospero",
+  "snews",
+  "videotex",
+  "wais",
 ]);
 
 const at = (
@@ -150,7 +109,7 @@ const at = (
   element: Xml.XmlElement,
   id: MessageId,
   ...args: ReadonlyArray<string>
-): Finding => ({
+) => ({
   id,
   args,
   path,
@@ -158,27 +117,56 @@ const at = (
   column: element.column,
 });
 
+// Upstream's checkHRef: a link to an absolute URL outside the container needs a scheme upstream
+// knows (HTM-025); blank links and `.` are checked elsewhere.
+const schemeFinding = (path: string, element: Xml.XmlElement, href: string | undefined) => {
+  const value = href?.trim() ?? "";
+  if (value === "" || value === ".") return [];
+  const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(value)?.[1];
+  if (scheme === undefined || !URL.canParse(value)) return [];
+  return REGISTERED_SCHEMES.has(scheme.toLowerCase()) ? [] : [at(path, element, "HTM-025")];
+};
+
+// Upstream's getSVGHrefs: an SVG link element's `href`, and its deprecated `xlink:href`.
+const svgHrefs = (path: string, element: Xml.XmlElement) => {
+  const xlink = Xml.attribute(element, "href", XLINK_NS);
+  const href = Xml.attribute(element, "href");
+  if (xlink !== undefined && href === undefined) {
+    return { findings: [at(path, element, "HTM-062")], hrefs: [xlink] };
+  }
+  if (xlink !== undefined && xlink !== href) {
+    return { findings: [at(path, element, "HTM-063", xlink, href ?? "")], hrefs: [href, xlink] };
+  }
+  return { findings: [], hrefs: [href] };
+};
+
+// Upstream's DeclarationHandler: in EPUB 3, external entities are not allowed, an `html` DOCTYPE
+// is the HTML5 one, and other DOCTYPEs are left to the media type checks.
+const doctypeFindings = (doctype: Xml.XmlDoctype, path: string, kind: "xhtml" | "svg") => {
+  const findings: Array<Finding> = [];
+  const isHtml = kind === "xhtml" && doctype.name.toLowerCase() === "html";
+  const legacy = doctype.publicId === undefined && doctype.systemId === "about:legacy-compat";
+  if (isHtml && (doctype.publicId !== undefined || doctype.systemId !== undefined) && !legacy) {
+    // Upstream formats a missing public ID with Java's string conversion.
+    const args = [doctype.publicId ?? "null", "<!DOCTYPE html>"];
+    findings.push({ id: "HTM-004", args, path, line: doctype.line, column: doctype.column });
+  }
+  for (const entity of doctype.externalEntities) {
+    findings.push({
+      id: "HTM-003",
+      args: [entity.name],
+      path,
+      line: entity.line,
+      column: entity.column,
+    });
+  }
+  return findings;
+};
+
 export const check = (document: Xml.XmlDocument, path: string, kind: "xhtml" | "svg") => {
   const findings: Array<Finding> = [];
-  if (document.version !== undefined && document.version !== "1.0") {
-    findings.push({ id: "HTM-001", args: [document.version], path, line: -1, column: -1 });
-  }
-  const doctype = document.doctype;
-  if (doctype !== undefined && kind === "xhtml") {
-    const where = { path, line: doctype.line, column: doctype.column };
-    for (const name of Xml.externalEntityNames(doctype)) {
-      findings.push({ id: "HTM-003", args: [name], ...where });
-    }
-    // Upstream formats a missing public ID with Java's string conversion.
-    const legacy = doctype.publicId === undefined && doctype.systemId === "about:legacy-compat";
-    if ((doctype.publicId !== undefined || doctype.systemId !== undefined) && !legacy) {
-      findings.push({
-        id: "HTM-004",
-        args: [doctype.publicId ?? "null", "<!DOCTYPE html>"],
-        ...where,
-      });
-    }
-  }
+  if (document.doctype !== undefined)
+    findings.push(...doctypeFindings(document.doctype, path, kind));
   for (const element of [document.root, ...Xml.descendants(document.root)]) {
     for (const attribute of element.attributes) {
       if (attribute.ns === XMLNS_NS && attribute.local === "epub" && attribute.value !== OPS_NS) {
@@ -192,45 +180,51 @@ export const check = (document: Xml.XmlDocument, path: string, kind: "xhtml" | "
       if (DISCOURAGED.has(element.local))
         findings.push(at(path, element, "HTM-055", element.local));
       if (element.local === "link") findings.push(...linkFindings(path, element));
-      if (element.local === "a") {
-        const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(
-          Xml.attribute(element, "href") ?? "",
-        )?.[1];
-        if (scheme !== undefined && !REGISTERED_SCHEMES.has(scheme.toLowerCase())) {
-          findings.push(at(path, element, "HTM-025"));
-        }
+      if (element.local === "a" || element.local === "area") {
+        findings.push(...schemeFinding(path, element, Xml.attribute(element, "href")));
       }
     } else if (element.ns === SVG_NS && XLINKED.has(element.local)) {
-      const xlink = Xml.attribute(element, "href", XLINK_NS);
-      const href = Xml.attribute(element, "href");
-      if (xlink !== undefined && href === undefined) findings.push(at(path, element, "HTM-062"));
-      else if (xlink !== undefined && href !== undefined && xlink.trim() !== href.trim()) {
-        findings.push(at(path, element, "HTM-063", xlink, href));
+      const svg = svgHrefs(path, element);
+      findings.push(...svg.findings);
+      if (element.local === "a") {
+        for (const href of svg.hrefs) findings.push(...schemeFinding(path, element, href));
       }
     } else if (element.ns === MATHML_NS && element.local === "math") {
       const hasAnnotation = Xml.descendants(element).some(
         (descendant) => descendant.ns === MATHML_NS && descendant.local === "annotation-xml",
       );
+      // Upstream checks at the end of the `math` element.
       if (Xml.attribute(element, "alttext") === undefined && !hasAnnotation) {
-        findings.push(at(path, element, "ACC-009"));
+        findings.push({
+          id: "ACC-009",
+          args: [],
+          path,
+          line: element.endLine,
+          column: element.endColumn,
+        });
       }
     }
   }
   return findings;
 };
 
+// Upstream's link checks: an alternate style sheet needs a title (CSS-015), and its alternate
+// style tags must not conflict (CSS-005). Link types and tags compare case-sensitively.
 const linkFindings = (path: string, link: Xml.XmlElement) => {
   const findings: Array<Finding> = [];
-  const rel = (Xml.attribute(link, "rel") ?? "").toLowerCase().split(/\s+/);
-  if (rel.includes("stylesheet") && rel.includes("alternate")) {
-    if ((Xml.attribute(link, "title") ?? "").trim() === "")
-      findings.push(at(path, link, "CSS-015"));
+  const rel = Xml.attribute(link, "rel");
+  const types = (rel ?? "").split(/[ \t\n\v\f\r]+/);
+  const title = Xml.attribute(link, "title");
+  if (rel !== undefined && types.includes("alternate") && types.includes("stylesheet")) {
+    if (title === undefined || title === "") findings.push(at(path, link, "CSS-015"));
   }
-  const tags = (Xml.attribute(link, "class") ?? "").split(/\s+/);
-  for (const [first, second] of CONFLICTING_TAGS) {
-    if (tags.includes(first) && tags.includes(second)) {
-      findings.push(at(path, link, "CSS-005", `${first} ${second}`));
-    }
+  const classes = Xml.attribute(link, "class");
+  const tags = new Set((classes ?? "").split(/[ \t\n\v\f\r]+/).filter((tag) => tag !== ""));
+  if (
+    classes !== undefined &&
+    CONFLICTING_TAGS.some(([first, second]) => tags.has(first) && tags.has(second))
+  ) {
+    findings.push(at(path, link, "CSS-005", classes));
   }
   return findings;
 };

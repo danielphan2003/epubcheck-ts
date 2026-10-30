@@ -119,6 +119,11 @@ export const check = Effect.fn("XmlChecker.check")(function* (
     yield* report.message("RSC-016", Report.location(path, line, column), message);
     return Option.none<Xml.XmlDocument>();
   }
+  // Upstream's XMLHandler checks the XML version of every document it parses.
+  const xmlVersion = parsed.success.version;
+  if (xmlVersion !== undefined && xmlVersion !== "1.0") {
+    yield* report.message("HTM-001", Report.location(path), xmlVersion);
+  }
   const checked = withinStack(() =>
     validateDocument(parsed.success, path, schemas, prepare, informative),
   );
