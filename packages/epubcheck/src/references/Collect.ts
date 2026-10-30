@@ -360,8 +360,8 @@ export const cssSelectors = (css: string) => {
     const char = css[index] ?? "";
     if (char === "/" && css[index + 1] === "*") {
       const end = css.indexOf("*/", index + 2);
-      const stop = end < 0 ? css.length : end + 2;
-      while (index < stop) advance();
+      const length = (end < 0 ? css.length : end + 2) - index;
+      for (let step = 0; step < length; step++) advance();
       prelude.push({ char: " ", line, column });
       continue;
     }
