@@ -143,6 +143,17 @@ interface Reserved {
 const unchecked = () => undefined;
 const none = () => new Map<string, Status>();
 
+const MSV: Reserved = {
+  uri: "http://www.idpf.org/epub/vocab/structure/magazine/#",
+  deprecated: true,
+  terms: unchecked,
+};
+const PRISM: Reserved = {
+  uri: "http://www.prismstandard.org/specifications/3.0/PRISM_CV_Spec_3.0.htm#",
+  deprecated: true,
+  terms: unchecked,
+};
+
 export const RESERVED: Readonly<Record<string, Reserved>> = {
   a11y: {
     uri: A11Y_URI,
@@ -232,25 +243,50 @@ const isJavaUri = (value: string) => {
   );
 };
 
+const STRUCTURE_URI = "http://www.idpf.org/epub/vocab/structure/#";
+
+// What prefix declarations start from in each kind of document, as upstream's
+// parsePrefixDeclaration takes it: the reserved prefixes, the vocabularies a declared URI may
+// name, and the URIs no prefix may name.
+export const PACKAGE_PREFIXES = {
+  reserved: RESERVED,
+  known: KNOWN_BY_URI,
+  forbidden: FORBIDDEN_URIS,
+};
+type PrefixScope = typeof PACKAGE_PREFIXES;
+// Content documents reserve only the deprecated magazine prefixes for `epub:type`.
+export const CONTENT_PREFIXES: PrefixScope = {
+  reserved: { msv: MSV, prism: PRISM },
+  known: new Map([MSV, PRISM].map((vocab) => [vocab.uri, vocab] as const)),
+  forbidden: new Set([STRUCTURE_URI]),
+};
+export const OVERLAY_PREFIXES: PrefixScope = {
+  reserved: {},
+  known: new Map<string, Reserved>(),
+  forbidden: new Set([STRUCTURE_URI]),
+};
+
 // Parses a `prefix` attribute with upstream's state machine: optional leading whitespace, then
 // `prefix:` and a URI separated by one space, with whitespace between mappings.
-export const parsePrefixes = (value: string | undefined) => {
-  const vocabs = new Map<string, Reserved>(Object.entries(RESERVED));
+export const parsePrefixes = (value: string | undefined, scope = PACKAGE_PREFIXES) => {
+  const vocabs = new Map<string, Reserved>(Object.entries(scope.reserved));
   const problems: Array<Problem> = [];
+  // Upstream checks the mappings once the whole value is parsed.
+  const mappings: Array<Problem> = [];
   if (value === undefined) return { vocabs, problems };
   // Java prints a missing prefix as "null".
   const named = () => prefix ?? "null";
   const declare = (prefix: string, uri: string) => {
-    if (prefix === "_") problems.push({ id: "OPF-007a", args: [] });
-    else if (FORBIDDEN_URIS.has(uri)) problems.push({ id: "OPF-007b", args: [prefix] });
-    else if (uri === DC_ELEMENTS) problems.push({ id: "OPF-007c", args: [] });
+    if (prefix === "_") mappings.push({ id: "OPF-007a", args: [] });
+    else if (scope.forbidden.has(uri)) mappings.push({ id: "OPF-007b", args: [prefix] });
+    else if (uri === DC_ELEMENTS) mappings.push({ id: "OPF-007c", args: [] });
     else {
-      const reserved = RESERVED[prefix];
+      const reserved = Object.hasOwn(scope.reserved, prefix) ? scope.reserved[prefix] : undefined;
       if (reserved !== undefined && reserved.uri !== uri)
-        problems.push({ id: "OPF-007", args: [prefix] });
+        mappings.push({ id: "OPF-007", args: [prefix] });
       if (reserved !== undefined && reserved.deprecated)
-        problems.push({ id: "OPF-086c", args: [prefix] });
-      const known = KNOWN_BY_URI.get(uri) ?? { uri, deprecated: false, terms: unchecked };
+        mappings.push({ id: "OPF-086c", args: [prefix] });
+      const known = scope.known.get(uri) ?? { uri, deprecated: false, terms: unchecked };
       vocabs.set(prefix, { ...known, reservedIn: undefined });
     }
   };
@@ -310,7 +346,7 @@ export const parsePrefixes = (value: string | undefined) => {
     problems.push({ id: "OPF-005", args: [named()] });
   }
   if (state === "prefix" && read !== "") problems.push({ id: "OPF-004", args: [] });
-  return { vocabs, problems };
+  return { vocabs, problems: [...problems, ...mappings] };
 };
 
 export type Prefixes = ReturnType<typeof parsePrefixes>;

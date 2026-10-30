@@ -212,7 +212,7 @@ export const check = (document: Xml.XmlDocument, path: string, kind: "xhtml" | "
     if (element.ns === XHTML_NS) {
       if (DISCOURAGED.has(element.local))
         findings.push(at(path, element, "HTM-055", element.local));
-      // Upstream dispatches links on lowercased names, but not the checks above.
+      // Upstream checks a link's title on its lowercased name, and its classes on its name.
       if (element.local.toLowerCase() === "link") findings.push(...linkFindings(path, element));
     } else if (element.ns === SVG_NS && XLINKED.has(element.local.toLowerCase())) {
       findings.push(...svgHrefs(path, element).findings);
@@ -273,11 +273,17 @@ const linkFindings = (path: string, link: Xml.XmlElement) => {
     if (title === undefined || title === "") findings.push(at(path, link, "CSS-015"));
   }
   const classes = Xml.attribute(link, "class");
-  const tags = new Set((classes ?? "").split(/[ \t\n\v\f\r]+/).filter((tag) => tag !== ""));
-  if (
-    classes !== undefined &&
-    CONFLICTING_TAGS.some(([first, second]) => tags.has(first) && tags.has(second))
-  ) {
+  if (classes === undefined || link.local !== "link") return findings;
+  // The classes are a property list whose only vocabulary is the default one: no prefix is
+  // declared, whatever `epub:prefix` says.
+  const tokens = classes.split(/[ \t\n\v\f\r]+/).filter((tag) => tag !== "");
+  for (const token of tokens) {
+    const colon = token.indexOf(":");
+    if (colon === 0 || colon === token.length - 1) findings.push(at(path, link, "OPF-026", token));
+    else if (colon > 0) findings.push(at(path, link, "OPF-028", token.slice(0, colon)));
+  }
+  const tags = new Set(tokens);
+  if (CONFLICTING_TAGS.some(([first, second]) => tags.has(first) && tags.has(second))) {
     findings.push(at(path, link, "CSS-005", classes));
   }
   return findings;

@@ -597,6 +597,7 @@ epub3/05-package-document/package-document.feature:94 the 'xml:lang' attribute c
 epub3/05-package-document/package-document.feature:99 the 'xml:lang' language tag must not have leading/trailing whitespace
 epub3/05-package-document/vocabularies-association.feature:112 Report a `prefix` attribute on an XHTML `head` element
 epub3/05-package-document/vocabularies-association.feature:119 Report a `prefix` attribute on an XHTML embedded `svg` element
+epub3/05-package-document/vocabularies-association.feature:129 Report a declaration of the prefix '_' in XHTML content documents
 epub3/05-package-document/vocabularies-association.feature:138 Report a prefix mapping to the Dublic Core elements namespace
 epub3/05-package-document/vocabularies-association.feature:149 Allow explicit declarations of reserved prefixes in package documents
 epub3/05-package-document/vocabularies-association.feature:157 Allow the reserved 'schema' prefix in package metadata properties
@@ -609,7 +610,11 @@ epub3/05-package-document/vocabularies-association.feature:47 Allow valid `prefi
 epub3/05-package-document/vocabularies-association.feature:52 Allow valid `prefix` attribute mappings in SVG content documents
 epub3/05-package-document/vocabularies-association.feature:57 Report syntax errors in the `prefix` attribute value
 epub3/05-package-document/vocabularies-association.feature:67 Allow declared prefixes used in the XHTML `epub:type` attribute
+epub3/05-package-document/vocabularies-association.feature:72 Report undeclared prefixes used in the XHTML `epub:type` attribute
 epub3/05-package-document/vocabularies-association.feature:78 Report undeclared prefixes used in package metadata properties
+epub3/05-package-document/vocabularies-association.feature:84 Report undeclared prefixes used in a Media Overlays `epub:type` attribute
+epub3/05-package-document/vocabularies-association.feature:93 Report a `epub:type` using a prefix declared in a `prefix` attribute with no namespace, in an XHTML content document.
+epub3/05-package-document/vocabularies-association.feature:99 Report an `epub:type` using a prefix declared in a `prefix` attribute with no namespace, in a media overlay.
 epub3/06-layouts/layouts.feature:101 'page-spread-*' properties can be used on pre-paginated content of a reflowable publication
 epub3/06-layouts/layouts.feature:110 'page-spread-*' properties used on content of reflowable publications are reported
 epub3/06-layouts/layouts.feature:117 'page-spread-*' properties used on reflowable content of a pre-paginated publications is reported
@@ -800,6 +805,9 @@ epub3/07-content-documents/content-documents-xhtml.feature:73 Report `doctype` w
 epub3/07-content-documents/content-documents-xhtml.feature:733 Verify `epub:type` attribute on allowed content
 epub3/07-content-documents/content-documents-xhtml.feature:740 Report `epub:type` attribute on 'head' or metadata content
 epub3/07-content-documents/content-documents-xhtml.feature:745 Verify `epub:type` attribute with author-declared vocabulary
+epub3/07-content-documents/content-documents-xhtml.feature:749 Verify `epub:type` attribute with unknown semantic
+epub3/07-content-documents/content-documents-xhtml.feature:755 Verify `epub:type` attribute with deprecated semantic
+epub3/07-content-documents/content-documents-xhtml.feature:761 Verify `epub:type` attribute that does not follow usage suggestions
 epub3/07-content-documents/content-documents-xhtml.feature:770 Verify RDFa attributes are allowed on HTML elements
 epub3/07-content-documents/content-documents-xhtml.feature:777 Verify ITS attributes are allowed
 epub3/07-content-documents/content-documents-xhtml.feature:782 Verify ITS attributes are checked for conformance
@@ -898,6 +906,7 @@ epub3/09-media-overlays/media-overlays.feature:171 Allow SVG fragment identifier
 epub3/09-media-overlays/media-overlays.feature:176 Warn about invalid SVG fragment identifiers
 epub3/09-media-overlays/media-overlays.feature:184 Allow epub:type properties in the default vocabulary
 epub3/09-media-overlays/media-overlays.feature:188 Allow custom epub:type properties with a declared prefix
+epub3/09-media-overlays/media-overlays.feature:192 Allow unknown epub:type properties in the default vocabulary
 epub3/09-media-overlays/media-overlays.feature:202 Verify 'media:active-class' and 'media:playback-active-class' properties referring to classes defined in a stylesheet
 epub3/09-media-overlays/media-overlays.feature:209 Verify 'media:active-class' and 'media:playback-active-class' properties referring to classes defined inline
 epub3/09-media-overlays/media-overlays.feature:216 Verify 'media:active-class' and 'media:playback-active-class' properties referring to classes defined inline in SVG
@@ -1047,6 +1056,8 @@ epub3/D-vocabularies/package-rendering-vocab.feature:88 A 'rendition:layout-pre-
 epub3/D-vocabularies/package-rendering-vocab.feature:97 two 'rendition:layout' overrides in the same 'itemref' element are reported
 epub3/E-obsolete-features/deprecated-features.feature:102 Report `epub:trigger` that references non-existent IDs
 epub3/E-obsolete-features/deprecated-features.feature:118 'xsd' reserved prefix for package metadata is deprecated
+epub3/E-obsolete-features/deprecated-features.feature:126 'msv' reserved prefix for structural semantics is deprecated
+epub3/E-obsolete-features/deprecated-features.feature:132 'prism' reserved prefix for structural semantics is deprecated
 epub3/E-obsolete-features/deprecated-features.feature:139 report a deprecated reserved prefix both in declaration and properties
 epub3/E-obsolete-features/deprecated-features.feature:147 report a deprecated reserved prefix declaration even if unused
 epub3/E-obsolete-features/deprecated-features.feature:155 report a deprecated reserved prefix even if it is overridden

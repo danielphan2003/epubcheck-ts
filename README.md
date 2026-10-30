@@ -56,7 +56,7 @@ epubcheck-ts detects.
 
 <!-- conformance:start -->
 
-Upstream suite: EPUBCheck v5.4.0. Passing **1163 / 1251** scenarios (93.0%); scenarios that expect reported messages: **647 / 720** (89.9%).
+Upstream suite: EPUBCheck v5.4.0. Passing **1174 / 1251** scenarios (93.8%); scenarios that expect reported messages: **658 / 720** (91.4%).
 
 | Area                                    | Passing | Total |      % |
 | --------------------------------------- | ------: | ----: | -----: |
@@ -75,15 +75,15 @@ Upstream suite: EPUBCheck v5.4.0. Passing **1163 / 1251** scenarios (93.0%); sce
 | `epub3/02-epub-publication-conformance` |       2 |     2 | 100.0% |
 | `epub3/03-resources`                    |     129 |   129 | 100.0% |
 | `epub3/04-ocf`                          |      98 |   100 |  98.0% |
-| `epub3/05-package-document`             |     124 |   130 |  95.4% |
+| `epub3/05-package-document`             |     129 |   130 |  99.2% |
 | `epub3/06-layouts`                      |      20 |    20 | 100.0% |
-| `epub3/07-content-documents`            |     216 |   235 |  91.9% |
+| `epub3/07-content-documents`            |     219 |   235 |  93.2% |
 | `epub3/08-navigation-document`          |      36 |    40 |  90.0% |
-| `epub3/09-media-overlays`               |      49 |    50 |  98.0% |
+| `epub3/09-media-overlays`               |      50 |    50 | 100.0% |
 | `epub3/B-external-identifiers`          |       1 |     3 |  33.3% |
 | `epub3/C-viewport-meta-tag`             |      34 |    34 | 100.0% |
 | `epub3/D-vocabularies`                  |      79 |    79 | 100.0% |
-| `epub3/E-obsolete-features`             |      58 |    72 |  80.6% |
+| `epub3/E-obsolete-features`             |      60 |    72 |  83.3% |
 | `epub3/G-media-type-registrations`      |       1 |     1 | 100.0% |
 | `localization`                          |       5 |     7 |  71.4% |
 | `reporting`                             |      10 |    24 |  41.7% |

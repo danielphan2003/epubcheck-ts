@@ -19,3 +19,4 @@ reported message, which a checker that reports nothing cannot pass.
 | [#12](https://github.com/danielphan2003/epubcheck-ts/pull/12) | Media overlays: clips, text references, styling                    | 1130 / 1251 | 615 / 720 |
 | [#13](https://github.com/danielphan2003/epubcheck-ts/pull/13) | Content documents: XHTML and SVG rules                             | 1146 / 1251 | 631 / 720 |
 | [#14](https://github.com/danielphan2003/epubcheck-ts/pull/14) | Package URLs: manifest and link URLs, container coverage           | 1163 / 1251 | 647 / 720 |
+| [#15](https://github.com/danielphan2003/epubcheck-ts/pull/15) | Vocabularies: epub:type values, link classes                       | 1174 / 1251 | 658 / 720 |
