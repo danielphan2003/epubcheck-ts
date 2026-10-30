@@ -27,6 +27,9 @@ export type ReferenceType =
   // CSS `url()` values outside `@font-face`, and `input` images.
   | "generic"
   | "svg-symbol"
+  // SVG `fill` and `stroke`, and `clip-path`, URL values.
+  | "svg-paint"
+  | "svg-clip-path"
   | "cite"
   // A Search Key Map's link to dictionary content.
   | "search-key"
@@ -216,6 +219,12 @@ const svgHrefs = (element: Xml.XmlElement, epub3: boolean) => {
 
 // Java's `\s`, which upstream splits `epub:type` values on: ASCII whitespace only.
 const JAVA_SPACE = /[ \t\n\v\f\r]+/;
+
+const SVG_URL_PROPERTIES = [
+  ["fill", "svg-paint"],
+  ["stroke", "svg-paint"],
+  ["clip-path", "svg-clip-path"],
+] as const;
 
 // The nav types upstream's NavHandler reads, in the order it tests them: the last one wins.
 const NAV_TYPES = ["toc", "page-list", "landmarks"] as const;
@@ -512,7 +521,8 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
       const style = Xml.attribute(element, "style");
       if (style !== undefined && style !== "") css(style, element.line, true);
     } else if (element.ns === SVG_NS) {
-      switch (element.local) {
+      // Upstream matches SVG element names in lowercase.
+      switch (element.local.toLowerCase()) {
         case "svg":
           if (!isSvgDocument) svg = true;
           break;
@@ -543,6 +553,15 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
           break;
         default:
           break;
+      }
+      // Upstream reads a URL value only written exactly as `url(...)`, quoted or not.
+      for (const [property, type] of SVG_URL_PROPERTIES) {
+        const value = Xml.attribute(element, property);
+        if (value === undefined || !value.startsWith("url(") || !value.endsWith(")")) continue;
+        const inner = value.slice(4, -1);
+        const quoted = inner.length > 1 && /^(["']).*\1$/s.test(inner);
+        const url = quoted ? inner.slice(1, -1) : inner;
+        register(check(url, start(element)), type, element, start(element));
       }
     } else if (element.ns === MATHML_NS && element.local === "math" && epub3) {
       mathml = true;
@@ -706,13 +725,33 @@ const EMBEDDED = new Set([
 ]);
 const NOT_PALPABLE = new Set(["html", "head", "script", "link", "meta", "title", "style"]);
 
-// Each ID's position in document order.
-export const idPositions = (document: Xml.XmlDocument) => {
+export type IdType = "svg-paint" | "svg-clip-path" | "svg-symbol" | "generic";
+
+// The SVG elements whose IDs have a type of their own, by name in lowercase.
+const SVG_ID_TYPES: Readonly<Record<string, IdType>> = {
+  lineargradient: "svg-paint",
+  radialgradient: "svg-paint",
+  pattern: "svg-paint",
+  clippath: "svg-clip-path",
+  symbol: "svg-symbol",
+};
+
+const DTBOOK_NS = "http://www.daisy.org/z3986/2005/dtbook/";
+
+// A document's IDs as upstream registers them, with their types and positions in document order.
+// The first element with an ID gives its type: an SVG paint server, clip path or symbol, or any
+// other element. A DTBook document registers its own elements' IDs only.
+export const documentIds = (document: Xml.XmlDocument, dtbook = false) => {
+  const types = new Map<string, IdType>();
   const positions = new Map<string, number>();
   for (const element of [document.root, ...Xml.descendants(document.root)]) {
+    if (dtbook && element.ns !== DTBOOK_NS) continue;
     // Upstream registers the `id` attributes, as written.
     const id = Xml.attribute(element, "id");
-    if (id !== undefined && !positions.has(id)) positions.set(id, positions.size);
+    if (id === undefined || types.has(id)) continue;
+    const own = element.ns === SVG_NS ? SVG_ID_TYPES[element.local.toLowerCase()] : undefined;
+    types.set(id, own ?? "generic");
+    positions.set(id, positions.size);
   }
-  return positions;
+  return { types, positions };
 };

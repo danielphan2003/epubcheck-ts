@@ -706,7 +706,11 @@ epub3/07-content-documents/content-documents-svg.feature:163 Report HTML validat
 epub3/07-content-documents/content-documents-svg.feature:172 Verify `title` valid content model
 epub3/07-content-documents/content-documents-svg.feature:177 Report `title` with non-HTML elements
 epub3/07-content-documents/content-documents-svg.feature:186 Report HTML validation errors within `title` content
+epub3/07-content-documents/content-documents-svg.feature:199 Report a "stroke" attribute with a URL value that does not point to a paint server element
 epub3/07-content-documents/content-documents-svg.feature:20 Verify that the need for a `viewbox` declaration does not apply to non-fixed layout SVGs
+epub3/07-content-documents/content-documents-svg.feature:206 Report a "fill" attribute with a URL value that does not point to a paint server element
+epub3/07-content-documents/content-documents-svg.feature:213 Report a "clip-path" attribute with a URL value that does not point to a paint server element
+epub3/07-content-documents/content-documents-svg.feature:220 Report SVG `use` elements that don't point to a document fragment
 epub3/07-content-documents/content-documents-svg.feature:24 Verify that an SVG Content Document can have any extension
 epub3/07-content-documents/content-documents-svg.feature:29 Verify that SVG validation erors are reported as USAGE
 epub3/07-content-documents/content-documents-svg.feature:37 Allow `epub:type` on structural, shape, and text elements
@@ -717,6 +721,7 @@ epub3/07-content-documents/content-documents-svg.feature:67 Verify elements from
 epub3/07-content-documents/content-documents-svg.feature:73 Verify `data-*` attributes are allowed
 epub3/07-content-documents/content-documents-svg.feature:79 Verify that empty `font-face` declarations are allowed
 epub3/07-content-documents/content-documents-svg.feature:85 Verify links are allowed
+epub3/07-content-documents/content-documents-svg.feature:89 Report SVG link without a label as usage
 epub3/07-content-documents/content-documents-svg.feature:96 Verify that `image` elements can have an `xlink:href` URL pointing to a fragment
 epub3/07-content-documents/content-documents-xhtml.feature:1000 Report `base` as a discouraged construct
 epub3/07-content-documents/content-documents-xhtml.feature:1007 Report `embed` as a discouraged construct
@@ -763,6 +768,7 @@ epub3/07-content-documents/content-documents-xhtml.feature:288 Report a hyperlin
 epub3/07-content-documents/content-documents-xhtml.feature:293 Verify that href values that only contain whitepace are allowed
 epub3/07-content-documents/content-documents-xhtml.feature:298 Verify that relative paths starting with a single dot are resolved properly
 epub3/07-content-documents/content-documents-xhtml.feature:308 Report fragment identifiers used in stylesheet URLs
+epub3/07-content-documents/content-documents-xhtml.feature:314 Report a hyperlink to SVG symbol ("incompatible resource type")
 epub3/07-content-documents/content-documents-xhtml.feature:320 Allow valid hyperlink URLs
 epub3/07-content-documents/content-documents-xhtml.feature:326 Verify that an `iframe` can reference another XHTML document
 epub3/07-content-documents/content-documents-xhtml.feature:33 Report Schematron schema errors when checking a Content Document in a full publication

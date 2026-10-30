@@ -1,6 +1,6 @@
 import type { MessageId } from "../messages/MessageCatalog.ts";
 import type { ManifestItem, Metadata } from "../opf/PackageDocument.ts";
-import type { Finding, Reference } from "../references/Collect.ts";
+import type { Finding, IdType, Reference } from "../references/Collect.ts";
 import * as ReadingOrder from "../references/ReadingOrder.ts";
 import * as Url from "../references/Url.ts";
 import * as ClockValue from "../util/ClockValue.ts";
@@ -145,6 +145,8 @@ const isContentDocument = (mediaType: string | undefined) =>
 export interface PublicationContext extends ReadingOrder.Context {
   readonly packagePath: string;
   readonly narrators: ReadonlyMap<string, string>;
+  // The type of each ID in each content document, by the element that has it.
+  readonly idTypes: ReadonlyMap<string, ReadonlyMap<string, IdType>>;
   // Every manifest item, remote ones included, in manifest order.
   readonly manifest: ReadonlyArray<ManifestItem>;
 }
@@ -174,8 +176,11 @@ export const publicationFindings = (
         } else if (item.mediaType === "image/svg+xml" && !parsed.isValid) {
           links.push(finding(path, link, "MED-018", Url.normalizeFragment(fragment)));
         }
-        if (parsed.id !== "" && context.ids.get(target.path)?.has(parsed.id) !== true) {
-          links.push(finding(path, link, "RSC-012"));
+        // A text link may name any element but an SVG paint server, clip path or symbol.
+        if (parsed.id !== "") {
+          const idType = context.idTypes.get(target.path)?.get(parsed.id);
+          if (idType === undefined) links.push(finding(path, link, "RSC-012"));
+          else if (idType !== "generic") links.push(finding(path, link, "RSC-014"));
         }
       }
       const broken = next(link.resolved);

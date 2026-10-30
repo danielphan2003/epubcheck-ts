@@ -106,3 +106,42 @@ describe("ContentRules.check links", () => {
     expect(findings.map((finding) => finding.id).filter((id) => ids.has(id))).toEqual(expected);
   });
 });
+
+describe("ContentRules.svgLinkNames", () => {
+  const svg = (body: string) =>
+    `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">${body}</svg>`;
+  // Each count is EPUBCheck 5.4.0's ACC-011 for an SVG document with these links.
+  it.each([
+    { name: "an unnamed link", body: '<a href="#r"><rect/></a>', found: 1 },
+    { name: "an empty title", body: '<a href="#r" xlink:title=""><rect/></a>', found: 1 },
+    // Upstream does not read `aria-labelledby`.
+    {
+      name: "a labelled-by link",
+      body: '<a href="#r" aria-labelledby="r"><rect id="r"/></a>',
+      found: 1,
+    },
+    { name: "a nested title", body: '<a href="#r"><g><title>n</title></g></a>', found: 0 },
+    { name: "an empty text", body: '<a href="#r"><text></text></a>', found: 0 },
+    // An XHTML link inside SVG is one too, and resets the flag.
+    {
+      name: "an XHTML link in a foreign object",
+      body: '<title>t</title><foreignObject><div xmlns="http://www.w3.org/1999/xhtml"><a href="#r">t</a></div></foreignObject>',
+      found: 1,
+    },
+    {
+      name: "a named XHTML link after an unnamed one",
+      body: '<a href="#r"><rect/></a><foreignObject><div xmlns="http://www.w3.org/1999/xhtml"><a href="#r" aria-label="n">t</a></div></foreignObject>',
+      found: 1,
+    },
+    // One flag for the document: an inner unnamed link leaves the outer one unnamed too.
+    {
+      name: "nested links",
+      body: '<a href="#r"><title>o</title><a href="#r"><rect/></a></a>',
+      found: 2,
+    },
+  ])("reports $name", ({ body, found }) => {
+    const parsed = Xml.parse(svg(body));
+    if (Result.isFailure(parsed)) throw new Error(parsed.failure.message);
+    expect(ContentRules.svgLinkNames(parsed.success, "s.svg", true)).toHaveLength(found);
+  });
+});

@@ -1,5 +1,6 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Result from "effect/Result";
 
 import * as ContentChecker from "../content/ContentChecker.ts";
 import * as CssChecker from "../css/CssChecker.ts";
@@ -76,7 +77,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     (itemrefsOf.get(item.id)?.every((itemref) => itemref.linear) ?? false);
   const nfc = (path: string) => path.normalize("NFC");
   const byId = new Map(opf.items.map((item) => [item.id, item] as const));
-  const ids = new Map<string, ReadonlySet<string>>();
+  const ids = new Map<string, ReadonlyMap<string, Collect.IdType>>();
   const unparsed = new Set<string>();
   const publication: ReferenceChecker.Publication = {
     version: opf.version,
@@ -151,6 +152,23 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     if (kind === "ncx" && !isToc) continue;
     const isCss = item.mediaType === "text/css";
     const isImage = MediaTypes.isBitmap(item.mediaType);
+    // Upstream registers the IDs of DTBook documents, and in EPUB 2 of HTML and OEB documents,
+    // which it reads with its OPS handler; we read nothing else from them.
+    const dtbook = item.mediaType === "application/x-dtbook+xml";
+    const legacy =
+      opf.version === "2" &&
+      (item.mediaType === "text/html" || item.mediaType === "text/x-oeb1-document");
+    if (kind === undefined && (dtbook || legacy)) {
+      const bytes = yield* OcfChecker.readResource(container, item.path);
+      const decoded = Option.isSome(bytes) ? Xml.decodeDocument(bytes.value).text : undefined;
+      const parsed = decoded === undefined ? undefined : Xml.parse(decoded);
+      if (parsed !== undefined && Result.isSuccess(parsed)) {
+        const found = Collect.documentIds(parsed.success, dtbook);
+        ids.set(nfc(item.path), found.types);
+        positions.set(nfc(item.path), found.positions);
+      } else unparsed.add(nfc(item.path));
+      continue;
+    }
     if (kind === undefined && !isCss && !isImage) continue;
     // A missing image is reported once, from the manifest (RSC-001).
     if (isImage && !publication.files.has(nfc(item.path))) continue;
@@ -262,6 +280,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     yield* reportFindings(ContentRules.schemeFindings(document.value, item.path, opf.version));
     if (opf.version === "3") {
       yield* reportFindings(ContentRules.check(document.value, item.path));
+      yield* reportFindings(ContentRules.svgLinkNames(document.value, item.path, kind === "svg"));
       const fixed = fixedLayout.has(item.path);
       yield* reportFindings(
         kind === "svg"
@@ -282,11 +301,11 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       for (const child of element.children) if (child.kind === "text") count += child.text.length;
     }
     characters.push({ path: reportPath(item.path), count });
-    const found = Collect.idPositions(document.value);
-    ids.set(nfc(item.path), new Set(found.keys()));
+    const found = Collect.documentIds(document.value);
+    ids.set(nfc(item.path), found.types);
     yield* reportFindings(collected.findings);
     if (collected.features.scripts) scripts = true;
-    positions.set(nfc(item.path), found);
+    positions.set(nfc(item.path), found.positions);
     const { root } = document.value;
     const end = { line: root.endLine, column: root.endColumn };
     documents.push({ item, path: item.path, features: collected.features, end });
@@ -381,6 +400,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
           ...order,
           packagePath: opf.path,
           narrators,
+          idTypes: ids,
           manifest: opf.items,
         })
       : undefined;
@@ -492,6 +512,7 @@ export const checkDocumentReferences = Effect.fn("Publication.checkDocumentRefer
   yield* reportFindings(ContentRules.schemeFindings(document.value, path, version));
   if (version === "3") {
     yield* reportFindings(ContentRules.check(document.value, path));
+    yield* reportFindings(ContentRules.svgLinkNames(document.value, path, kind === "svg"));
   }
   const context: Collect.Context = {
     version,

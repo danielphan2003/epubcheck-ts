@@ -130,3 +130,74 @@ describe("Collect.fromDocument in a Navigation Document", () => {
     expect(read.tocLinks.map(({ resolved }) => Url.referenceName(resolved))).toEqual(toc);
   });
 });
+
+describe("Collect.fromDocument SVG references", () => {
+  // Each row's references are those EPUBCheck 5.4.0 checks for an SVG document's attributes.
+  it.each([
+    {
+      name: "paint and clip path URLs",
+      attributes: 'fill="url(#g)" stroke="url(\'#p\')" clip-path="url(&quot;#c&quot;)"',
+      found: [
+        ["svg-paint", "EPUB/s.svg#g"],
+        ["svg-paint", "EPUB/s.svg#p"],
+        ["svg-clip-path", "EPUB/s.svg#c"],
+      ],
+    },
+    // Upstream reads a value only written exactly as `url(...)`.
+    {
+      name: "other spellings",
+      attributes: 'fill="URL(#g)" stroke=" url(#g)" clip-path="url(#c) "',
+      found: [],
+    },
+    {
+      name: "other properties",
+      attributes: 'mask="url(#m)" filter="url(#f)" marker-start="url(#k)"',
+      found: [],
+    },
+  ])("reads $name", ({ attributes, found }) => {
+    const parsed = Xml.parse(`<svg xmlns="http://www.w3.org/2000/svg"><rect ${attributes}/></svg>`);
+    if (Result.isFailure(parsed)) throw new Error(parsed.failure.message);
+    const { references } = Collect.fromDocument(parsed.success, "EPUB/s.svg", {
+      version: "3",
+      container: true,
+    });
+    expect(references.map((reference) => [reference.type, Url.referenceName(reference)])).toEqual(
+      found,
+    );
+  });
+});
+
+describe("Collect.documentIds", () => {
+  // Upstream types an ID by its first element: SVG paint servers, clip paths and symbols. A
+  // DTBook document registers its own elements' IDs only.
+  it.each([
+    {
+      name: "an SVG document",
+      source:
+        '<svg xmlns="http://www.w3.org/2000/svg"><LinearGradient id="g"/><pattern id="p"/><clipPath id="c"/><symbol id="s"/><mask id="m"/><solidcolor id="k"/><rect id="g"/></svg>',
+      dtbook: false,
+      found: [
+        ["g", "svg-paint"],
+        ["p", "svg-paint"],
+        ["c", "svg-clip-path"],
+        ["s", "svg-symbol"],
+        ["m", "generic"],
+        ["k", "generic"],
+      ],
+    },
+    {
+      name: "a DTBook document",
+      source:
+        '<dtbook xmlns="http://www.daisy.org/z3986/2005/dtbook/" id="b"><p id="d1"/><x xmlns="urn:x" id="x"/></dtbook>',
+      dtbook: true,
+      found: [
+        ["b", "generic"],
+        ["d1", "generic"],
+      ],
+    },
+  ])("types the IDs of $name", ({ source, dtbook, found }) => {
+    const parsed = Xml.parse(source);
+    if (Result.isFailure(parsed)) throw new Error(parsed.failure.message);
+    expect([...Collect.documentIds(parsed.success, dtbook).types]).toEqual(found);
+  });
+});
