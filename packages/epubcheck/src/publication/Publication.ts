@@ -95,6 +95,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     ),
     byId,
     spine: new Set(opf.spine.flatMap((idref) => byId.get(idref) ?? [])),
+    fixedLayout: fixedIds,
     ids,
     unparsed,
   };
@@ -291,6 +292,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     const collected = Collect.fromDocument(document.value, item.path, {
       ...context,
       navigation: kind === "nav",
+      dataNav: item.properties.includes("data-nav"),
     });
     tocLinks.push(...collected.tocLinks);
     references.push(...collected.references);
@@ -427,6 +429,25 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
           dictionaries.has(nfc(path)),
       );
       if (!found) yield* report.message("OPF-078", Report.location(opf.path));
+    }
+    // EDUPUB: page breaks need a page list and its source, and Microdata should come with RDFa.
+    // Upstream notes each feature once for the publication, where it first appears.
+    if (Profiles.isEdupub(selection)) {
+      if (documents.some((document) => document.features.pagebreak)) {
+        if (!documents.some((document) => document.features.pageList)) {
+          yield* report.message("NAV-003", Report.location(opf.path));
+        }
+        if (!opf.metadata.paginationSource) {
+          yield* report.message("OPF-066", Report.location(opf.path));
+        }
+      }
+      const microdata = documents.find((document) => document.features.microdata !== undefined);
+      const at = microdata?.features.microdata;
+      if (microdata !== undefined && at !== undefined) {
+        if (!documents.some((document) => document.features.rdfa)) {
+          yield* report.message("HTM-051", Report.location(microdata.path, at.line, at.column));
+        }
+      }
     }
     // Upstream's checkSpecifics: dictionary content needs the type, and a dictionary needs content.
     const first = documents.find((document) => document.features.dictionary !== undefined);

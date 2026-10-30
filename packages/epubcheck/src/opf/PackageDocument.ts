@@ -43,6 +43,8 @@ export interface Metadata {
   readonly date: string | undefined;
   readonly modified: string | undefined;
   readonly types: ReadonlyArray<string>;
+  // Whether a `dc:source` is refined as the source of the pagination (`source-of`).
+  readonly paginationSource: boolean;
   // The global `rendition:layout` values: those of metas that refine nothing.
   readonly layouts: ReadonlyArray<string>;
   // The first `rendition:orientation` and `rendition:spread` values, refining or not, as upstream
@@ -264,6 +266,33 @@ const readMetadata = (
     );
     return element === undefined ? undefined : Xml.textContent(element).trim();
   };
+  const sourceIds = new Set(
+    elements.flatMap((element) => {
+      const id =
+        element.ns === DC_NS && element.local === "source"
+          ? Xml.attribute(element, "id")
+          : undefined;
+      return id === undefined ? [] : [id];
+    }),
+  );
+  const paginationSource = elements.some((element) => {
+    const refines = Xml.attribute(element, "refines");
+    // Upstream strips one leading `#` (a bare `#` refines nothing) and matches the ID as written.
+    const refined = refines === "#" ? undefined : refines?.replace(/^#/, "");
+    return (
+      element.ns === OPF_NS &&
+      element.local === "meta" &&
+      refined !== undefined &&
+      sourceIds.has(refined) &&
+      JavaText.trim(Xml.textContent(element)) === "pagination" &&
+      Vocabularies.canonicalNames(
+        Xml.attribute(element, "property"),
+        "meta",
+        prefixes,
+        false,
+      )[0] === "source-of"
+    );
+  });
   const modified = elements.find(
     (element) =>
       element.ns === OPF_NS &&
@@ -284,6 +313,7 @@ const readMetadata = (
     language: values("language")[0],
     date: values("date")[0],
     types: values("type"),
+    paginationSource,
     layouts: layouts.map((element) => Xml.textContent(element).trim()),
     orientation: meta("rendition:orientation", true),
     spread: meta("rendition:spread", true),

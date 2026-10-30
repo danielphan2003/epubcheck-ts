@@ -34,7 +34,9 @@ export type ReferenceType =
   // A Search Key Map's link to dictionary content.
   | "search-key"
   // A Media Overlay's link to the content it narrates.
-  | "overlay-text";
+  | "overlay-text"
+  // A link of a region-based nav, which must point to a fixed-layout item (NAV-009).
+  | "region-based-nav";
 
 export interface Finding {
   readonly id: MessageId;
@@ -77,6 +79,8 @@ export interface Context {
   readonly locale?: string | undefined;
   // Whether the document is a Navigation Document, which upstream's NavHandler reads too.
   readonly navigation?: boolean | undefined;
+  // Whether the document is a Data Navigation Document, whose `nav` elements may be region-based.
+  readonly dataNav?: boolean | undefined;
 }
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -101,6 +105,12 @@ export interface Features {
   readonly glossary: boolean;
   // Whether the document has a style sheet or `style` element (not just `style` attributes).
   readonly styled: boolean;
+  // Whether a nav of a Navigation Document is a page list (upstream's PAGE_LIST feature).
+  readonly pageList: boolean;
+  // Page break markers, and Microdata (the first `itemscope`) or RDFa (a `property`).
+  readonly pagebreak: boolean;
+  readonly microdata: { readonly line: number; readonly column: number } | undefined;
+  readonly rdfa: boolean;
   // Where each `style` element or attribute whose CSS uses remote resources starts.
   readonly remoteStyles: ReadonlyArray<number>;
 }
@@ -252,8 +262,13 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
   let index = false;
   let glossary = false;
   let styled = false;
+  let pageList = false;
+  let pagebreak = false;
+  let microdata: Features["microdata"];
+  let rdfa = false;
   const remoteStyles: Array<number> = [];
   const tocLinks: Array<TocLink> = [];
+  let regionBased = false;
   let navType: (typeof NAV_TYPES)[number] | undefined;
 
   interface Position {
@@ -374,7 +389,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     register(resolved, "hyperlink", element, start(element));
     if (epub3 && resolved.target.kind === "data") {
       findings.push({ id: "RSC-029", args: [], path, ...start(element) });
-    }
+    } else if (regionBased) register(resolved, "region-based-nav", element, start(element));
   };
   const fonts: Array<{ readonly embedded: boolean; readonly name: string }> = [];
   // A `style` element or attribute, its lines counted from its element's.
@@ -581,12 +596,21 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
       if (types.includes("dictionary")) dictionary ??= start(element);
       if (types.includes("index")) index = true;
       if (types.includes("glossary")) glossary = true;
+      if (types.includes("pagebreak")) pagebreak = true;
+      // Only a Data Navigation Document's `nav` may be region-based; any `</nav>` ends it.
+      if (types.includes("region-based")) {
+        if (element.local === "nav" && context.dataNav === true) regionBased = true;
+        else findings.push({ id: "HTM-052", args: [], path, ...start(element) });
+      }
+      if (Xml.attribute(element, "itemscope") !== undefined) microdata ??= start(element);
+      if (Xml.attribute(element, "property") !== undefined) rdfa = true;
     }
     // NavHandler checks each XHTML `a` again, as written, after the hyperlink checks. A nav
     // without one of its types keeps the current one; any `</nav>` ends it.
     if (context.navigation !== true || element.ns !== XHTML_NS) return;
     if (element.local === "nav") {
       const types = (Xml.attribute(element, "type", OPS_NS) ?? "").split(JAVA_SPACE);
+      if (types.includes("page-list")) pageList = true;
       navType = NAV_TYPES.findLast((type) => types.includes(type)) ?? navType;
     } else if (element.local === "a") {
       const href = Xml.attribute(element, "href");
@@ -603,6 +627,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
   };
 
   const exit = (element: Xml.XmlElement) => {
+    if (element.local === "nav") regionBased = false;
     palpable.set(
       element,
       element.children.some((child) =>
@@ -679,6 +704,10 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     index,
     glossary,
     styled: styled || references.some((reference) => reference.type === "stylesheet"),
+    pageList,
+    pagebreak,
+    microdata,
+    rdfa,
     remoteStyles,
   };
   return { references, findings, features, fonts, tocLinks };

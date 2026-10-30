@@ -131,6 +131,70 @@ describe("Collect.fromDocument in a Navigation Document", () => {
   });
 });
 
+describe("Collect.fromDocument in a Data Navigation Document", () => {
+  // Each row's findings and NAV-009 checks are EPUBCheck 5.4.0's: the region links are those it
+  // checks against fixed-layout items, after each link's hyperlink checks.
+  it.each([
+    {
+      name: "a region link",
+      body: '<nav epub:type="region-based"><a href="c1.xhtml#xywh=percent:5,5,15,15"/></nav>',
+      found: [],
+      region: ["EPUB/c1.xhtml#xywh=percent:5,5,15,15"],
+    },
+    {
+      name: "empty, self and remote links",
+      body: '<nav epub:type="region-based"><a href=""/><a href="."/><a href="https://example.org/"/><a href="#x"/></nav>',
+      found: [["HTM-045"]],
+      region: ["EPUB/data-nav.xhtml#x"],
+    },
+    {
+      name: "a link against a base",
+      body: '<nav epub:type="region-based"><a xml:base="sub/" href=" ../c1.xhtml "/></nav>',
+      found: [],
+      region: ["EPUB/c1.xhtml"],
+    },
+    // Any `</nav>` ends the region-based nav.
+    {
+      name: "a link after a nested nav",
+      body: '<nav epub:type="region-based"><nav><a href="c1.xhtml">x</a></nav><a href="c2.xhtml"/></nav>',
+      found: [],
+      region: ["EPUB/c1.xhtml"],
+    },
+    {
+      name: "an SVG link and an area",
+      body: '<nav epub:type="region-based"><svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><a href="c1.xhtml"><text>t</text></a></svg><map name="m"><area href="c2.xhtml" alt="a"/></map></nav>',
+      found: [],
+      region: ["EPUB/c1.xhtml", "EPUB/c2.xhtml"],
+    },
+    {
+      name: "a region-based element other than nav",
+      body: '<nav epub:type="toc"><div epub:type="region-based"><a href="c1.xhtml"/></div></nav>',
+      found: [["HTM-052"]],
+      region: [],
+    },
+    {
+      name: "a region-based nav outside a Data Navigation Document",
+      body: '<nav epub:type="region-based"><a href="c1.xhtml"/></nav>',
+      dataNav: false,
+      found: [["HTM-052"]],
+      region: [],
+    },
+  ])("reads $name", ({ body, dataNav, found, region }) => {
+    const parsed = Xml.parse(
+      `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head/><body>${body}</body></html>`,
+    );
+    if (Result.isFailure(parsed)) throw new Error(parsed.failure.message);
+    const read = Collect.fromDocument(parsed.success, "EPUB/data-nav.xhtml", {
+      version: "3",
+      container: true,
+      dataNav: dataNav ?? true,
+    });
+    expect(read.findings.map(({ id, args }) => [id, ...args])).toEqual(found);
+    const links = read.references.filter((reference) => reference.type === "region-based-nav");
+    expect(links.map((reference) => Url.referenceName(reference))).toEqual(region);
+  });
+});
+
 describe("Collect.fromDocument SVG references", () => {
   // Each row's references are those EPUBCheck 5.4.0 checks for an SVG document's attributes.
   it.each([

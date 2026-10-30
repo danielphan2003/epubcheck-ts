@@ -27,3 +27,4 @@ reported message, which a checker that reports nothing cannot pass.
 | [#20](https://github.com/danielphan2003/epubcheck-ts/pull/20) | Encryption and outdated features: obfuscation, NCX, fallbacks      | 1236 / 1251 | 705 / 720 |
 | [#21](https://github.com/danielphan2003/epubcheck-ts/pull/21) | DOCTYPE identifiers and remote overlay audio                       | 1239 / 1251 | 708 / 720 |
 | [#22](https://github.com/danielphan2003/epubcheck-ts/pull/22) | SVG: fragment targets, use references and link names               | 1245 / 1251 | 714 / 720 |
+| [#23](https://github.com/danielphan2003/epubcheck-ts/pull/23) | EDUPUB pagination and region-based navigation                      | 1250 / 1251 | 719 / 720 |
