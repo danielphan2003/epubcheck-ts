@@ -6,14 +6,15 @@ import * as EpubType from "./EpubType.ts";
 
 const EPUB = 'xmlns:epub="http://www.idpf.org/2007/ops"';
 const MSV = "http://www.idpf.org/epub/vocab/structure/magazine/#";
-const attributes = (parts: { readonly prefix?: string; readonly type?: string }) =>
+type Root = { readonly prefix?: string; readonly type?: string };
+const attributes = (parts: Root) =>
   (parts.prefix === undefined ? "" : ` epub:prefix="${parts.prefix}"`) +
   (parts.type === undefined ? "" : ` epub:type="${parts.type}"`);
-const xhtml = (root: { prefix?: string; type?: string }, type: string) =>
+const xhtml = (root: Root, type: string) =>
   `<html xmlns="http://www.w3.org/1999/xhtml" ${EPUB}${attributes(root)}><head><title>t</title></head><body><p epub:type="${type}">x</p></body></html>`;
-const smil = (root: { prefix?: string; type?: string }, type: string) =>
+const smil = (root: Root, type: string) =>
   `<smil xmlns="http://www.w3.org/ns/SMIL" ${EPUB} version="3.0"${attributes(root)}><body epub:type="${type}"><par><text src="c.xhtml#a"/></par></body></smil>`;
-const svg = (root: { prefix?: string }, type: string) =>
+const svg = (root: Root, type: string) =>
   `<svg xmlns="http://www.w3.org/2000/svg" ${EPUB}${attributes(root)}><g epub:type="${type}"/></svg>`;
 
 describe("EpubType.check", () => {
@@ -38,6 +39,16 @@ describe("EpubType.check", () => {
       name: "a declared msv prefix",
       source: xhtml({ prefix: `msv: ${MSV}` }, "msv:a"),
       ids: ["OPF-086c", "OPF-086c"],
+    },
+    {
+      name: "a prefix named like an object key",
+      source: xhtml({ prefix: "constructor: http://e.org/c#" }, "constructor:a"),
+      ids: [],
+    },
+    {
+      name: "mapping problems after syntax problems",
+      source: xhtml({ prefix: "_: http://u.org/ 1c: http://c.org/" }, "chapter"),
+      ids: ["OPF-004b", "OPF-007a"],
     },
     { name: "another prefix for msv", source: xhtml({ prefix: `m: ${MSV}` }, "m:a"), ids: [] },
     {

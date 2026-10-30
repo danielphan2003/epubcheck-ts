@@ -269,22 +269,23 @@ export const OVERLAY_PREFIXES: PrefixScope = {
 // Parses a `prefix` attribute with upstream's state machine: optional leading whitespace, then
 // `prefix:` and a URI separated by one space, with whitespace between mappings.
 export const parsePrefixes = (value: string | undefined, scope = PACKAGE_PREFIXES) => {
-  const reservedPrefixes = scope.reserved;
-  const vocabs = new Map<string, Reserved>(Object.entries(reservedPrefixes));
+  const vocabs = new Map<string, Reserved>(Object.entries(scope.reserved));
   const problems: Array<Problem> = [];
+  // Upstream checks the mappings once the whole value is parsed.
+  const mappings: Array<Problem> = [];
   if (value === undefined) return { vocabs, problems };
   // Java prints a missing prefix as "null".
   const named = () => prefix ?? "null";
   const declare = (prefix: string, uri: string) => {
-    if (prefix === "_") problems.push({ id: "OPF-007a", args: [] });
-    else if (scope.forbidden.has(uri)) problems.push({ id: "OPF-007b", args: [prefix] });
-    else if (uri === DC_ELEMENTS) problems.push({ id: "OPF-007c", args: [] });
+    if (prefix === "_") mappings.push({ id: "OPF-007a", args: [] });
+    else if (scope.forbidden.has(uri)) mappings.push({ id: "OPF-007b", args: [prefix] });
+    else if (uri === DC_ELEMENTS) mappings.push({ id: "OPF-007c", args: [] });
     else {
-      const reserved = reservedPrefixes[prefix];
+      const reserved = Object.hasOwn(scope.reserved, prefix) ? scope.reserved[prefix] : undefined;
       if (reserved !== undefined && reserved.uri !== uri)
-        problems.push({ id: "OPF-007", args: [prefix] });
+        mappings.push({ id: "OPF-007", args: [prefix] });
       if (reserved !== undefined && reserved.deprecated)
-        problems.push({ id: "OPF-086c", args: [prefix] });
+        mappings.push({ id: "OPF-086c", args: [prefix] });
       const known = scope.known.get(uri) ?? { uri, deprecated: false, terms: unchecked };
       vocabs.set(prefix, { ...known, reservedIn: undefined });
     }
@@ -345,7 +346,7 @@ export const parsePrefixes = (value: string | undefined, scope = PACKAGE_PREFIXE
     problems.push({ id: "OPF-005", args: [named()] });
   }
   if (state === "prefix" && read !== "") problems.push({ id: "OPF-004", args: [] });
-  return { vocabs, problems };
+  return { vocabs, problems: [...problems, ...mappings] };
 };
 
 export type Prefixes = ReturnType<typeof parsePrefixes>;
