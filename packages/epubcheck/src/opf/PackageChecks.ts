@@ -288,7 +288,11 @@ const spineChecks = ({ document, opf }: Context) => {
     }
     // Page spreads belong to pre-paginated content; upstream also reports them under `roll`.
     if (opf.version === "3" && (!fixed.has(idref) || opf.metadata.layout === "roll")) {
-      for (const property of (Xml.attribute(itemref, "properties") ?? "").split(/[ \t\n\v\f\r]+/)) {
+      // Upstream reads the properties into a set.
+      const properties = new Set(
+        (Xml.attribute(itemref, "properties") ?? "").split(/[ \t\n\v\f\r]+/),
+      );
+      for (const property of properties) {
         if (SPREADS.test(property)) findings.push(at(item.element, "OPF-100", property));
       }
     }
