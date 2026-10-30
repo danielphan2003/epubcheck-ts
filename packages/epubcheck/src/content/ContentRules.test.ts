@@ -67,3 +67,42 @@ describe("ContentRules.schemeFindings", () => {
     expect(ContentRules.schemeFindings(parsed.success, "a.xhtml", version)).toHaveLength(warned);
   });
 });
+
+describe("ContentRules.check links", () => {
+  const ids = new Set(["CSS-005", "OPF-026", "OPF-028"]);
+  // Each row was checked against EPUBCheck 5.4.0 on a single XHTML document.
+  it.each([
+    {
+      name: "a repeated prefixed class",
+      link: '<link rel="stylesheet" href="a.css" class="x:a x:a"/>',
+      ids: ["OPF-028", "OPF-028"],
+    },
+    {
+      name: "a class without a prefix name",
+      link: '<link rel="stylesheet" href="a.css" class=":b"/>',
+      ids: ["OPF-026"],
+    },
+    {
+      name: "a reserved content prefix",
+      link: '<link rel="stylesheet" href="a.css" class="msv:a"/>',
+      ids: ["OPF-028"],
+    },
+    {
+      name: "a prefixed class beside conflicting tags",
+      link: '<link rel="stylesheet" href="a.css" class="y:day night day"/>',
+      ids: ["OPF-028", "CSS-005"],
+    },
+    {
+      name: "an uppercase element",
+      link: '<LINK rel="stylesheet" href="a.css" class="day night z:a"/>',
+      ids: [],
+    },
+  ])("reports $name", ({ link, ids: expected }) => {
+    const parsed = Xml.parse(
+      `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" epub:prefix="x: http://example.org/x#"><head><title>t</title>${link}</head><body><p>x</p></body></html>`,
+    );
+    if (Result.isFailure(parsed)) throw new Error(parsed.failure.message);
+    const findings = ContentRules.check(parsed.success, "a.xhtml", "xhtml");
+    expect(findings.map((finding) => finding.id).filter((id) => ids.has(id))).toEqual(expected);
+  });
+});
