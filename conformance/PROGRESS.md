@@ -24,3 +24,4 @@ reported message, which a checker that reports nothing cannot pass.
 | [#17](https://github.com/danielphan2003/epubcheck-ts/pull/17) | Report: publication and items in the JSON report                   | 1210 / 1251 | 679 / 720 |
 | [#18](https://github.com/danielphan2003/epubcheck-ts/pull/18) | CSS: syntax errors, forbidden properties, @font-face, encodings    | 1223 / 1251 | 692 / 720 |
 | [#19](https://github.com/danielphan2003/epubcheck-ts/pull/19) | Navigation: remote links, toc targets and reading order            | 1226 / 1251 | 695 / 720 |
+| [#20](https://github.com/danielphan2003/epubcheck-ts/pull/20) | Encryption and outdated features: obfuscation, NCX, fallbacks      | 1236 / 1251 | 705 / 720 |

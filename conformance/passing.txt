@@ -475,6 +475,7 @@ epub3/04-ocf/ocf.feature:287 Report a missing 'container.xml' file
 epub3/04-ocf/ocf.feature:293 Report a fatal error when checking an archive that is not an OCF
 epub3/04-ocf/ocf.feature:302 Report a missing OPF document
 epub3/04-ocf/ocf.feature:313 Report an `encryption.xml` file with invalid markup
+epub3/04-ocf/ocf.feature:319 Verify encryption can be used
 epub3/04-ocf/ocf.feature:32 Report a duplicate filename after common case folding
 epub3/04-ocf/ocf.feature:329 Report an `encryption.xml` file with duplicate IDs
 epub3/04-ocf/ocf.feature:338 Report an `encryption.xml` file with invalid compression metadata
@@ -1118,10 +1119,12 @@ epub3/E-obsolete-features/outdated-features.feature:103 a 'manifest' collection 
 epub3/E-obsolete-features/outdated-features.feature:116 Report the OPF 2 meta element as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:126 Report the OPF 2 guide element as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:134 'guide' should not contain two entries of the same type pointing to the same resource
+epub3/E-obsolete-features/outdated-features.feature:143 Report NCX navigation as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:151 When an NCX document is present, it must be identified in the 'toc' attribute of the spine
 epub3/E-obsolete-features/outdated-features.feature:158 The 'toc' attribute of the spine must point to an NCX document
 epub3/E-obsolete-features/outdated-features.feature:165 Report validation errors in legacy NCX documents
 epub3/E-obsolete-features/outdated-features.feature:172 Verify an NCX which does not link to all spine items
+epub3/E-obsolete-features/outdated-features.feature:18 Report content fallback in HTML `audio` as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:183 Report the 'rendition:flow' property  as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:191 a 'rendition:flow' property with an unknown value is reported
 epub3/E-obsolete-features/outdated-features.feature:198 the 'rendition:flow' property cannot be declared more than once
@@ -1132,6 +1135,7 @@ epub3/E-obsolete-features/outdated-features.feature:230 Report the 'rendition:fl
 epub3/E-obsolete-features/outdated-features.feature:238 Report the 'rendition:flow-scrolled-doc' spine override as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:246 the 'rendition:flow' spine overrides values are mutually exclusive
 epub3/E-obsolete-features/outdated-features.feature:255 Report the 'rendition:orientation' property as outdated (USAGE)
+epub3/E-obsolete-features/outdated-features.feature:26 Allow a foreign resource in HTML `embed` with a manifest fallback
 epub3/E-obsolete-features/outdated-features.feature:263 a 'rendition:orientation' property with an unknown value is reported
 epub3/E-obsolete-features/outdated-features.feature:270 the 'rendition:orientation' property cannot be declared more than once
 epub3/E-obsolete-features/outdated-features.feature:277 the 'rendition:orientation' property cannot be used in a 'meta' element to refine a publication resource
@@ -1143,14 +1147,20 @@ epub3/E-obsolete-features/outdated-features.feature:319 Report the 'rendition:sp
 epub3/E-obsolete-features/outdated-features.feature:327 a 'rendition:spread' property with an unknown value is reported
 epub3/E-obsolete-features/outdated-features.feature:334 the 'rendition:spread' property cannot be declared more than once
 epub3/E-obsolete-features/outdated-features.feature:341 the 'rendition:spread' property cannot be used in a 'meta' element to refine a publication resource
+epub3/E-obsolete-features/outdated-features.feature:35 Report content fallback in HTML `img` as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:350 Report the 'rendition:spread-auto' spine override as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:358 Report the 'rendition:spread-both' spine override as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:366 Report the 'rendition:spread-landscape' spine override as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:374 Report the 'rendition:spread-none' spine override as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:382 the 'rendition:spread' spine overrides values are mutually exclusive
 epub3/E-obsolete-features/outdated-features.feature:391 Report CSS '-epub' prefixed properties as outdated (USAGE)
+epub3/E-obsolete-features/outdated-features.feature:43 Allow a foreign resource in HTML video `poster` with a manifest fallback
+epub3/E-obsolete-features/outdated-features.feature:56 Report font obfuscation as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:64 Verify duplicating encryption declaration is allowed
+epub3/E-obsolete-features/outdated-features.feature:69 Report an obfuscated font that is not a Core Media Type
+epub3/E-obsolete-features/outdated-features.feature:75 Report an obfuscated font that is not a font
 epub3/E-obsolete-features/outdated-features.feature:86 Report a collection element as outdated (USAGE)
+epub3/E-obsolete-features/outdated-features.feature:94 a collection role must not be an invalid URL
 epub3/G-media-type-registrations/media-types-registrations.feature:13 Report when the '.epub' extension is not lower case
 localization/localization.feature:11 The default testing locale is English
 localization/localization.feature:16 The reporting locale can be configured

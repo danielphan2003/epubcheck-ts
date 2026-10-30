@@ -14,6 +14,7 @@ import type { Collection, ManifestItem, PackageDocument } from "../opf/PackageDo
 import * as Collect from "../references/Collect.ts";
 import * as Profiles from "../profiles/Profiles.ts";
 import * as ReadingOrder from "../references/ReadingOrder.ts";
+import * as PackageChecks from "../opf/PackageChecks.ts";
 import * as ReferenceChecker from "../references/ReferenceChecker.ts";
 import * as Url from "../references/Url.ts";
 import * as Report from "../report/Report.ts";
@@ -61,6 +62,8 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   container: Container.Container,
   opf: PackageDocument,
   selection: Profiles.Selection = Profiles.DEFAULT,
+  // The resources `META-INF/encryption.xml` lists, which upstream cannot decrypt.
+  encrypted: ReadonlySet<string> = new Set(),
 ) {
   const report = yield* Report.Report;
   const inIndex = Profiles.indexPaths(opf.collections);
@@ -135,11 +138,17 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     // Upstream checks an NCX only as the spine's `toc`, the last item with its ID, and cannot
     // read anything else as one.
     const isToc = opf.toc !== undefined && byId.get(opf.toc) === item;
-    if (kind === "ncx" && !isToc) continue;
     if (isToc && item.mediaType !== "application/x-dtbncx+xml") {
       yield* report.message("CHK-008", Report.location(opf.path), item.path);
       continue;
     }
+    // Upstream checks each item it can read, whatever its type, and none it cannot decrypt.
+    // An item URL with a fragment names no container file (RSC-001), so it is not one of them.
+    if (encrypted.has(nfc(item.path)) && !item.href.includes("#")) {
+      yield* report.message("RSC-004", Report.location(item.path), Url.encodePath(nfc(item.path)));
+      continue;
+    }
+    if (kind === "ncx" && !isToc) continue;
     const isCss = item.mediaType === "text/css";
     const isImage = MediaTypes.isBitmap(item.mediaType);
     if (kind === undefined && !isCss && !isImage) continue;
@@ -186,6 +195,10 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     // Upstream's Search Key Map checker wants an `.xml` name, as written.
     if (kind === "skm" && !item.path.endsWith(".xml")) {
       yield* report.message("OPF-080", Report.location(item.path));
+    }
+    // In EPUB 3, upstream reports an NCX as outdated before it reads it.
+    if (kind === "ncx" && opf.version === "3") {
+      yield* report.message("OBS-001", Report.location(item.path), "ncx");
     }
     const document = yield* ContentChecker.check(
       bytes.value,
@@ -330,6 +343,15 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
         yield* report.message(scripts ? "RSC-006b" : "RSC-006", itemLocation(item), name);
       }
     }
+  }
+  // Upstream registers each media overlay its item check sees before any other reference, and
+  // checks a manifest fallback on it like on any loaded resource.
+  for (const item of opf.version === "3" ? PackageChecks.checkedItems(opf) : []) {
+    const overlay = byId.get(Xml.attribute(item.element, "media-overlay")?.trim() ?? "");
+    if (overlay?.fallback === undefined) continue;
+    const name =
+      overlay.path === undefined ? Url.remoteKey(overlay.href) : Url.encodePath(nfc(overlay.path));
+    yield* report.message("OBS-001", itemLocation(item), "content-fallback", name);
   }
   yield* reportFindings(ReferenceChecker.check(references, publication));
   const order = {

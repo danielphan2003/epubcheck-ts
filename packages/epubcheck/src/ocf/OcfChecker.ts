@@ -13,6 +13,7 @@ import * as Schemas from "../schema/Schemas.ts";
 import * as Xml from "../xml/Xml.ts";
 import * as XmlChecker from "../xml/XmlChecker.ts";
 import * as Container from "./Container.ts";
+import * as Encryption from "./Encryption.ts";
 import * as FilenameChecker from "./FilenameChecker.ts";
 import * as Zip from "./Zip.ts";
 
@@ -36,6 +37,10 @@ export interface OcfResult {
   readonly formatName: string | undefined;
   // Whether the check goes on to the package documents.
   readonly complete: boolean;
+  // The resources `META-INF/encryption.xml` lists, which upstream cannot decrypt, and where
+  // each obfuscated one is declared.
+  readonly encrypted: ReadonlySet<string>;
+  readonly obfuscated: ReadonlyMap<string, Encryption.Position>;
 }
 
 interface ContainerLinks {
@@ -288,6 +293,8 @@ export const check = Effect.fn("OcfChecker.check")(function* (
     declared: [],
     formatName,
     complete: false,
+    encrypted: new Set<string>(),
+    obfuscated: new Map(),
   });
   const hadFatal = (yield* report.messages).some((message) => message.severity === "FATAL");
   const links = yield* checkContainerFile(container, at, hadFatal);
@@ -380,10 +387,19 @@ export const check = Effect.fn("OcfChecker.check")(function* (
         ];
   // Upstream parses `metadata.xml` and `signatures.xml` without its XML handler (no HTM-001).
   const handled = new Set(["META-INF/encryption.xml", CONTAINER_FILE]);
+  let encryption: ReturnType<typeof Encryption.read> | undefined;
   for (const [file, schemas] of metaFiles) {
     const bytes = yield* readResource(container, file);
-    if (Option.isSome(bytes)) {
-      yield* XmlChecker.check(bytes.value, file, schemas, { checksVersion: handled.has(file) });
+    if (Option.isNone(bytes)) continue;
+    const document = yield* XmlChecker.check(bytes.value, file, schemas, {
+      checksVersion: handled.has(file),
+    });
+    if (file === "META-INF/encryption.xml" && Option.isSome(document)) {
+      const names = new Set(container.files.map((name) => name.normalize("NFC")));
+      encryption = Encryption.read(document.value, names);
+      for (const { id, args, path: at, line, column } of encryption.findings) {
+        yield* report.message(id, Report.location(at, line, column), ...args);
+      }
     }
   }
 
@@ -409,5 +425,7 @@ export const check = Effect.fn("OcfChecker.check")(function* (
     declared: links.value.declared,
     formatName,
     complete: true,
+    encrypted: encryption?.encrypted ?? new Set<string>(),
+    obfuscated: encryption?.obfuscated ?? new Map(),
   });
 });
