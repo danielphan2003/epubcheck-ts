@@ -21,3 +21,4 @@ reported message, which a checker that reports nothing cannot pass.
 | [#14](https://github.com/danielphan2003/epubcheck-ts/pull/14) | Package URLs: manifest and link URLs, container coverage           | 1163 / 1251 | 647 / 720 |
 | [#15](https://github.com/danielphan2003/epubcheck-ts/pull/15) | Vocabularies: epub:type values, link classes                       | 1174 / 1251 | 658 / 720 |
 | [#16](https://github.com/danielphan2003/epubcheck-ts/pull/16) | EPUB 2: package rules, NCX, OPS doctypes, guide                    | 1196 / 1251 | 679 / 720 |
+| [#17](https://github.com/danielphan2003/epubcheck-ts/pull/17) | Report: publication and items in the JSON report                   | 1210 / 1251 | 679 / 720 |
