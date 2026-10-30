@@ -227,6 +227,24 @@ const ITEM_PROPERTIES = [
   "switch",
 ];
 
+// The CSS of each `style` element and attribute checks its own remote resources, in EPUB 2 too,
+// where upstream reads no item properties.
+export const remoteStyleFindings = (
+  item: ManifestItem,
+  path: string,
+  features: Features,
+  version: "2" | "3",
+) =>
+  version === "3" && item.properties.includes("remote-resources")
+    ? []
+    : features.remoteStyles.map((line) => ({
+        id: "OPF-014" as const,
+        args: ["remote-resources"],
+        path,
+        line,
+        column: 0,
+      }));
+
 // Manifest properties that describe an EPUB 3 content document: OPF-014 when the content needs
 // one, OPF-018 or OPF-015 when it is declared without such content.
 export const propertyFindings = (
@@ -240,10 +258,6 @@ export const propertyFindings = (
   const at = (id: MessageId, args: ReadonlyArray<string>, line = -1, column = -1) =>
     findings.push({ id, args, path, line, column });
   const declared = ITEM_PROPERTIES.filter((property) => item.properties.includes(property));
-  // The CSS of `style` elements and attributes checks its own remote resources.
-  if (!declared.includes("remote-resources")) {
-    for (const line of features.remoteStyles) at("OPF-014", ["remote-resources"], line, 0);
-  }
   const required = new Set<string>();
   if (features.mathml) required.add("mathml");
   if (features.remoteResources) required.add("remote-resources");

@@ -256,6 +256,9 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     const { root } = document.value;
     const end = { line: root.endLine, column: root.endColumn };
     documents.push({ item, path: item.path, features: collected.features, end });
+    yield* reportFindings(
+      ReferenceChecker.remoteStyleFindings(item, item.path, collected.features, opf.version),
+    );
     if (opf.version === "3") {
       yield* reportFindings(
         ReferenceChecker.propertyFindings(

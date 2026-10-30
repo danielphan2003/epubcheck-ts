@@ -1,4 +1,5 @@
 import { lookupIn } from "../messages/MessageCatalog.ts";
+import { trimBy } from "../util/JavaText.ts";
 import { bundles } from "./strings.generated.ts";
 
 // Upstream's CSS scanner and parser, as EPUBCheck reads style sheets: the tokens it sees, the
@@ -11,13 +12,14 @@ const FF = 0x0c;
 const CR = 0x0d;
 const BACKSLASH = 0x5c;
 
-const isWhitespace = (c: number) => c === 0x20 || c === TAB || c === LF || c === CR || c === FF;
+export const isWhitespace = (c: number) =>
+  c === 0x20 || c === TAB || c === LF || c === CR || c === FF;
 const isNameStart = (c: number) =>
   (c >= 0x41 && c <= 0x5a) || (c >= 0x61 && c <= 0x7a) || c === 0x5f || c >= 0x80;
 const isDigit = (c: number) => c >= 0x30 && c <= 0x39;
 const isNameChar = (c: number) => isNameStart(c) || isDigit(c) || c === 0x2d;
 const isHex = (c: number) => isDigit(c) || (c >= 0x41 && c <= 0x46) || (c >= 0x61 && c <= 0x66);
-const isQuote = (c: number) => c === 0x22 || c === 0x27;
+export const isQuote = (c: number) => c === 0x22 || c === 0x27;
 const isQuantityStart = (c: number) => isNameStart(c) || c === 0x25;
 const isNumberChar = (c: number) => isDigit(c) || c === 0x2e;
 const isUnary = (c: number) => c === 0x2b || c === 0x2d;
@@ -252,7 +254,7 @@ const scan = (css: string, text: Messages, errors: Array<ParseEvent>) => {
       }
       return {
         sequence: `\\${digits}`,
-        character: Number.parseInt(digits.replace(/[ \t\n\r\f]+$/, ""), 16),
+        character: Number.parseInt(trimBy(digits, isWhitespace, false), 16),
       };
     };
     const prematureEnd = () => error("css.scanner.prematureEOF");
@@ -421,7 +423,7 @@ const scan = (css: string, text: Messages, errors: Array<ParseEvent>) => {
           if (c === 0x29) break;
           body += char(c);
         }
-        token.text += body.replace(/[ \t\n\r\f]+$/, "");
+        token.text += trimBy(body, isWhitespace, false);
       }
       token.text += ")";
       token.kind = "uri";
@@ -636,7 +638,7 @@ export const uriText = (value: string) => {
       result += value[index];
     }
   }
-  return result.replace(/["' \t\n\r\f]+$/, "");
+  return trimBy(result, (c) => isQuote(c) || isWhitespace(c), false);
 };
 
 export interface AtRule {
@@ -1204,6 +1206,11 @@ export const parse = (css: string, styleAttribute: boolean, locale: string | und
       }
     }
   } catch (error) {
+    // Nesting deeper than the stack allows aborts the sheet, as upstream's parser does.
+    if (error instanceof RangeError) {
+      events.push({ kind: "failure" });
+      return events;
+    }
     if (!(error instanceof PrematureEnd)) throw error;
   }
   events.push({ kind: "end" });

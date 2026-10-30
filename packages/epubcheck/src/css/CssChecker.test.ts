@@ -203,6 +203,12 @@ describe("CssChecker.check", () => {
       css: "@import;",
       found: [["PKG-008", -1, -1, "Index 0 out of bounds for length 0"]],
     },
+    // Upstream's parser dies of a StackOverflowError; ours reports the sheet as unreadable.
+    {
+      name: "nesting deeper than the stack",
+      css: `a { b: ${"(".repeat(100_000)}`,
+      found: [["PKG-008", -1, -1, "null"]],
+    },
     { name: "EPUB 2", css: "p { direction: rtl }", version: "2", found: [] },
     // A style attribute is a declaration list: a `}` is just a token.
     {

@@ -70,6 +70,8 @@ describe("Url.checker", () => {
     { url: "%2E%2E/z.png", target: { kind: "local", path: "z.png" }, ids: [] },
     { url: "dir\\a.png", target: { kind: "local", path: "EPUB/dir/a.png" }, ids: ["RSC-020"] },
     { url: "a.png?v=1", target: { kind: "local", path: "EPUB/a.png" }, ids: ["RSC-033"] },
+    // An empty query is a query too, as in the common `?#iefix` font URLs.
+    { url: "f.eot?#iefix", target: { kind: "local", path: "EPUB/f.eot" }, ids: ["RSC-033"] },
     // A leaking URL is reported, then resolved at the container root.
     { url: "../../x.png", target: { kind: "local", path: "x.png" }, ids: ["RSC-026"] },
     { url: "/abs.png", target: { kind: "local", path: "abs.png" }, ids: ["RSC-026"] },

@@ -382,6 +382,12 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
         findings.push({ ...problem, path, ...start(element) });
       }
     }
+    // Upstream checks a `style` element in any namespace, and counts it as CSS when it has text.
+    if (element.local === "style") {
+      const text = Xml.textContent(element);
+      if (text.length > 0) styled = true;
+      css(text, element.line, false);
+    }
     if (element.ns === XHTML_NS) {
       switch (element.local) {
         case "a":
@@ -423,11 +429,6 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
         case "script":
           if (isScript(element)) scripted = scripts = true;
           if (epub3) addResource(element, Xml.attribute(element, "src"), "script");
-          break;
-        case "style":
-          // Upstream counts a `style` element as CSS only when it has text.
-          if (Xml.textContent(element).length > 0) styled = true;
-          css(Xml.textContent(element), element.line, false);
           break;
         default:
           break;
@@ -526,11 +527,6 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
           if (isScript(element)) scripted = scripts = true;
           // Upstream reads `src`, which SVG scripts do not have, so their `href` is not checked.
           if (epub3) addResource(element, Xml.attribute(element, "src"), "script");
-          break;
-        case "style":
-          // Upstream counts a `style` element as CSS only when it has text.
-          if (Xml.textContent(element).length > 0) styled = true;
-          css(Xml.textContent(element), element.line, false);
           break;
         default:
           break;

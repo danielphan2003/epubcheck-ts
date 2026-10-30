@@ -1,6 +1,7 @@
 import type * as Collect from "../references/Collect.ts";
 import * as Url from "../references/Url.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
+import { trimBy } from "../util/JavaText.ts";
 import * as CssParser from "./CssParser.ts";
 
 // EPUB style sheet rules, as upstream's CSS handler applies them while its parser reads a sheet:
@@ -13,6 +14,8 @@ const isFontType = (mediaType: string, version: "2" | "3") =>
     ? MediaTypes.isCoreFont(mediaType)
     : /^(?:font\/|application\/font|application\/x-font)/.test(mediaType) ||
       mediaType === "application/vnd.ms-opentype";
+
+const spaceOrQuote = (c: number) => CssParser.isWhitespace(c) || CssParser.isQuote(c);
 
 // Java's String.trim: every character up to U+0020.
 const isBlank = (value: string) => /^[\x00-\x20]*$/.test(value);
@@ -93,7 +96,7 @@ export const check = (css: string, { path, context, offset, styleAttribute }: So
             first.type === "uri"
               ? CssParser.uriText(first.value)
               : first.type === "string"
-                ? CssParser.cssText(first).replace(/^["']+|["']+$/g, "")
+                ? trimBy(CssParser.cssText(first), CssParser.isQuote)
                 : undefined;
           if (url !== undefined) register(url, first.line, first.column, "stylesheet");
         } else if (rule.name !== "@namespace") {
@@ -181,8 +184,9 @@ export const check = (css: string, { path, context, offset, styleAttribute }: So
         if (!inFontFace) break;
         declared = true;
         const value = first === undefined ? undefined : CssParser.cssText(first);
-        if (name === "font-family") family = value?.replace(/^[\t\n\f\r "']+|[\t\n\f\r "']+$/g, "");
-        else if (name === "font-style") style = value;
+        if (name === "font-family") {
+          if (value !== undefined) family = trimBy(value, spaceOrQuote);
+        } else if (name === "font-style") style = value;
         else if (name === "font-weight") weight = value;
         else if (name === "src") {
           for (const component of components) {

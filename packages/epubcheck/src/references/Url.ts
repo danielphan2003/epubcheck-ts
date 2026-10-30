@@ -1,5 +1,6 @@
 import { domainToUnicode } from "node:url";
 
+import * as JavaText from "../util/JavaText.ts";
 import { percentDecode } from "../util/UrlFragment.ts";
 
 // URL parsing as upstream does it while it reads a document: each URL string is resolved against
@@ -57,7 +58,7 @@ const describe = (char: string) =>
 
 // The first syntax error galimatias, upstream's URL library, reports in strict mode.
 export const syntaxProblem = (input: string) => {
-  const value = input.replace(/^[\u0000- ]+|[\u0000- ]+$/g, "");
+  const value = JavaText.trim(input);
   if (/[\t\n\r]/.test(value)) return "Tab, new line or carriage return found";
   const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(value)?.[1]?.toLowerCase();
   let rest = scheme === undefined ? value : value.slice(scheme.length + 1);
@@ -238,7 +239,9 @@ export const checker = (documentPath: string, options: { readonly container: boo
       remoteBase = true;
       return { problems, url };
     }
-    if (url.search !== "") {
+    // galimatias keeps an empty query, which `search` does not show.
+    const hash = url.href.indexOf("#");
+    if ((hash < 0 ? url.href : url.href.slice(0, hash)).includes("?")) {
       problems.push({ id: "RSC-033", args: [value] });
       url.search = "";
     }
