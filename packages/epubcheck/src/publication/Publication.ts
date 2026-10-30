@@ -164,6 +164,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
         narrators,
       });
       yield* reportFindings(read.findings);
+      references.push(...read.references);
       overlays.push({ item, path: item.path, overlay: read.overlay });
     }
     if (Option.isNone(document) || kind === "mo" || kind === "ncx" || kind === "skm") continue;

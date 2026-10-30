@@ -187,13 +187,20 @@ const readMetadata = (
         false,
       )[0] === "rendition:layout",
   );
-  const meta = (property: string) => {
+  // The first package `meta` for a property, resolved through the declared prefixes as upstream
+  // resolves it; unrefined unless `refined` allows any.
+  const meta = (property: string, refined = false) => {
     const element = elements.find(
       (candidate) =>
         candidate.ns === OPF_NS &&
         candidate.local === "meta" &&
-        Xml.attribute(candidate, "property")?.trim() === property &&
-        Xml.attribute(candidate, "refines") === undefined,
+        (refined || Xml.attribute(candidate, "refines") === undefined) &&
+        Vocabularies.canonicalNames(
+          Xml.attribute(candidate, "property"),
+          "meta",
+          prefixes,
+          false,
+        )[0] === property,
     );
     return element === undefined ? undefined : Xml.textContent(element).trim();
   };
@@ -216,8 +223,9 @@ const readMetadata = (
     date: values("date")[0],
     types: values("type"),
     layouts: layouts.map((element) => Xml.textContent(element).trim()),
-    activeClass: meta("media:active-class"),
-    playbackActiveClass: meta("media:playback-active-class"),
+    // Upstream notes the styling classes whether or not their metas refine anything.
+    activeClass: meta("media:active-class", true),
+    playbackActiveClass: meta("media:playback-active-class", true),
     modified: modified === undefined ? undefined : Xml.textContent(modified).trim(),
   };
 };

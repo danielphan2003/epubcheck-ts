@@ -1,6 +1,6 @@
 import type { MessageId } from "../messages/MessageCatalog.ts";
 import type { ManifestItem, Metadata } from "../opf/PackageDocument.ts";
-import type { Finding } from "../references/Collect.ts";
+import type { Finding, Reference } from "../references/Collect.ts";
 import * as Url from "../references/Url.ts";
 import * as ClockValue from "../util/ClockValue.ts";
 import * as UrlFragment from "../util/UrlFragment.ts";
@@ -62,6 +62,8 @@ export const read = (document: Xml.XmlDocument, path: string, publication?: Publ
   const audios: Array<Clip> = [];
   const links: Array<Link> = [];
   const findings: Array<Finding> = [];
+  // In a publication, the links and clips are references too (RSC-006, RSC-007, ...).
+  const references: Array<Reference> = [];
   const urls = Url.checker(path, { container: publication !== undefined });
   const check = (element: Xml.XmlElement, value: string | undefined) => {
     if (value === undefined) return undefined;
@@ -82,6 +84,14 @@ export const read = (document: Xml.XmlDocument, path: string, publication?: Publ
       const resolved = check(element, value);
       if (resolved === undefined || publication === undefined) continue;
       links.push({ resolved, line: element.line, column: element.column });
+      references.push({
+        ...resolved,
+        type: "overlay-text",
+        resource: false,
+        path,
+        line: element.line,
+        column: element.column,
+      });
       const narrated = documentOf(resolved.target);
       const narrator = publication.narrators.get(narrated);
       if (narrator === undefined) publication.narrators.set(narrated, publication.id);
@@ -96,6 +106,19 @@ export const read = (document: Xml.XmlDocument, path: string, publication?: Publ
     if (resolved?.fragment !== undefined) {
       findings.push(finding(path, element, "MED-014", resolved.fragment));
     }
+    if (resolved !== undefined && publication !== undefined) {
+      // Upstream registers the clip without its fragment, with no fallback needed.
+      references.push({
+        target: resolved.target,
+        fragment: undefined,
+        type: "audio",
+        intrinsicFallback: true,
+        resource: false,
+        path,
+        line: element.line,
+        column: element.column,
+      });
+    }
     const type = resolved === undefined ? undefined : publication?.mediaTypeOf(resolved.target);
     if (resolved !== undefined && type !== undefined && !BLESSED_AUDIO.has(type)) {
       findings.push(finding(path, element, "MED-005", Url.nameOf(resolved.target), type));
@@ -108,7 +131,7 @@ export const read = (document: Xml.XmlDocument, path: string, publication?: Publ
     if (begin > until) findings.push(finding(path, element, "MED-008"));
     else if (begin === until) findings.push(finding(path, element, "MED-009"));
   }
-  return { overlay: { audios, links } satisfies Overlay, findings };
+  return { overlay: { audios, links } satisfies Overlay, findings, references };
 };
 
 const isContentDocument = (mediaType: string | undefined) =>

@@ -26,7 +26,9 @@ export type ReferenceType =
   | "svg-symbol"
   | "cite"
   // A Search Key Map's link to dictionary content.
-  | "search-key";
+  | "search-key"
+  // A Media Overlay's link to the content it narrates.
+  | "overlay-text";
 
 export interface Finding {
   readonly id: MessageId;
@@ -422,8 +424,28 @@ export const cssSelectors = (css: string) => {
   return selectors;
 };
 
-const usesClass = (selector: string, name: string) =>
-  new RegExp(`\\.${name}(?![\\w-]|[^\\x00-\\x7f]|\\\\)`).test(selector);
+// Upstream's findClassName: a class of the selector itself, not one inside a pseudo-class's
+// arguments or an attribute selector, compared once unescaped.
+const usesClass = (selector: string, name: string) => {
+  let depth = 0;
+  let top = "";
+  for (const char of selector) {
+    if (char === "(" || char === "[") depth++;
+    else if (char === ")" || char === "]") depth = Math.max(depth - 1, 0);
+    else if (depth === 0) top += char;
+  }
+  const classes = top.matchAll(
+    /\.((?:[\w-]|[^\x00-\x7f]|\\(?:[0-9a-fA-F]{1,6}\s?|[^\n0-9a-fA-F]))+)/g,
+  );
+  return [...classes].some(
+    ([, ident = ""]) =>
+      ident.replace(
+        /\\(?:([0-9a-fA-F]{1,6})\s?|(.))/g,
+        (_, hex: string | undefined, char: string) =>
+          hex === undefined ? char : String.fromCodePoint(Number.parseInt(hex, 16)),
+      ) === name,
+  );
+};
 
 // A style sheet, or the CSS of a `style` element or attribute (`offset` lines into its document).
 export const fromCss = (css: string, path: string, context: Context, offset = 0) => {

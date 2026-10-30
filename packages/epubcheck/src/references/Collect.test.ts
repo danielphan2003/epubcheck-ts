@@ -105,3 +105,23 @@ describe("Collect.cssSelectors", () => {
     expect(Collect.cssSelectors(css)).toEqual(selectors);
   });
 });
+
+// Each answer is EPUBCheck 5.4.0's CSS-029.
+describe("Collect.fromCss", () => {
+  const context = {
+    version: "3",
+    container: true,
+    undeclaredClasses: [["-epub-media-overlay-active", "media:active-class"]],
+  } as const;
+  it.each([
+    { css: "p, .-epub-media-overlay-active b { }", at: [[1, 4]] },
+    { css: "/* .-epub-media-overlay-active { } */", at: [] },
+    { css: "a:not(.-epub-media-overlay-active) { }", at: [] },
+    { css: ":not(p).-epub-media-overlay-active { }", at: [[1, 1]] },
+    { css: ".\\-epub-media-overlay-active { }", at: [[1, 1]] },
+    { css: ".-epub-media-overlay-active2 { }", at: [] },
+  ])("reports CSS-029 for $css", ({ css, at }) => {
+    const { findings } = Collect.fromCss(css, "EPUB/a.css", context);
+    expect(findings.map((finding) => [finding.line, finding.column])).toEqual(at);
+  });
+});
