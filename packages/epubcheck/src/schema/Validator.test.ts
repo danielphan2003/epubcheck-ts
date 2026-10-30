@@ -163,6 +163,8 @@ describe("Datatypes", () => {
     { name: "anyURI", value: "1x:foo", valid: false },
     { name: "anyURI", value: "a#b#c", valid: false },
     { name: "anyURI", value: "na%zzv.xhtml", valid: false },
+    { name: "anyURI", value: "\u00a0foo:x", valid: false },
+    { name: "anyURI", value: "foo:x\u00a0", valid: true },
     { name: "NMTOKENS", value: "a b", valid: true },
     { name: "NMTOKENS", value: "", valid: false },
   ])("decides xsd:$name $value", ({ name, value, valid }) => {

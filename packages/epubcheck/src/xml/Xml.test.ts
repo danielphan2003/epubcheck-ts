@@ -28,6 +28,55 @@ describe("Xml.parse", () => {
   });
 });
 
+// Each position is where EPUBCheck 5.4.0 reports HTM-004 and HTM-003.
+describe("Xml.parse doctype", () => {
+  it.each([
+    {
+      name: "a public ID",
+      doctype: '<!DOCTYPE html PUBLIC "a" "b">',
+      at: [1, 30],
+      entities: [],
+    },
+    {
+      name: "an internal subset",
+      doctype:
+        '<!DOCTYPE html SYSTEM "b" [\n<!ENTITY e SYSTEM "e.txt">\n<!ENTITY % p PUBLIC "x" "p">\n]>',
+      at: [1, 27],
+      entities: [
+        ["e", 2, 27],
+        ["%p", 3, 29],
+      ],
+    },
+    {
+      name: "declarations in comments and literals",
+      doctype:
+        '<!DOCTYPE html [\n<!-- <!ENTITY c SYSTEM "c"> -->\n<!ENTITY v "<!ENTITY w SYSTEM \'w\'>">\n]>',
+      at: [1, 16],
+      entities: [],
+    },
+    {
+      name: "a comment and CRLF line ends first",
+      doctype: '<!-- c -->\r\n<!DOCTYPE html SYSTEM "b" [\r\n<!ENTITY e SYSTEM "e.txt">\r\n]>',
+      at: [2, 27],
+      entities: [["e", 3, 27]],
+    },
+    {
+      name: "an unparsed entity",
+      doctype: '<!DOCTYPE html [\n<!ENTITY n SYSTEM "n.png" NDATA png>\n]>',
+      at: [1, 16],
+      entities: [],
+    },
+  ])("locates $name", ({ doctype, at, entities }) => {
+    const parsed = Xml.parse(`${doctype}<html/>`);
+    if (Result.isFailure(parsed)) throw new Error(parsed.failure.message);
+    const found = parsed.success.doctype;
+    expect([found?.line, found?.column]).toEqual(at);
+    expect(found?.externalEntities.map(({ name, line, column }) => [name, line, column])).toEqual(
+      entities,
+    );
+  });
+});
+
 describe("Xml.parse errors", () => {
   // Xerces' messages and positions, which upstream reports as RSC-016.
   it.each([
@@ -85,9 +134,72 @@ describe("Xml.parse errors", () => {
         column: 23,
       },
     },
+    {
+      name: "an unsupported version, spaced out",
+      source: '<?xml  version = "1.5"?><r/>',
+      error: {
+        message: 'XML version "1.5" is not supported, only XML 1.0 is supported.',
+        line: 1,
+        column: 20,
+      },
+    },
+    {
+      name: "an unsupported version after a line break",
+      source: '<?xml\nversion="1.5"?><r/>',
+      error: {
+        message: 'XML version "1.5" is not supported, only XML 1.0 is supported.',
+        line: 1,
+        column: 20,
+      },
+    },
+    {
+      name: "an unsupported version padded by the declaration's spacing",
+      source: '<?xml  version = "1.10"?><r/>',
+      error: {
+        message: 'XML version "1.10   " is not supported, only XML 1.0 and XML 1.1 are supported.',
+        line: 1,
+        column: 24,
+      },
+    },
+    {
+      name: "an unsupported version with a line break",
+      source: '<?xml version="1\n2345"?><r/>',
+      error: {
+        message: 'XML version "1\n2345" is not supported, only XML 1.0 is supported.',
+        line: 2,
+        column: 6,
+      },
+    },
+    {
+      name: "an unsupported version scanned as XML 1.1",
+      source: '<?xml version="1.10"?><r/>',
+      error: {
+        message: 'XML version "1.10" is not supported, only XML 1.0 and XML 1.1 are supported.',
+        line: 1,
+        column: 21,
+      },
+    },
+    {
+      name: "a malformed version before a malformed declaration",
+      source: '<?xml version="abc" standalone="maybe"?><r/>',
+      error: {
+        message: 'XML version "abc" is not supported, only XML 1.0 is supported.',
+        line: 1,
+        column: 20,
+      },
+    },
   ])("reports $name", ({ source, error }) => {
     const parsed = Xml.parse(source);
     expect(Result.isFailure(parsed) && parsed.failure).toEqual(error);
+  });
+
+  // Upstream reports the version (HTM-001) once the root's start tag is read.
+  it.each([
+    { name: "inside the root start tag", source: '<?xml version="1.1"?><r a="1" a="2"/>' },
+    { name: "after the root start tag", source: '<?xml version="1.1"?><r><x></r>', version: "1.1" },
+  ])("keeps the version of a failure $name", ({ source, version }) => {
+    const parsed = Xml.parse(source);
+    expect(Result.isFailure(parsed) && parsed.failure.version).toBe(version);
   });
 });
 

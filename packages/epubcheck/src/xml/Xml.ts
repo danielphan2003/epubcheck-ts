@@ -40,6 +40,15 @@ export interface XmlDoctype {
   readonly publicId: string | undefined;
   readonly systemId: string | undefined;
   readonly internalSubset: string | undefined;
+  // Where upstream's DTD events are located: after the external ID and any space.
+  readonly line: number;
+  readonly column: number;
+  // External entities declared in the internal subset, each at the end of its declaration.
+  readonly externalEntities: ReadonlyArray<{
+    readonly name: string;
+    readonly line: number;
+    readonly column: number;
+  }>;
 }
 
 export interface ProcessingInstruction {
@@ -61,9 +70,79 @@ export interface XmlError {
   readonly message: string;
   readonly line: number;
   readonly column: number;
+  // The XML version, when the failure came after the root element started.
+  readonly version?: string | undefined;
 }
 
-const parseDoctype = (raw: string): XmlDoctype => {
+// The start of an XML declaration, up to its version literal's quote.
+const XML_VERSION = /^<\?xml[ \t\n]+version[ \t\n]*=[ \t\n]*(["'])/;
+
+// Xerces reads the version before anything else: it takes the quote and the next four
+// characters, scans the document as XML 1.1 when they start with "1.1", and rewrites what it
+// read as `<?xml version="` and those characters, padded with spaces to the same length.
+const versionFailure = (source: string) => {
+  const match = XML_VERSION.exec(source);
+  const quote = match?.[1];
+  if (match === null || quote === undefined) return undefined;
+  const read = match[0].length + 4;
+  const prefix = `<?xml version=${quote}${source.slice(match[0].length, read)}`;
+  const rewritten = prefix + " ".repeat(read - prefix.length) + source.slice(read);
+  const end = rewritten.indexOf(quote, 15);
+  const version = rewritten.slice(15, end);
+  if (end < 0 || version === "1.0" || version === "1.1") return undefined;
+  const supported = version.startsWith("1.1") ? "XML 1.0 and XML 1.1 are" : "XML 1.0 is";
+  const lines = rewritten.slice(0, end + 1).split("\n");
+  return {
+    message: `XML version "${version}" is not supported, only ${supported} supported.`,
+    line: lines.length,
+    column: (lines.at(-1)?.length ?? 0) + 1,
+  };
+};
+
+const EXTERNAL_ID =
+  /^\s*[^\s[>]+(?:\s+(?:PUBLIC\s+(?:"[^"]*"|'[^']*')(?:\s+(?:"[^"]*"|'[^']*'))?|SYSTEM\s+(?:"[^"]*"|'[^']*')))?\s*/;
+
+// External entities of an internal subset as Xerces reports them: a parameter entity named with
+// its `%`, at the offset just after its declaration. Comments, processing instructions and
+// quoted literals are not declarations.
+const externalEntities = (subset: string) => {
+  const found: Array<{ readonly name: string; readonly end: number }> = [];
+  let index = 0;
+  while (index < subset.length) {
+    const close = subset.startsWith("<!--", index)
+      ? "-->"
+      : subset.startsWith("<?", index)
+        ? "?>"
+        : undefined;
+    if (close !== undefined) {
+      const end = subset.indexOf(close, index + 2);
+      index = end < 0 ? subset.length : end + close.length;
+      continue;
+    }
+    if (!subset.startsWith("<!", index)) {
+      index++;
+      continue;
+    }
+    let end = index + 2;
+    let quote: string | undefined;
+    while (end < subset.length && (quote !== undefined || subset[end] !== ">")) {
+      const char = subset[end];
+      if (quote === undefined && (char === '"' || char === "'")) quote = char;
+      else if (char === quote) quote = undefined;
+      end++;
+    }
+    const declaration = subset.slice(index, end + 1);
+    const entity = /^<!ENTITY\s+(%\s+)?([^\s%"'>]+)\s+(?:SYSTEM|PUBLIC)[\s"']/.exec(declaration);
+    // Xerces reports unparsed (`NDATA`) entities apart.
+    const unparsed = /\sNDATA\s/.test(declaration.replace(/"[^"]*"|'[^']*'/g, ""));
+    if (entity !== null && !unparsed)
+      found.push({ name: (entity[1] === undefined ? "" : "%") + entity[2], end: end + 1 });
+    index = end + 1;
+  }
+  return found;
+};
+
+const parseDoctype = (raw: string) => {
   const match =
     /^\s*([^\s[>]+)(?:\s+(?:PUBLIC\s+(["'])(.*?)\2(?:\s+(["'])(.*?)\4)?|SYSTEM\s+(["'])(.*?)\6))?\s*(?:\[([\s\S]*)\])?\s*$/.exec(
       raw,
@@ -408,7 +487,9 @@ export const decodeDocument = (bytes: Uint8Array): Decoded => {
 
 export const decode = (bytes: Uint8Array) => decodeDocument(bytes).text ?? "";
 
-export const parse = (source: string, options: ParseOptions = {}) => {
+export const parse = (input: string, options: ParseOptions = {}) => {
+  // XML 1.0 normalizes line ends before parsing, so offsets and positions agree with Xerces.
+  const source = input.replace(/\r\n?/g, "\n");
   const parser = new SaxesParser({ xmlns: true, position: true });
   const stack: Array<XmlElement> = [];
   let root: XmlElement | undefined;
@@ -429,20 +510,42 @@ export const parse = (source: string, options: ParseOptions = {}) => {
     else parent.children.push({ kind: "text", text });
   };
 
-  parser.on("xmldecl", (decl) => {
-    declaration = { encoding: decl.encoding, version: decl.version };
-  });
   const fail = (failure: XmlError) => {
     error ??= failure;
   };
+  // Upstream checks the XML version once the root's start tag is read, which a later failure
+  // keeps; a failure inside that tag comes first.
+  const failed = (failure: XmlError) =>
+    Result.fail<XmlError>(
+      root !== undefined &&
+        (root.line < failure.line || (root.line === failure.line && root.column < failure.column))
+        ? { ...failure, version: declaration.version }
+        : failure,
+    );
+  const unsupported = versionFailure(source);
+  if (unsupported !== undefined) return failed(unsupported);
   const positionAt = (offset: number) => {
     const before = source.slice(0, offset).split("\n");
     return { line: before.length, column: (before.at(-1)?.length ?? 0) + 1 };
   };
+  parser.on("xmldecl", (decl) => {
+    declaration = { encoding: decl.encoding, version: decl.version };
+  });
   let broken = new Map<string, string>();
   parser.on("doctype", (raw) => {
-    doctype = parseDoctype(raw);
-    const rawOffset = source.indexOf("<!DOCTYPE") + "<!DOCTYPE".length;
+    // The parser stands just past the declaration's `>`; a DOCTYPE inside a comment is no match.
+    const rawOffset = parser.position - 1 - raw.length;
+    const parts = parseDoctype(raw);
+    const subsetOffset =
+      parts.internalSubset === undefined ? 0 : rawOffset + raw.indexOf(parts.internalSubset);
+    doctype = {
+      ...parts,
+      ...positionAt(rawOffset + (EXTERNAL_ID.exec(raw)?.[0].length ?? 0)),
+      externalEntities: externalEntities(parts.internalSubset ?? "").map(({ name, end }) => ({
+        name,
+        ...positionAt(subsetOffset + end),
+      })),
+    };
     // An external ID needs a system literal after a public one; saxes does not check.
     const publicOnly = /^\s*[^\s[>]+\s+PUBLIC\s+(?:"[^"]*"|'[^']*')(?!\s*["'])/d.exec(raw);
     if (publicOnly !== null) {
@@ -452,8 +555,6 @@ export const parse = (source: string, options: ParseOptions = {}) => {
       });
     }
     const external = options.externalEntities?.(doctype) ?? {};
-    const subsetOffset =
-      doctype.internalSubset === undefined ? 0 : rawOffset + raw.indexOf(doctype.internalSubset);
     const internal = internalEntities(doctype.internalSubset, external, subsetOffset);
     if (internal.error !== undefined) {
       fail({ message: internal.error.message, ...positionAt(internal.error.offset) });
@@ -525,11 +626,11 @@ export const parse = (source: string, options: ParseOptions = {}) => {
       unterminated.line < error.line ||
       (unterminated.line === error.line && unterminated.column <= error.column))
   ) {
-    return Result.fail(unterminated);
+    return failed(unterminated);
   }
-  if (error !== undefined) return Result.fail(error);
+  if (error !== undefined) return failed(error);
   if (root === undefined)
-    return Result.fail({ message: "document has no root element", line: 1, column: 1 });
+    return failed({ message: "document has no root element", line: 1, column: 1 });
   return Result.succeed({
     root,
     doctype,

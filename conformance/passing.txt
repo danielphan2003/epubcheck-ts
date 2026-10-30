@@ -666,6 +666,10 @@ epub3/07-content-documents/content-documents-svg.feature:73 Verify `data-*` attr
 epub3/07-content-documents/content-documents-svg.feature:79 Verify that empty `font-face` declarations are allowed
 epub3/07-content-documents/content-documents-svg.feature:85 Verify links are allowed
 epub3/07-content-documents/content-documents-svg.feature:96 Verify that `image` elements can have an `xlink:href` URL pointing to a fragment
+epub3/07-content-documents/content-documents-xhtml.feature:1000 Report `base` as a discouraged construct
+epub3/07-content-documents/content-documents-xhtml.feature:1007 Report `embed` as a discouraged construct
+epub3/07-content-documents/content-documents-xhtml.feature:1014 Report `rp` as a discouraged construct
+epub3/07-content-documents/content-documents-xhtml.feature:1023 Report an unrecognized `epub` namespace (informative)
 epub3/07-content-documents/content-documents-xhtml.feature:104 Report unknown entity references
 epub3/07-content-documents/content-documents-xhtml.feature:113 Report duplicate `id` attribute values
 epub3/07-content-documents/content-documents-xhtml.feature:119 Verify `id` attribute with non-alphanumeric in its value
@@ -706,6 +710,7 @@ epub3/07-content-documents/content-documents-xhtml.feature:283 Report a hyperlin
 epub3/07-content-documents/content-documents-xhtml.feature:288 Report a hyperlink to a mising identifier in another document
 epub3/07-content-documents/content-documents-xhtml.feature:293 Verify that href values that only contain whitepace are allowed
 epub3/07-content-documents/content-documents-xhtml.feature:298 Verify that relative paths starting with a single dot are resolved properly
+epub3/07-content-documents/content-documents-xhtml.feature:308 Report fragment identifiers used in stylesheet URLs
 epub3/07-content-documents/content-documents-xhtml.feature:320 Allow valid hyperlink URLs
 epub3/07-content-documents/content-documents-xhtml.feature:326 Verify that an `iframe` can reference another XHTML document
 epub3/07-content-documents/content-documents-xhtml.feature:33 Report Schematron schema errors when checking a Content Document in a full publication
@@ -714,13 +719,16 @@ epub3/07-content-documents/content-documents-xhtml.feature:338 Report an `img` e
 epub3/07-content-documents/content-documents-xhtml.feature:344 Allow an `img` element with no `alt` attribute when it has a `title` attribute
 epub3/07-content-documents/content-documents-xhtml.feature:348 Allow an `img` element with no `alt` attribute when it is in a captioned figure
 epub3/07-content-documents/content-documents-xhtml.feature:352 Verify that `img` element can reference SVG fragments
+epub3/07-content-documents/content-documents-xhtml.feature:356 Report non-SVG images referenced as fragments
 epub3/07-content-documents/content-documents-xhtml.feature:362 Report references to undeclared resources in `img srcset`
 epub3/07-content-documents/content-documents-xhtml.feature:370 Verify empty language tag allowed (issue 777)
 epub3/07-content-documents/content-documents-xhtml.feature:374 Report a mismatch in `lang` and `xml:lang` attributes
 epub3/07-content-documents/content-documents-xhtml.feature:380 Verify that three-character language codes are allowed (issue 615)
 epub3/07-content-documents/content-documents-xhtml.feature:387 Verify a `link` element with a known alt style tag
 epub3/07-content-documents/content-documents-xhtml.feature:393 Report a `link` element with an unknown alt style tag
+epub3/07-content-documents/content-documents-xhtml.feature:399 Report a `link` element with an unknown alt style tag
 epub3/07-content-documents/content-documents-xhtml.feature:406 Verify `link` elements used to declare alternative stylesheets
+epub3/07-content-documents/content-documents-xhtml.feature:410 Report `link` element defining an alternative stylesheet with no title
 epub3/07-content-documents/content-documents-xhtml.feature:417 Verify an `li` with a `value` attribute (issue 248)
 epub3/07-content-documents/content-documents-xhtml.feature:424 Verify `main` element is allowed
 epub3/07-content-documents/content-documents-xhtml.feature:43 Report an XHMTL document not encoded as UTF-8
@@ -769,6 +777,9 @@ epub3/07-content-documents/content-documents-xhtml.feature:69 Verify `doctype` w
 epub3/07-content-documents/content-documents-xhtml.feature:698 Verify valid URLs
 epub3/07-content-documents/content-documents-xhtml.feature:703 Report non-conforming URLs
 epub3/07-content-documents/content-documents-xhtml.feature:709 Report a URL host that cannot be parsed
+epub3/07-content-documents/content-documents-xhtml.feature:716 Report unregistered URL scheme
+epub3/07-content-documents/content-documents-xhtml.feature:723 Report an XML 1.1 version declaration
+epub3/07-content-documents/content-documents-xhtml.feature:73 Report `doctype` with obsolete public identifier
 epub3/07-content-documents/content-documents-xhtml.feature:733 Verify `epub:type` attribute on allowed content
 epub3/07-content-documents/content-documents-xhtml.feature:740 Report `epub:type` attribute on 'head' or metadata content
 epub3/07-content-documents/content-documents-xhtml.feature:745 Verify `epub:type` attribute with author-declared vocabulary
@@ -778,10 +789,12 @@ epub3/07-content-documents/content-documents-xhtml.feature:782 Verify ITS attrib
 epub3/07-content-documents/content-documents-xhtml.feature:792 Verify attributes in custom namespaces are ignored
 epub3/07-content-documents/content-documents-xhtml.feature:797 Report custom attributes using reserved strings in their namespace
 epub3/07-content-documents/content-documents-xhtml.feature:803 Verify SSML attributes are allowed
+epub3/07-content-documents/content-documents-xhtml.feature:807 Report SSML `ph` attribute without a value
 epub3/07-content-documents/content-documents-xhtml.feature:81 Verify that character references are allowed
 epub3/07-content-documents/content-documents-xhtml.feature:816 Verify MathML markup with prefixed elements
 epub3/07-content-documents/content-documents-xhtml.feature:820 Verify MathML markup with unprefixed elements
 epub3/07-content-documents/content-documents-xhtml.feature:825 Allow MathML deprecated features
+epub3/07-content-documents/content-documents-xhtml.feature:829 Verify MathML markup without alternative text
 epub3/07-content-documents/content-documents-xhtml.feature:836 Report MathML markup with only content MathML
 epub3/07-content-documents/content-documents-xhtml.feature:844 Verify MathML with tex annotation
 epub3/07-content-documents/content-documents-xhtml.feature:849 Verify MathML with content MathML annotation
@@ -803,6 +816,7 @@ epub3/07-content-documents/content-documents-xhtml.feature:916 Verify conforming
 epub3/07-content-documents/content-documents-xhtml.feature:920 Verify the SVG IDs can be any valid HTML ID
 epub3/07-content-documents/content-documents-xhtml.feature:925 Verify that `epub:type` attribute can be used on SVG
 epub3/07-content-documents/content-documents-xhtml.feature:929 Verify that SVG validation erors are reported as USAGE
+epub3/07-content-documents/content-documents-xhtml.feature:93 Report external entities
 epub3/07-content-documents/content-documents-xhtml.feature:936 Verify unprefixed HTML elements allowed inside prefixed `foreignObject`
 epub3/07-content-documents/content-documents-xhtml.feature:940 Verify that the `requiredExtensions` attribute can have any value
 epub3/07-content-documents/content-documents-xhtml.feature:944 Report `foreignObject` with a body element
@@ -813,6 +827,8 @@ epub3/07-content-documents/content-documents-xhtml.feature:966 Report `title` wi
 epub3/07-content-documents/content-documents-xhtml.feature:974 Report HTML validation errors within `title` content
 epub3/07-content-documents/content-documents-xhtml.feature:98 Report entity references not ending with a semicolon
 epub3/07-content-documents/content-documents-xhtml.feature:980 Verify RDF elements can be embedded in SVG
+epub3/07-content-documents/content-documents-xhtml.feature:984 Report deprecated `xlink:href` when no `href` is also present
+epub3/07-content-documents/content-documents-xhtml.feature:990 Report deprecated `xlink:href` when no `href` is also present
 epub3/08-navigation-document/navigation-document.feature:102 Allow nav hyperlinks to have leading and trailig spaces
 epub3/08-navigation-document/navigation-document.feature:109 Report a nav list without content
 epub3/08-navigation-document/navigation-document.feature:117 Report a `toc nav` that links to documents not in the spine

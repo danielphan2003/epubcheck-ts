@@ -358,9 +358,13 @@ export const check = Effect.fn("OcfChecker.check")(function* (
           ["META-INF/metadata.xml", metadataSchemas],
           ["META-INF/signatures.xml", Schemas.SIGNATURES_30],
         ];
+  // Upstream parses `metadata.xml` and `signatures.xml` without its XML handler (no HTM-001).
+  const handled = new Set(["META-INF/encryption.xml", CONTAINER_FILE]);
   for (const [file, schemas] of metaFiles) {
     const bytes = yield* readResource(container, file);
-    if (Option.isSome(bytes)) yield* XmlChecker.check(bytes.value, file, schemas);
+    if (Option.isSome(bytes)) {
+      yield* XmlChecker.check(bytes.value, file, schemas, { checksVersion: handled.has(file) });
+    }
   }
 
   if (container.packaged) {
