@@ -74,6 +74,23 @@ export interface XmlError {
   readonly version?: string | undefined;
 }
 
+// The XML declaration's version, which Xerces reads before anything else in the document.
+const XML_VERSION = /^\uFEFF?<\?xml[ \t\n]+version[ \t\n]*=[ \t\n]*(?:"([^"]*)"|'([^']*)')/;
+
+// Xerces scans a version starting with "1.1" as XML 1.1, and rewrites the declaration's start
+// as `<?xml version="`, so it reports an unsupported version just past the literal on that line.
+const versionFailure = (source: string) => {
+  const match = XML_VERSION.exec(source);
+  const version = match?.[1] ?? match?.[2];
+  if (version === undefined || version === "1.0" || version === "1.1") return undefined;
+  const supported = version.startsWith("1.1") ? "XML 1.0 and XML 1.1 are" : "XML 1.0 is";
+  return {
+    message: `XML version "${version}" is not supported, only ${supported} supported.`,
+    line: 1,
+    column: 17 + version.length,
+  };
+};
+
 const EXTERNAL_ID =
   /^\s*[^\s[>]+(?:\s+(?:PUBLIC\s+(?:"[^"]*"|'[^']*')(?:\s+(?:"[^"]*"|'[^']*'))?|SYSTEM\s+(?:"[^"]*"|'[^']*')))?\s*/;
 
@@ -488,20 +505,23 @@ export const parse = (input: string, options: ParseOptions = {}) => {
   const fail = (failure: XmlError) => {
     error ??= failure;
   };
+  // Upstream checks the XML version once the root's start tag is read, which a later failure
+  // keeps; a failure inside that tag comes first.
+  const failed = (failure: XmlError) =>
+    Result.fail<XmlError>(
+      root !== undefined &&
+        (root.line < failure.line || (root.line === failure.line && root.column < failure.column))
+        ? { ...failure, version: declaration.version }
+        : failure,
+    );
+  const unsupported = versionFailure(source);
+  if (unsupported !== undefined) return failed(unsupported);
   const positionAt = (offset: number) => {
     const before = source.slice(0, offset).split("\n");
     return { line: before.length, column: (before.at(-1)?.length ?? 0) + 1 };
   };
   parser.on("xmldecl", (decl) => {
     declaration = { encoding: decl.encoding, version: decl.version };
-    // Xerces knows XML 1.0 and 1.1 only, and stops just past the version literal.
-    if (decl.version !== undefined && decl.version !== "1.0" && decl.version !== "1.1") {
-      const literal = /^\uFEFF?<\?xml\s+version\s*=\s*(["'])[^"']*\1/.exec(source)?.[0] ?? "";
-      fail({
-        message: `XML version "${decl.version}" is not supported, only XML 1.0 is supported.`,
-        ...positionAt(literal.length),
-      });
-    }
   });
   let broken = new Map<string, string>();
   parser.on("doctype", (raw) => {
@@ -591,12 +611,6 @@ export const parse = (input: string, options: ParseOptions = {}) => {
   });
 
   parser.write(source).close();
-  // Upstream checks the XML version at the root's start tag, which a later failure keeps.
-  const failed = (failure: XmlError) =>
-    root !== undefined &&
-    (root.line < failure.line || (root.line === failure.line && root.column <= failure.column))
-      ? Result.fail({ ...failure, version: declaration.version })
-      : Result.fail(failure);
   const unterminated = unterminatedReference(source);
   if (
     unterminated !== undefined &&
@@ -608,7 +622,7 @@ export const parse = (input: string, options: ParseOptions = {}) => {
   }
   if (error !== undefined) return failed(error);
   if (root === undefined)
-    return Result.fail({ message: "document has no root element", line: 1, column: 1 });
+    return failed({ message: "document has no root element", line: 1, column: 1 });
   return Result.succeed({
     root,
     doctype,

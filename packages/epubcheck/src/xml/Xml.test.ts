@@ -134,9 +134,54 @@ describe("Xml.parse errors", () => {
         column: 23,
       },
     },
+    {
+      name: "an unsupported version, spaced out",
+      source: '<?xml  version = "1.5"?><r/>',
+      error: {
+        message: 'XML version "1.5" is not supported, only XML 1.0 is supported.',
+        line: 1,
+        column: 20,
+      },
+    },
+    {
+      name: "an unsupported version after a line break",
+      source: '<?xml\nversion="1.5"?><r/>',
+      error: {
+        message: 'XML version "1.5" is not supported, only XML 1.0 is supported.',
+        line: 1,
+        column: 20,
+      },
+    },
+    {
+      name: "an unsupported version scanned as XML 1.1",
+      source: '<?xml version="1.10"?><r/>',
+      error: {
+        message: 'XML version "1.10" is not supported, only XML 1.0 and XML 1.1 are supported.',
+        line: 1,
+        column: 21,
+      },
+    },
+    {
+      name: "a malformed version before a malformed declaration",
+      source: '<?xml version="abc" standalone="maybe"?><r/>',
+      error: {
+        message: 'XML version "abc" is not supported, only XML 1.0 is supported.',
+        line: 1,
+        column: 20,
+      },
+    },
   ])("reports $name", ({ source, error }) => {
     const parsed = Xml.parse(source);
     expect(Result.isFailure(parsed) && parsed.failure).toEqual(error);
+  });
+
+  // Upstream reports the version (HTM-001) once the root's start tag is read.
+  it.each([
+    { name: "inside the root start tag", source: '<?xml version="1.1"?><r a="1" a="2"/>' },
+    { name: "after the root start tag", source: '<?xml version="1.1"?><r><x></r>', version: "1.1" },
+  ])("keeps the version of a failure $name", ({ source, version }) => {
+    const parsed = Xml.parse(source);
+    expect(Result.isFailure(parsed) && parsed.failure.version).toBe(version);
   });
 });
 

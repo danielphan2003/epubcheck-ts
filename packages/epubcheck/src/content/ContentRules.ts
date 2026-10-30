@@ -14,6 +14,7 @@ const MATHML_NS = "http://www.w3.org/1998/Math/MathML";
 const SSML_NS = "http://www.w3.org/2001/10/synthesis";
 const OPS_NS = "http://www.idpf.org/2007/ops";
 const XMLNS_NS = "http://www.w3.org/2000/xmlns/";
+const XML_NS = "http://www.w3.org/XML/1998/namespace";
 
 const DISCOURAGED = new Set(["base", "embed", "rp"]);
 // SVG elements whose deprecated `xlink:href` upstream reports.
@@ -118,18 +119,36 @@ const at = (
   column: element.column,
 });
 
-// URL schemes galimatias parses strictly; it fails on their invalid hosts, but not on ports.
-const SPECIAL_SCHEMES = new Set(["ftp", "file", "gopher", "http", "https", "ws", "wss"]);
-const PORT = /^([^:]+:\/\/(?:[^@/?#]*@)?(?:\[[^\]]*\]|[^:/?#]*)):[^/?#]*/;
+const SCHEME = /^([a-zA-Z][a-zA-Z0-9+.-]*):/;
 
-// Upstream's checkHRef: a link to an absolute URL outside the container needs a scheme upstream
-// knows (HTM-025); blank links and `.` are checked elsewhere.
-const schemeFinding = (path: string, element: Xml.XmlElement, href: string | undefined) => {
+// URL schemes galimatias parses strictly. It fails on their invalid hosts and non-digit ports,
+// but not on out-of-range ones.
+const SPECIAL_SCHEMES = new Set(["ftp", "file", "gopher", "http", "https", "ws", "wss"]);
+const PORT = /^([^:]+:\/\/(?:[^@/?#]*@)?(?:\[[^\]]*\]|[^:/?#]*)):\d*(?=[/?#\\]|$)/;
+
+// Galimatias resolves a relative URL only against a special scheme; a port it accepts and the
+// WHATWG parser rejects does not change the scheme.
+const resolve = (value: string, base: URL | undefined) =>
+  SCHEME.test(value)
+    ? URL.parse(value.replace(PORT, "$1"))
+    : base !== undefined && SPECIAL_SCHEMES.has(base.protocol.slice(0, -1))
+      ? URL.parse(value, base)
+      : null;
+
+// Upstream's checkHRef: a link to a URL outside the container, absolute or resolved against a
+// remote base, needs a scheme upstream knows (HTM-025); blank links and `.` are checked elsewhere.
+const schemeFinding = (
+  path: string,
+  element: Xml.XmlElement,
+  href: string | undefined,
+  base: URL | undefined,
+) => {
   const value = JavaText.trim(href ?? "");
   if (value === "" || value === ".") return [];
-  const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(value)?.[1]?.toLowerCase();
-  if (scheme === undefined || REGISTERED_SCHEMES.has(scheme)) return [];
-  if (SPECIAL_SCHEMES.has(scheme) && !URL.canParse(value.replace(PORT, "$1"))) return [];
+  const url = SCHEME.test(value) ? value : resolve(value, base)?.href;
+  const scheme = SCHEME.exec(url ?? "")?.[1]?.toLowerCase();
+  if (url === undefined || scheme === undefined || REGISTERED_SCHEMES.has(scheme)) return [];
+  if (SPECIAL_SCHEMES.has(scheme) && !URL.canParse(url.replace(PORT, "$1"))) return [];
   return [at(path, element, "HTM-025")];
 };
 
@@ -178,15 +197,20 @@ export const check = (document: Xml.XmlDocument, path: string, kind: "xhtml" | "
       if (attribute.ns === XMLNS_NS && attribute.local === "epub" && attribute.value !== OPS_NS) {
         findings.push(at(path, element, "HTM-010", attribute.value));
       }
-      if (attribute.ns === SSML_NS && attribute.local === "ph" && attribute.value.trim() === "") {
+      if (
+        attribute.ns === SSML_NS &&
+        attribute.local === "ph" &&
+        JavaText.trim(attribute.value) === ""
+      ) {
         findings.push(at(path, element, "HTM-007"));
       }
     }
     if (element.ns === XHTML_NS) {
       if (DISCOURAGED.has(element.local))
         findings.push(at(path, element, "HTM-055", element.local));
-      if (element.local === "link") findings.push(...linkFindings(path, element));
-    } else if (element.ns === SVG_NS && XLINKED.has(element.local)) {
+      // Upstream dispatches links on lowercased names, but not the checks above.
+      if (element.local.toLowerCase() === "link") findings.push(...linkFindings(path, element));
+    } else if (element.ns === SVG_NS && XLINKED.has(element.local.toLowerCase())) {
       findings.push(...svgHrefs(path, element).findings);
     } else if (element.ns === MATHML_NS && element.local === "math") {
       const hasAnnotation = Xml.descendants(element).some(
@@ -209,17 +233,26 @@ export const check = (document: Xml.XmlDocument, path: string, kind: "xhtml" | "
 
 // HTM-025 for the links upstream's OPSHandler checks in either version: XHTML `a` and `area`, and
 // SVG `a`, by its `xlink:href` in EPUB 2 and by both hrefs in EPUB 3.
+// Upstream's base is not scoped: a `base` element or `xml:base` attribute applies from its own
+// element to the end of the document. Links dispatch on lowercased element names.
 export const schemeFindings = (document: Xml.XmlDocument, path: string, version: "2" | "3") => {
   const findings: Array<Finding> = [];
+  let base: URL | undefined;
   for (const element of [document.root, ...Xml.descendants(document.root)]) {
-    if (element.ns === XHTML_NS && (element.local === "a" || element.local === "area")) {
-      findings.push(...schemeFinding(path, element, Xml.attribute(element, "href")));
-    } else if (element.ns === SVG_NS && element.local === "a") {
+    const newBase =
+      element.ns === XHTML_NS && element.local === "base"
+        ? Xml.attribute(element, "href")
+        : Xml.attribute(element, "base", XML_NS);
+    if (newBase !== undefined) base = resolve(newBase.trim(), base) ?? base;
+    const name = element.local.toLowerCase();
+    if (element.ns === XHTML_NS && (name === "a" || name === "area")) {
+      findings.push(...schemeFinding(path, element, Xml.attribute(element, "href"), base));
+    } else if (element.ns === SVG_NS && name === "a") {
       const hrefs =
         version === "3"
           ? svgHrefs(path, element).hrefs
           : [Xml.attribute(element, "href", XLINK_NS)];
-      for (const href of hrefs) findings.push(...schemeFinding(path, element, href));
+      for (const href of hrefs) findings.push(...schemeFinding(path, element, href, base));
     }
   }
   return findings;

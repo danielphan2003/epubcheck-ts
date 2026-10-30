@@ -115,8 +115,7 @@ export const check = Effect.fn("XmlChecker.check")(function* (
     externalEntities: (doctype) => entitiesOf(doctype, version),
   });
   if (Result.isFailure(parsed)) {
-    const failure: Xml.XmlError = parsed.failure;
-    const { message, line, column, version: failedVersion } = failure;
+    const { message, line, column, version: failedVersion } = parsed.failure;
     if (failedVersion !== undefined && failedVersion !== "1.0") {
       yield* report.message("HTM-001", Report.location(path), failedVersion);
     }
