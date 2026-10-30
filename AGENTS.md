@@ -29,7 +29,7 @@ Do not translate its Java classes. Write the TypeScript the way this codebase is
 The same choices as t3code: pnpm workspaces with a `catalog:` for shared versions, Vite+ (`vp`) for
 lint (oxlint), format (oxfmt) and tests (Vitest), and `@tsc-rs/typescript` as the `typescript`
 drop-in, which reports the Effect language-service diagnostics configured in `tsconfig.base.json`
-as type errors. Node runs the `.ts` sources directly; the only build is `pnpm --filter epubcheck-ts build` (tsc to `dist/`), which `pnpm pack` runs for the release tarball. pnpm pins the Node
+as type errors. Node runs the `.ts` sources directly; the only build is `pnpm --filter epubcheck-ts build` (tsc to `dist/`), which `pnpm pack` runs for the release tarball (see `docs/release.md`). pnpm pins the Node
 runtime (`devEngines.runtime`, Node 26) and puts it first on the PATH of every script; outside a
 script, run `pnpm exec node`, since a bare `node` is whatever the machine has.
 

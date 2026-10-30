@@ -1,6 +1,6 @@
 {
   "name": "epubcheck-ts",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Independent TypeScript rewrite of W3C EPUBCheck, built on Effect.",
   "license": "MIT",
   "repository": {
@@ -51,6 +51,7 @@
   },
   "dependencies": {
     "@effect/platform-node": "catalog:",
+    "@effect/platform-node-shared": "catalog:",
     "effect": "catalog:",
     "fontoxpath": "^3.34.0",
     "saxes": "^6.0.0",
