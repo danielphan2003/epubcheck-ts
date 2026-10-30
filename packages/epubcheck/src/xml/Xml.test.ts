@@ -153,6 +153,24 @@ describe("Xml.parse errors", () => {
       },
     },
     {
+      name: "an unsupported version padded by the declaration's spacing",
+      source: '<?xml  version = "1.10"?><r/>',
+      error: {
+        message: 'XML version "1.10   " is not supported, only XML 1.0 and XML 1.1 are supported.',
+        line: 1,
+        column: 24,
+      },
+    },
+    {
+      name: "an unsupported version with a line break",
+      source: '<?xml version="1\n2345"?><r/>',
+      error: {
+        message: 'XML version "1\n2345" is not supported, only XML 1.0 is supported.',
+        line: 2,
+        column: 6,
+      },
+    },
+    {
       name: "an unsupported version scanned as XML 1.1",
       source: '<?xml version="1.10"?><r/>',
       error: {

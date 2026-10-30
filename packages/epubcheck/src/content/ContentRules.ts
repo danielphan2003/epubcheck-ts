@@ -126,14 +126,14 @@ const SCHEME = /^([a-zA-Z][a-zA-Z0-9+.-]*):/;
 const SPECIAL_SCHEMES = new Set(["ftp", "file", "gopher", "http", "https", "ws", "wss"]);
 const PORT = /^([^:]+:\/\/(?:[^@/?#]*@)?(?:\[[^\]]*\]|[^:/?#]*)):\d*(?=[/?#\\]|$)/;
 
-// Galimatias resolves a relative URL only against a special scheme; a port it accepts and the
+// Galimatias resolves a URL against a base of a special scheme only; a port it accepts and the
 // WHATWG parser rejects does not change the scheme.
-const resolve = (value: string, base: URL | undefined) =>
-  SCHEME.test(value)
-    ? URL.parse(value.replace(PORT, "$1"))
-    : base !== undefined && SPECIAL_SCHEMES.has(base.protocol.slice(0, -1))
-      ? URL.parse(value, base)
-      : null;
+const resolve = (value: string, base: URL | undefined) => {
+  const special =
+    base !== undefined && SPECIAL_SCHEMES.has(base.protocol.slice(0, -1)) ? base : undefined;
+  if (special === undefined && !SCHEME.test(value)) return null;
+  return URL.parse(value, special) ?? URL.parse(value.replace(PORT, "$1"), special);
+};
 
 // Upstream's checkHRef: a link to a URL outside the container, absolute or resolved against a
 // remote base, needs a scheme upstream knows (HTM-025); blank links and `.` are checked elsewhere.
@@ -145,10 +145,14 @@ const schemeFinding = (
 ) => {
   const value = JavaText.trim(href ?? "");
   if (value === "" || value === ".") return [];
-  const url = SCHEME.test(value) ? value : resolve(value, base)?.href;
-  const scheme = SCHEME.exec(url ?? "")?.[1]?.toLowerCase();
-  if (url === undefined || scheme === undefined || REGISTERED_SCHEMES.has(scheme)) return [];
-  if (SPECIAL_SCHEMES.has(scheme) && !URL.canParse(url.replace(PORT, "$1"))) return [];
+  const url = JavaText.stripWhitespace(value);
+  // Galimatias accepts a URL of a scheme that is not special without parsing it further.
+  const own = SCHEME.exec(url)?.[1]?.toLowerCase();
+  const scheme =
+    own !== undefined && !SPECIAL_SCHEMES.has(own)
+      ? own
+      : resolve(url, base)?.protocol.slice(0, -1);
+  if (scheme === undefined || REGISTERED_SCHEMES.has(scheme)) return [];
   return [at(path, element, "HTM-025")];
 };
 
@@ -243,7 +247,7 @@ export const schemeFindings = (document: Xml.XmlDocument, path: string, version:
       element.ns === XHTML_NS && element.local === "base"
         ? Xml.attribute(element, "href")
         : Xml.attribute(element, "base", XML_NS);
-    if (newBase !== undefined) base = resolve(newBase.trim(), base) ?? base;
+    if (newBase !== undefined) base = resolve(JavaText.stripWhitespace(newBase), base) ?? base;
     const name = element.local.toLowerCase();
     if (element.ns === XHTML_NS && (name === "a" || name === "area")) {
       findings.push(...schemeFinding(path, element, Xml.attribute(element, "href"), base));

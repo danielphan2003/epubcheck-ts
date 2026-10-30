@@ -14,6 +14,7 @@ describe("ContentRules.schemeFindings", () => {
     { name: "a registered scheme", body: '<a href="HTTP://example.org/">a</a>', warned: 0 },
     { name: "a trailing no-break space", body: '<a href="foo:x&#160;">a</a>', warned: 1 },
     { name: "a leading no-break space", body: '<a href="&#160;foo:x">a</a>', warned: 0 },
+    { name: "a leading em space", body: '<a href="&#x2003;foo:x">a</a>', warned: 1 },
     { name: "an out-of-range port", body: '<a href="ws://x:99999/">a</a>', warned: 1 },
     { name: "a non-digit port", body: '<a href="ws://x:abc/">a</a>', warned: 0 },
     {
@@ -32,6 +33,18 @@ describe("ContentRules.schemeFindings", () => {
       head: '<base href="foo:/x/"/>',
       body: '<a href="y">a</a>',
       warned: 0,
+    },
+    {
+      name: "a relative link under a base after a no-break space",
+      head: '<base href="&#160;ws://example.org/"/>',
+      body: '<a href="y">a</a>',
+      warned: 0,
+    },
+    {
+      name: "a link of the base's scheme, resolved against it",
+      head: '<base href="ws://example.org/a/b"/>',
+      body: '<a href="ws:#f">a</a>',
+      warned: 1,
     },
     {
       name: "a relative link after an earlier element's xml:base",

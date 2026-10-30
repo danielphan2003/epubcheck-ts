@@ -74,20 +74,28 @@ export interface XmlError {
   readonly version?: string | undefined;
 }
 
-// The XML declaration's version, which Xerces reads before anything else in the document.
-const XML_VERSION = /^\uFEFF?<\?xml[ \t\n]+version[ \t\n]*=[ \t\n]*(?:"([^"]*)"|'([^']*)')/;
+// The start of an XML declaration, up to its version literal's quote.
+const XML_VERSION = /^<\?xml[ \t\n]+version[ \t\n]*=[ \t\n]*(["'])/;
 
-// Xerces scans a version starting with "1.1" as XML 1.1, and rewrites the declaration's start
-// as `<?xml version="`, so it reports an unsupported version just past the literal on that line.
+// Xerces reads the version before anything else: it takes the quote and the next four
+// characters, scans the document as XML 1.1 when they start with "1.1", and rewrites what it
+// read as `<?xml version="` and those characters, padded with spaces to the same length.
 const versionFailure = (source: string) => {
   const match = XML_VERSION.exec(source);
-  const version = match?.[1] ?? match?.[2];
-  if (version === undefined || version === "1.0" || version === "1.1") return undefined;
+  const quote = match?.[1];
+  if (match === null || quote === undefined) return undefined;
+  const read = match[0].length + 4;
+  const prefix = `<?xml version=${quote}${source.slice(match[0].length, read)}`;
+  const rewritten = prefix + " ".repeat(read - prefix.length) + source.slice(read);
+  const end = rewritten.indexOf(quote, 15);
+  const version = rewritten.slice(15, end);
+  if (end < 0 || version === "1.0" || version === "1.1") return undefined;
   const supported = version.startsWith("1.1") ? "XML 1.0 and XML 1.1 are" : "XML 1.0 is";
+  const lines = rewritten.slice(0, end + 1).split("\n");
   return {
     message: `XML version "${version}" is not supported, only ${supported} supported.`,
-    line: 1,
-    column: 17 + version.length,
+    line: lines.length,
+    column: (lines.at(-1)?.length ?? 0) + 1,
   };
 };
 

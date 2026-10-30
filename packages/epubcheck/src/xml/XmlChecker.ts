@@ -92,9 +92,11 @@ export const check = Effect.fn("XmlChecker.check")(function* (
     readonly informative?: boolean;
     // The publication's EPUB version, which decides the DTDs upstream resolves.
     readonly version?: "2" | "3";
+    // Upstream checks the XML version (HTM-001) only where its XML handler parses the file.
+    readonly checksVersion?: boolean;
   } = {},
 ) {
-  const { prepare, isXhtml = false, informative = false, version } = options;
+  const { prepare, isXhtml = false, informative = false, version, checksVersion = true } = options;
   const report = yield* Report.Report;
   const decoded = Xml.decodeDocument(bytes);
   if (decoded.encoding === "UTF-16") {
@@ -116,7 +118,7 @@ export const check = Effect.fn("XmlChecker.check")(function* (
   });
   if (Result.isFailure(parsed)) {
     const { message, line, column, version: failedVersion } = parsed.failure;
-    if (failedVersion !== undefined && failedVersion !== "1.0") {
+    if (checksVersion && failedVersion !== undefined && failedVersion !== "1.0") {
       yield* report.message("HTM-001", Report.location(path), failedVersion);
     }
     yield* report.message("RSC-016", Report.location(path, line, column), message);
@@ -124,7 +126,7 @@ export const check = Effect.fn("XmlChecker.check")(function* (
   }
   // Upstream's XMLHandler checks the XML version of every document it parses.
   const xmlVersion = parsed.success.version;
-  if (xmlVersion !== undefined && xmlVersion !== "1.0") {
+  if (checksVersion && xmlVersion !== undefined && xmlVersion !== "1.0") {
     yield* report.message("HTM-001", Report.location(path), xmlVersion);
   }
   const checked = withinStack(() =>
