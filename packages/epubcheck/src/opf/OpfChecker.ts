@@ -5,6 +5,7 @@ import * as Profiles from "../profiles/Profiles.ts";
 import * as Report from "../report/Report.ts";
 import * as Schemas from "../schema/Schemas.ts";
 import * as XmlChecker from "../xml/XmlChecker.ts";
+import * as Epub2Checks from "./Epub2Checks.ts";
 import * as PackageChecks from "./PackageChecks.ts";
 import * as PackageDocument from "./PackageDocument.ts";
 
@@ -30,7 +31,12 @@ export const check = Effect.fn("OpfChecker.check")(function* (
   );
   if (Option.isNone(document)) return Option.none<PackageDocument.PackageDocument>();
   const opf = PackageDocument.read(document.value, path, version);
-  for (const finding of PackageChecks.check({ document: document.value, opf, container })) {
+  const context = { document: document.value, opf, container };
+  const findings = [
+    ...PackageChecks.check(context),
+    ...(version === "2" ? Epub2Checks.check(context) : []),
+  ];
+  for (const finding of findings) {
     yield* report.message(
       finding.id,
       Report.location(finding.path ?? path, finding.line, finding.column),

@@ -108,7 +108,7 @@ const REGISTERED_SCHEMES = new Set([
 
 const at = (
   path: string,
-  element: Xml.XmlElement,
+  element: { readonly line: number; readonly column: number },
   id: MessageId,
   ...args: ReadonlyArray<string>
 ) => ({
@@ -287,4 +287,24 @@ const linkFindings = (path: string, link: Xml.XmlElement) => {
     findings.push(at(path, link, "CSS-005", classes));
   }
   return findings;
+};
+
+const XHTML11_PUBLIC_ID = "-//W3C//DTD XHTML 1.1//EN";
+const XHTML11_SYSTEM_ID = "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd";
+
+// EPUB 2 XHTML documents may only use the XHTML 1.1 DOCTYPE, if any (HTM-004). Upstream
+// checks only a DOCTYPE for the `html` root, as written.
+export const epub2Doctype = (document: Xml.XmlDocument, path: string) => {
+  const doctype = document.doctype;
+  const found =
+    doctype === undefined || doctype.name !== "html"
+      ? undefined
+      : doctype.publicId !== XHTML11_PUBLIC_ID
+        ? (doctype.publicId ?? "")
+        : doctype.systemId !== XHTML11_SYSTEM_ID
+          ? (doctype.systemId ?? "")
+          : undefined;
+  if (doctype === undefined || found === undefined) return [];
+  const expected = `<!DOCTYPE html PUBLIC "${XHTML11_PUBLIC_ID}" \n"${XHTML11_SYSTEM_ID}">`;
+  return [at(path, doctype, "HTM-004", found, expected)];
 };

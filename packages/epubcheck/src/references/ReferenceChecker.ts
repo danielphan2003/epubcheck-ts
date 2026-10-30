@@ -1,4 +1,5 @@
 import type { MessageId } from "../messages/MessageCatalog.ts";
+import * as Fallbacks from "../opf/Fallbacks.ts";
 import type { ManifestItem } from "../opf/PackageDocument.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as UrlFragment from "../util/UrlFragment.ts";
@@ -33,12 +34,12 @@ const isRemoteMediaType = (mediaType: string) =>
 // Hyperlinks and citations are not publication resources.
 const NAVIGATION = new Set<ReferenceType>(["hyperlink", "cite"]);
 
-// What a hyperlink may point to; links to other types are reported as such by a later check.
+// What a hyperlink may point to, without a fallback; other types are non-standard (RSC-010).
 const isLinkable = (mediaType: string, version: "2" | "3") =>
-  mediaType === "application/xhtml+xml" ||
-  mediaType === (version === "3" ? "image/svg+xml" : "application/x-dtbook+xml") ||
-  mediaType === "text/x-oeb1-document" ||
-  mediaType === "text/html";
+  Fallbacks.isBlessedItemType(mediaType, version) ||
+  Fallbacks.isDeprecatedBlessedItemType(mediaType);
+
+const PACKAGE_TYPE = "application/oebps-package+xml";
 
 const essence = (mediaType: string) => (mediaType.split(";")[0] ?? "").trim().toLowerCase();
 const isContent = (mediaType: string) =>
@@ -79,16 +80,7 @@ export const loadsSvg = (references: ReadonlyArray<Reference>, publication: Publ
 export const check = (references: ReadonlyArray<Reference>, publication: Publication) => {
   const findings: Array<Finding> = [];
   const epub3 = publication.version === "3";
-  const hasCoreFallback = (item: ManifestItem | undefined) => {
-    const seen = new Set<string>();
-    let current = item;
-    while (current?.fallback !== undefined && !seen.has(current.id)) {
-      seen.add(current.id);
-      current = publication.byId.get(current.fallback);
-      if (current !== undefined && MediaTypes.isCore(current.mediaType)) return true;
-    }
-    return false;
-  };
+  const fallbacks = Fallbacks.resolveFallbacks(publication.byId, publication.version);
   // A foreign resource needs a fallback (RSC-032), and a script must be JavaScript.
   const resourceFindings = (reference: Reference, mediaType: string, item?: ManifestItem) => {
     const name = Url.nameOf(reference.target);
@@ -96,7 +88,7 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
       NEEDS_FALLBACK.has(reference.type) &&
       reference.intrinsicFallback !== true &&
       !MediaTypes.isCore(mediaType) &&
-      !hasCoreFallback(item)
+      !fallbacks.core(item)
     ) {
       findings.push(finding(reference, "RSC-032", name, mediaType));
     }
@@ -119,12 +111,27 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
     // later).
     if (target.kind === "data") {
       const mediaType = MediaTypes.normalize(target.mediaType);
-      if (type === "hyperlink" && isLinkable(mediaType, publication.version)) {
-        findings.push(finding(reference, "RSC-011"));
-      } else if (type !== "hyperlink") resourceFindings(reference, mediaType);
+      if (type === "hyperlink") {
+        const linkable = isLinkable(mediaType, publication.version);
+        findings.push(finding(reference, linkable ? "RSC-011" : "RSC-010"));
+      } else resourceFindings(reference, mediaType);
       continue;
     }
-    if (target.kind === "local" && target.path === publication.packagePath) continue;
+    // Upstream registers the package document as a resource outside the spine, of a type that
+    // is neither core nor a content document, with no fallback and no IDs it checks.
+    if (target.kind === "local" && target.path === publication.packagePath) {
+      if (!resourceFindings(reference, PACKAGE_TYPE)) continue;
+      const { fragment } = reference;
+      const cfi = UrlFragment.parse(fragment ?? "", PACKAGE_TYPE).scheme === "epubcfi";
+      if (type === "image" && fragment !== undefined && !cfi) {
+        findings.push(finding(reference, "RSC-009"));
+      } else if (type === "stylesheet" && fragment !== undefined) {
+        findings.push(finding(reference, "RSC-013"));
+      } else if (type === "search-key" && !cfi) {
+        findings.push(finding(reference, "RSC-021", Url.nameOf(target)));
+      } else if (type === "hyperlink" && !cfi) findings.push(finding(reference, "RSC-010"));
+      continue;
+    }
     const item = itemOf(reference, publication);
     if (target.kind === "remote") {
       const url = target.url + (reference.fragment === undefined ? "" : `#${reference.fragment}`);
@@ -182,7 +189,10 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
     }
     // Upstream does not check where EPUB CFIs lead.
     if (type === "hyperlink" && parsed.scheme !== "epubcfi") {
-      if (!isLinkable(item.mediaType, publication.version)) continue;
+      if (!isLinkable(item.mediaType, publication.version) && !fallbacks.content(item)) {
+        findings.push(finding(reference, "RSC-010"));
+        continue;
+      }
       if (!publication.spine.has(item)) {
         findings.push(finding(reference, "RSC-011"));
         continue;

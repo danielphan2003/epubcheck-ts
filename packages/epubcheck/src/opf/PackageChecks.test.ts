@@ -115,3 +115,109 @@ describe("PackageChecks URLs", () => {
     expect(findings.map((finding) => finding.id).filter((id) => ids.has(id))).toEqual(row.ids);
   });
 });
+
+describe("PackageChecks guide", () => {
+  const pkg = (guide: string, version: string, manifest = "") =>
+    `<package xmlns="http://www.idpf.org/2007/opf" version="${version}.0" unique-identifier="id"><metadata/><manifest><item id="c" href="c.xhtml" media-type="application/xhtml+xml"/><item id="css" href="s.css" media-type="text/css"/><item id="svg" href="s.svg" media-type="image/svg+xml"/>${manifest}</manifest><spine><itemref idref="c"/></spine><guide>${guide}</guide></package>`;
+  const reference = (href: string) => `<reference type="text" title="t" href="${href}"/>`;
+  const files = new Set(["EPUB/package.opf", "EPUB/c.xhtml", "EPUB/s.css", "EPUB/s.svg"]);
+  // Each row was checked against EPUBCheck 5.4.0 on a packaged EPUB, or alone with `--mode opf`.
+  it.each([
+    {
+      name: "a missing file",
+      guide: reference("missing.xhtml#x"),
+      found: ["OPF-031 EPUB/missing.xhtml#x"],
+    },
+    { name: "a style sheet", guide: reference("s.css#y"), found: ["OPF-032 EPUB/s.css#y"] },
+    {
+      name: "an SVG document in EPUB 2",
+      guide: reference("s.svg"),
+      version: "2",
+      found: ["OPF-032 EPUB/s.svg"],
+    },
+    { name: "an SVG document in EPUB 3", guide: reference("s.svg"), found: [] },
+    { name: "the package document", guide: reference(""), found: ["OPF-031 EPUB/package.opf"] },
+    { name: "a query", guide: reference("c.xhtml?q"), found: [] },
+    {
+      name: "a query after a remote manifest item",
+      guide: reference("c.xhtml?q"),
+      manifest: '<item id="r" href="https://example.org/r.mp3" media-type="audio/mpeg"/>',
+      found: ["OPF-031 EPUB/c.xhtml?q"],
+    },
+    {
+      name: "a query after an absolute URL",
+      guide: reference("https://example.org/x.xhtml") + reference("c.xhtml?q"),
+      found: ["OPF-031 https://example.org/x.xhtml", "OPF-031 EPUB/c.xhtml?q"],
+    },
+    {
+      name: "a missing file, checked alone",
+      guide: reference("missing.xhtml"),
+      alone: true,
+      found: [],
+    },
+  ] as const)("reports $name", ({ guide, found, ...row }) => {
+    const version = "version" in row ? row.version : "3";
+    const document = Xml.parse(pkg(guide, version, "manifest" in row ? row.manifest : ""));
+    if (Result.isFailure(document)) throw new Error(document.failure.message);
+    const findings = PackageChecks.check({
+      document: document.success,
+      opf: PackageDocument.read(document.success, "EPUB/package.opf", version),
+      container: "alone" in row ? undefined : files,
+    });
+    expect(
+      findings
+        .filter((finding) => finding.id === "OPF-031" || finding.id === "OPF-032")
+        .map((finding) => `${finding.id} ${finding.args.join(" ")}`),
+    ).toEqual(found);
+  });
+});
+
+describe("PackageChecks handler", () => {
+  const pkg = (
+    parts: { metadata?: string; manifest?: string; spine?: string; itemrefs?: string },
+    version: string,
+  ) =>
+    `<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf" version="${version}.0" unique-identifier="id"><metadata><dc:identifier id="id">x</dc:identifier>${parts.metadata ?? ""}</metadata><manifest><item id="c" href="c.xhtml" media-type="application/xhtml+xml"/>${parts.manifest ?? ""}</manifest><spine${parts.spine ?? ""}><itemref idref="c"/>${parts.itemrefs ?? ""}</spine></package>`;
+  const item = (id: string, type: string, extra = "") =>
+    `<item id="${id}" href="${id}.x" media-type="${type}"${extra}/>`;
+  const ids = new Set(["OPF-049", "OPF-050", "OPF-052", "OPF-062", "OPF-063"]);
+  // Each row was checked against EPUBCheck 5.4.0.
+  it.each([
+    {
+      name: "creator roles",
+      parts: {
+        metadata:
+          '<dc:creator opf:role="oth.custom">a</dc:creator><dc:creator opf:role="">b</dc:creator><dc:creator opf:role=" aut ">c</dc:creator><dc:contributor opf:role="xyz">d</dc:contributor>',
+      },
+      found: ["OPF-052"],
+    },
+    {
+      name: "a creator role in EPUB 3",
+      parts: { metadata: '<dc:creator opf:role="xyz">a</dc:creator>' },
+      version: "3",
+      found: ["OPF-052"],
+    },
+    {
+      name: "a page map named with spaces",
+      parts: { manifest: item("pm", "application/oebps-page-map+xml"), spine: ' page-map=" pm "' },
+      found: ["OPF-062", "OPF-063"],
+    },
+    { name: "a toc naming no item", parts: { spine: ' toc="ncx"' }, found: ["OPF-049"] },
+    { name: "a toc naming a content document", parts: { spine: ' toc="c"' }, found: ["OPF-050"] },
+    {
+      name: "metadata wrappers outside OEBPS 1.2",
+      parts: { metadata: "<dc-metadata/><x-metadata/>" },
+      found: ["OPF-049", "OPF-049"],
+    },
+  ] as const)("reports $name", ({ parts, found, ...row }) => {
+    const version = "version" in row ? row.version : "2";
+    const document = Xml.parse(pkg(parts, version));
+    if (Result.isFailure(document)) throw new Error(document.failure.message);
+    const findings = PackageChecks.check({
+      document: document.success,
+      opf: PackageDocument.read(document.success, "EPUB/package.opf", version),
+      container: undefined,
+    });
+    expect(findings.map((finding) => finding.id).filter((id) => ids.has(id))).toEqual(found);
+  });
+});

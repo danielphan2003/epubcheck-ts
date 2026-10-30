@@ -8,9 +8,14 @@ import * as FilenameChecker from "../ocf/FilenameChecker.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as ClockValue from "../util/ClockValue.ts";
 import { checkLanguageTag } from "./LanguageTag.ts";
+import * as Fallbacks from "./Fallbacks.ts";
+import { MARC_RELATORS } from "./MarcRelators.ts";
 import {
   type Collection,
   type ManifestItem,
+  OEB_PACKAGE_NS,
+  OPF_NS,
+  PACKAGE_NAMESPACES,
   type PackageDocument,
   declaredPaths,
   registered,
@@ -23,7 +28,6 @@ import * as W3cDate from "./W3cDate.ts";
 // Package document rules that the schemas do not express: manifest and spine integrity,
 // fallback chains, identifiers, dates, language tags and links.
 
-const OPF_NS = "http://www.idpf.org/2007/opf";
 const DC_NS = "http://purl.org/dc/elements/1.1/";
 const XML_NS = "http://www.w3.org/XML/1998/namespace";
 // Container paths resolve against this base, so a URL's origin tells local from remote.
@@ -45,7 +49,7 @@ const normalizedUrl = (href: string, base: URL) => {
 
 // Upstream checks a normalized media type against a pattern in which `+-^` is a range, so a
 // quoted parameter value fails it.
-const ITEM_MEDIA_TYPE = /^[a-zA-Z0-9!#$&+-^_]+\/[a-zA-Z0-9!#$&+-^_]+$/;
+export const ITEM_MEDIA_TYPE = /^[a-zA-Z0-9!#$&+-^_]+\/[a-zA-Z0-9!#$&+-^_]+$/;
 
 export interface Finding {
   readonly id: MessageId;
@@ -63,7 +67,11 @@ export interface Context {
   readonly container: ReadonlySet<string> | undefined;
 }
 
-const at = (element: Xml.XmlElement, id: MessageId, ...args: ReadonlyArray<string>): Finding => ({
+export const at = (
+  element: Xml.XmlElement,
+  id: MessageId,
+  ...args: ReadonlyArray<string>
+): Finding => ({
   id,
   args,
   line: element.line,
@@ -141,7 +149,9 @@ type Checks = Context & ReturnType<typeof shared>;
 const opfChildren = (element: Xml.XmlElement | undefined, local: string) =>
   element === undefined
     ? []
-    : Xml.childElements(element).filter((child) => child.ns === OPF_NS && child.local === local);
+    : Xml.childElements(element).filter(
+        (child) => PACKAGE_NAMESPACES.has(child.ns) && child.local === local,
+      );
 
 const ITEM_PROPERTY_TYPES: Readonly<Record<string, ReadonlyArray<string>>> = {
   "cover-image": ["image/"],
@@ -171,21 +181,37 @@ const allowedFor = (property: string, mediaType: string) => {
   );
 };
 
-const manifestChecks = ({ opf, container, urls, files }: Checks) => {
-  const findings: Array<Finding> = [...problemsOf(urls, "item")];
-  const byId = new Map(opf.items.map((item) => [item.id, item] as const));
-  // Upstream identifies items by normalized URL, fragment included. The last item for a URL is
-  // the one it keeps and checks; every other one is a duplicate. An item without one is skipped.
+// Upstream identifies items by normalized URL, fragment included. The last item for a URL is the
+// one it keeps and checks; every other one is a duplicate. An item without one is skipped.
+// Items are held by ID first: a repeated ID keeps its first position with the last item, and
+// items without an ID are left to the schema.
+const itemUrls = (opf: PackageDocument) => {
   const packageUrl = new URL(opf.path, CONTAINER);
   const packageKey = normalizedUrl(packageUrl.href, packageUrl);
   const urlOf = (item: ManifestItem) =>
     Xml.attribute(item.element, "href") === undefined
       ? undefined
       : normalizedUrl(item.href, packageUrl);
-  // Upstream holds items by ID first: a repeated ID keeps its first position with the last item.
-  // Items without an ID are left to the schema.
   const items = [...registered(opf)];
   const kept = new Map(items.map((item) => [urlOf(item), item] as const));
+  return { items, urlOf, kept, packageKey };
+};
+
+// The items upstream's checkItem sees: neither duplicates nor the package document.
+export const checkedItems = (opf: PackageDocument) => {
+  const { items, urlOf, kept, packageKey } = itemUrls(opf);
+  return items.filter((item) => {
+    const url = urlOf(item);
+    return url !== undefined && kept.get(url) === item && url !== packageKey;
+  });
+};
+
+const manifestChecks = ({ opf, container, urls, files }: Checks) => {
+  const findings: Array<Finding> = [...problemsOf(urls, "item")];
+  const byId = new Map(opf.items.map((item) => [item.id, item] as const));
+  const { items, urlOf, kept, packageKey } = itemUrls(opf);
+  const toc = items.find((item) => item.id === opf.toc);
+  const unreadableToc = toc?.mediaType === "application/x-dtbncx+xml" ? undefined : toc;
   for (const item of items) {
     const url = urlOf(item);
     if (url === undefined) continue;
@@ -196,9 +222,11 @@ const manifestChecks = ({ opf, container, urls, files }: Checks) => {
         findings.push(at(item.element, finding.id, ...finding.args));
       }
     }
-    // Upstream looks every item up in the container, duplicates included.
+    // Upstream looks every item up in the container, duplicates included, but for one it fails
+    // to read as the NCX (CHK-008).
     if (
       files !== undefined &&
+      item !== unreadableToc &&
       item.path !== undefined &&
       !isRemote(item.href) &&
       !files.has(item.path.normalize("NFC"))
@@ -288,17 +316,13 @@ const CONTENT_DOCUMENT_TYPES = new Set(["application/xhtml+xml", "image/svg+xml"
 
 // An EPUB 3 spine item that is not a content document needs a fallback chain to one; upstream
 // reports it at the manifest item.
-const spineFallbackFinding = (item: ManifestItem, byId: ReadonlyMap<string, ManifestItem>) => {
-  if (CONTENT_DOCUMENT_TYPES.has(item.mediaType)) return [];
+const spineFallbackFinding = (
+  item: ManifestItem,
+  contentFallback: (item: ManifestItem) => boolean,
+) => {
+  if (Fallbacks.isBlessedItemType(item.mediaType, "3")) return [];
   if (item.fallback === undefined) return [at(item.element, "OPF-043", item.mediaType)];
-  const seen = new Set<string>();
-  let current: ManifestItem | undefined = item;
-  while (current?.fallback !== undefined && !seen.has(current.id)) {
-    seen.add(current.id);
-    current = byId.get(current.fallback);
-    if (current !== undefined && CONTENT_DOCUMENT_TYPES.has(current.mediaType)) return [];
-  }
-  return [at(item.element, "OPF-044", item.mediaType)];
+  return contentFallback(item) ? [] : [at(item.element, "OPF-044", item.mediaType)];
 };
 
 // Upstream's RenditionVocabs.SPREAD_PROPERTIES.
@@ -306,7 +330,9 @@ const SPREADS = /^(?:rendition:page-spread-(?:left|right|center)|page-spread-(?:
 
 const spineChecks = ({ document, opf, urls }: Checks) => {
   const findings: Array<Finding> = [];
-  const items = new Map(opf.items.map((item) => [item.id, item] as const));
+  // Upstream looks itemrefs up among the items it registers.
+  const items = new Map([...registered(opf)].map((item) => [item.id, item] as const));
+  const contentFallback = Fallbacks.resolveFallbacks(items, "3").content;
   const spine = opfChildren(document.root, "spine")[0];
   const itemrefs = opfChildren(spine, "itemref");
   const fixed = FixedLayout.fixedLayoutIds(opf);
@@ -333,7 +359,7 @@ const spineChecks = ({ document, opf, urls }: Checks) => {
     if (opf.version === "2" && seen.has(idref)) findings.push(at(item.element, "OPF-034", idref));
     // Data URLs are reported elsewhere (RSC-029); remote items are checked too.
     if (opf.version === "3" && !/^data:/i.test(item.href)) {
-      findings.push(...spineFallbackFinding(item, items));
+      findings.push(...spineFallbackFinding(item, contentFallback));
       if (item.properties.includes("data-nav")) findings.push(at(item.element, "OPF-077"));
     }
     // Page spreads belong to pre-paginated content; upstream also reports them under `roll`, once
@@ -712,13 +738,107 @@ const collectionChecks = ({ opf }: Context) => {
   return findings;
 };
 
+// Upstream's checkGuide, in both versions of a full check: a reference names a manifest item
+// (OPF-031) of an OPS content document type (OPF-032), quoted with its fragment. A query the URL
+// checker keeps (after an absolute URL, with no RSC-033) makes it name no item.
+const GUIDE_TYPES = {
+  "2": new Set(["application/xhtml+xml", "application/x-dtbook+xml"]),
+  "3": new Set(["application/xhtml+xml", "image/svg+xml"]),
+};
+const LEGACY_GUIDE_TYPES = new Set(["text/x-oeb1-document", "text/html"]);
+
+const guideChecks = ({ opf, container, urls }: Checks) => {
+  const findings: Array<Finding> = [];
+  if (container === undefined) return findings;
+  // The package's URL checker knows whether the query is kept; this one only resolves.
+  const resolver = Url.checker(opf.path, { container: true });
+  const byUrl = new Map(
+    [...registered(opf)].map((item) => [
+      item.path === undefined ? Url.remoteKey(item.href) : item.path.normalize("NFC"),
+      item,
+    ]),
+  );
+  for (const reference of opf.guide) {
+    const href = Xml.attribute(reference, "href");
+    const resolved = href === undefined ? undefined : resolver.check(href).resolved;
+    if (resolved === undefined) continue;
+    const { target, fragment } = resolved;
+    const stripped = (urls.get(reference) ?? []).some((problem) => problem.id === "RSC-033");
+    const query =
+      target.kind === "local" && !stripped ? (/\?[^#]*/.exec(href ?? "")?.[0] ?? "") : "";
+    const name = Url.nameOf(target) + query + (fragment === undefined ? "" : `#${fragment}`);
+    const key = target.kind === "local" ? target.path : target.kind === "remote" ? target.url : "";
+    const item = query === "" ? byUrl.get(key) : undefined;
+    if (item === undefined) findings.push(at(reference, "OPF-031", name));
+    else if (
+      !GUIDE_TYPES[opf.version].has(item.mediaType) &&
+      !LEGACY_GUIDE_TYPES.has(item.mediaType)
+    ) {
+      findings.push(at(reference, "OPF-032", name));
+    }
+  }
+  return findings;
+};
+
+// Rules upstream's package handler applies in both versions, in its order: an OEBPS 1.2
+// package (OPF-047), MARC relator roles on creators (OPF-052), Adobe's `page-map` (OPF-062,
+// OPF-063), and the spine's `toc`, which names an item (OPF-049) that is an NCX (OPF-050). The
+// handler reads package elements only in the OPF and OEBPS 1.2 namespaces, or none.
+const handlerChecks = ({ document, opf }: Context) => {
+  const findings: Array<Finding> = [];
+  const root = document.root;
+  const read = root.ns === OPF_NS || root.ns === OEB_PACKAGE_NS || root.ns === "";
+  const legacy = read && root.ns !== OPF_NS;
+  if (legacy) findings.push(at(root, "OPF-047"));
+  for (const element of Xml.descendants(root)) {
+    // Outside an OEBPS 1.2 package, upstream reports these wrappers as unknown IDs, by name.
+    const wrapper = element.local === "dc-metadata" || element.local === "x-metadata";
+    if (!legacy && wrapper && PACKAGE_NAMESPACES.has(element.ns)) {
+      findings.push(at(element, "OPF-049", element.local));
+    }
+    if (element.ns !== DC_NS || element.local !== "creator") continue;
+    // Upstream compares the role as written, and accepts any `oth.` role.
+    const role = Xml.attribute(element, "role", OPF_NS);
+    if (role !== undefined && role !== "" && !MARC_RELATORS.has(role) && !role.startsWith("oth.")) {
+      findings.push(at(element, "OPF-052", role));
+    }
+  }
+  // Every spine counts; the last page map is looked up, by its ID as written, at the end.
+  const byId = new Map([...registered(opf)].map((item) => [item.id, item] as const));
+  const ncx = new Set<ManifestItem>();
+  let pageMap: { readonly spine: Xml.XmlElement; readonly id: string } | undefined;
+  for (const spine of Xml.childElements(root)) {
+    if (!PACKAGE_NAMESPACES.has(spine.ns) || spine.local !== "spine") continue;
+    const id = Xml.attribute(spine, "page-map");
+    if (id !== undefined) {
+      findings.push(at(spine, "OPF-062"));
+      pageMap = { spine, id };
+    }
+    const toc = Xml.attribute(spine, "toc");
+    const item = toc === undefined ? undefined : byId.get(toc.trim());
+    if (toc !== undefined && item === undefined) findings.push(at(spine, "OPF-049", toc));
+    if (item !== undefined) ncx.add(item);
+  }
+  for (const item of byId.values()) {
+    if (ncx.has(item) && item.mediaType !== "application/x-dtbncx+xml") {
+      findings.push(at(item.element, "OPF-050"));
+    }
+  }
+  if (pageMap !== undefined && !byId.has(pageMap.id)) {
+    findings.push(at(pageMap.spine, "OPF-063", pageMap.id));
+  }
+  return findings;
+};
+
 export const check = (context: Context) => {
   const checks = { ...context, ...shared(context) };
   return [
     ...(context.opf.version === "3" ? vocabularyChecks(checks) : []),
     ...metadataChecks(checks),
+    ...handlerChecks(checks),
     ...manifestChecks(checks),
     ...spineChecks(checks),
+    ...guideChecks(checks),
     ...(context.opf.version === "3" ? collectionChecks(checks) : []),
   ];
 };

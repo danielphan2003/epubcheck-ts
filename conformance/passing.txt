@@ -42,6 +42,7 @@ cli/cli.feature:371 unsupported locale falls back to the default locale
 cli/cli.feature:376 invalid locale falls back to the default locale
 cli/cli.feature:381 missing locale argument makes the command fail
 cli/cli.feature:386 missing locale argument when last option makes the command fail
+cli/cli.feature:395 messages and severities are overridden with the `-c` option
 cli/cli.feature:403 messages and severities overridden with the `-c` option
 cli/cli.feature:408 report an error when overriding an unknown message ID
 cli/cli.feature:413 report an error when overriding to an unknown severity
@@ -173,8 +174,12 @@ epub-scriptable-components/scriptable-components-package-document.feature:19 A m
 epub-scriptable-components/scriptable-components-package-document.feature:23 The 'epubsc' prefix must be declared
 epub2/ncx-publication.feature:21 Report duplicate IDs in the NCX document
 epub2/ncx-publication.feature:28 Report invalid IDs in the NCX document
+epub2/ncx-publication.feature:34 Report empty text labels as usage
+epub2/ncx-publication.feature:40 Report a link to a resource that is not an OPS document
+epub2/ncx-publication.feature:45 Report an NCX reference to a resource that is not in the publication
 epub2/ncx-publication.feature:50 Report an NCX `pageTarget` with a `type` attribute value that is not one of "front", "normal" or "special"
 epub2/ncx-publication.feature:56 Verify that leading/trailing spaces in an NCX `uid` attribute are allowed
+epub2/ncx-publication.feature:60 Report an NCX `uid` attribute value that does not match the publication's unique identifier (issue 329)
 epub2/ocf-publication.feature:102 Verify a minimal packaged EPUB 2.0.1 publication
 epub2/ocf-publication.feature:18 Verify a minimal EPUB 2.0.1 publication
 epub2/ocf-publication.feature:22 Verify a minimal EPUB 2.0.1 publication even when a 3.0 profile is specified
@@ -194,10 +199,12 @@ epub2/opf-package-document.feature:103 an identifier with a "uuid" scheme should
 epub2/opf-package-document.feature:108 report an empty 'dc:date' metadata
 epub2/opf-package-document.feature:113 report a 'dc:date' value not conforming to ISO-8601
 epub2/opf-package-document.feature:118 report an empty 'dc:title' metadata
+epub2/opf-package-document.feature:125 item paths should not contain spaces
 epub2/opf-package-document.feature:130 item paths should not contain spaces (even when properly encoded)
 epub2/opf-package-document.feature:135 item paths should not contain spaces
 epub2/opf-package-document.feature:143 Verify conforming fallbacks
 epub2/opf-package-document.feature:147 Report a 'fallback-style' attribute pointing to a non-existing ID
+epub2/opf-package-document.feature:154 Report an image used as a spine item
 epub2/opf-package-document.feature:159 Report a spine with only non-linear resources
 epub2/opf-package-document.feature:164 Report a spine with no 'toc' attribute
 epub2/opf-package-document.feature:17 the minimal OPF document is reported as valid
@@ -208,17 +215,25 @@ epub2/opf-package-document.feature:23 the default namespace must be 'http://www.
 epub2/opf-package-document.feature:28 Report a missing version attribute
 epub2/opf-package-document.feature:40 duplicate IDs are reported
 epub2/opf-package-document.feature:45 unknown elements are reported
+epub2/opf-package-document.feature:51 Report an invalid doctype in the OPF document
 epub2/opf-package-document.feature:58 Ignore legacy OEB 1.2 Package doctype
 epub2/opf-package-document.feature:67 the unique identifier must not be empty
 epub2/opf-package-document.feature:75 the unique identifier must not be empty
 epub2/opf-package-document.feature:81 the unique identifier must not be empty
+epub2/opf-package-document.feature:88 Report a 'dc:creator' metadata with an unknown role
 epub2/opf-package-document.feature:93 Accet a 'dc:creator' metadata with an 'edc' role
 epub2/opf-package-document.feature:98 an identifier starting with "urn:uuid:" should be a valid UUID
 epub2/opf-publication.feature:105 Report a missing spine
 epub2/opf-publication.feature:111 Report a spine with no 'toc' attribute
+epub2/opf-publication.feature:117 Report a toc attribute pointing to something else than the NCX
 epub2/opf-publication.feature:123 Report repeated spine items (issue 182)
 epub2/opf-publication.feature:128 Report a 'page-map' attribute (invalid Adobe extension)
+epub2/opf-publication.feature:135 Report a 'page-map' attribute (invalid Adobe extension) pointing to nowhere
+epub2/opf-publication.feature:145 Report 'guide' references that are not in the manifest
+epub2/opf-publication.feature:152 Report 'guide' references to non-OPS resources
 epub2/opf-publication.feature:159 Report a legacy OEBPS 1.2 publication
+epub2/opf-publication.feature:165 Report a bad content document media type on legacy OEBPS 1.2 publications
+epub2/opf-publication.feature:170 Report a bad CSS media type on legacy OEBPS 1.2 publications
 epub2/opf-publication.feature:20 Report when checking an EPUB 2.0.1 explicitly against EPUB 3.x
 epub2/opf-publication.feature:29 Report a missing version attribute
 epub2/opf-publication.feature:39 Verify that the 'clr' MARC code is allowed in the `opf:role` attribute (issue 205)
@@ -226,6 +241,7 @@ epub2/opf-publication.feature:48 Verify that package IDs with leading/trailing s
 epub2/opf-publication.feature:52 the unique identifier must not be empty
 epub2/opf-publication.feature:60 Report a reference to a resource that is not listed in the manifest
 epub2/opf-publication.feature:65 Report a resource declared in the manifest but missing from the container
+epub2/opf-publication.feature:70 Report an XHTML OPS document declard as 'text/html'
 epub2/opf-publication.feature:75 Report (usage) a resource that is not listed in the manifest
 epub2/opf-publication.feature:82 Verify that operating system files (`.DS_STORE`, `thumbs.db`) are ignored (issue 256)
 epub2/opf-publication.feature:86 Report a reference to a remote resource from an `object` element when the resource is not declared in package document
@@ -239,6 +255,9 @@ epub2/ops-content-document-xhtml.feature:125 Verify HTML elements are allowed in
 epub2/ops-content-document-xhtml.feature:129 Verify `foreignObject` allowed outside `switch` and `body` allowed inside `foreignObject` (issues 222, 223, 20)
 epub2/ops-content-document-xhtml.feature:19 Report the absence of a namespace declaration
 epub2/ops-content-document-xhtml.feature:27 Verify a minimal XHTML OPS Document
+epub2/ops-content-document-xhtml.feature:33 Report an unresolved entity reference in the doctype declaration
+epub2/ops-content-document-xhtml.feature:38 Report a DOCTYPE declaration with an invalid public identifier
+epub2/ops-content-document-xhtml.feature:43 Report an HTML5 DOCTYPE declaration
 epub2/ops-content-document-xhtml.feature:48 Verify valid character references
 epub2/ops-content-document-xhtml.feature:52 Report unknown entity references
 epub2/ops-content-document-xhtml.feature:58 Report HTML5 elements used in OPS XHTML Content Documents
@@ -857,6 +876,7 @@ epub3/07-content-documents/content-documents-xhtml.feature:990 Report deprecated
 epub3/08-navigation-document/navigation-document.feature:102 Allow nav hyperlinks to have leading and trailig spaces
 epub3/08-navigation-document/navigation-document.feature:109 Report a nav list without content
 epub3/08-navigation-document/navigation-document.feature:117 Report a `toc nav` that links to documents not in the spine
+epub3/08-navigation-document/navigation-document.feature:129 Report a `toc nav` that links to resource that is not a Content Document
 epub3/08-navigation-document/navigation-document.feature:134 Verify a Navigation Document using EPUB CFI
 epub3/08-navigation-document/navigation-document.feature:143 Allow a nested `toc` nav
 epub3/08-navigation-document/navigation-document.feature:149 Verify a `toc nav` with links that match the reading order
@@ -1085,6 +1105,8 @@ epub3/E-obsolete-features/outdated-features.feature:116 Report the OPF 2 meta el
 epub3/E-obsolete-features/outdated-features.feature:126 Report the OPF 2 guide element as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:134 'guide' should not contain two entries of the same type pointing to the same resource
 epub3/E-obsolete-features/outdated-features.feature:151 When an NCX document is present, it must be identified in the 'toc' attribute of the spine
+epub3/E-obsolete-features/outdated-features.feature:158 The 'toc' attribute of the spine must point to an NCX document
+epub3/E-obsolete-features/outdated-features.feature:165 Report validation errors in legacy NCX documents
 epub3/E-obsolete-features/outdated-features.feature:172 Verify an NCX which does not link to all spine items
 epub3/E-obsolete-features/outdated-features.feature:183 Report the 'rendition:flow' property  as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:191 a 'rendition:flow' property with an unknown value is reported

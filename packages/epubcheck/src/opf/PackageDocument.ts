@@ -1,11 +1,16 @@
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as Xml from "../xml/Xml.ts";
+import * as JavaText from "../util/JavaText.ts";
 import { percentDecode } from "../util/UrlFragment.ts";
 import * as Vocabularies from "./Vocabularies.ts";
 
 // The parts of a package document that other checks need: manifest items and the spine.
 
-const OPF_NS = "http://www.idpf.org/2007/opf";
+export const OPF_NS = "http://www.idpf.org/2007/opf";
+// Legacy OEBPS 1.2 package documents use their own namespace, or none.
+export const OEB_PACKAGE_NS = "http://openebook.org/namespaces/oeb-package/1.0/";
+// Upstream reads package elements in any of these namespaces, whatever the root's.
+export const PACKAGE_NAMESPACES = new Set([OPF_NS, OEB_PACKAGE_NS, ""]);
 const DC_NS = "http://purl.org/dc/elements/1.1/";
 
 export interface ManifestItem {
@@ -31,6 +36,9 @@ export interface Metadata {
   readonly description: string | undefined;
   readonly rights: string | undefined;
   readonly identifier: string | undefined;
+  // Upstream's publication identifier: the identifier whose `id` is `unique-identifier`, as
+  // written, if it has text.
+  readonly uid: string | undefined;
   readonly language: string | undefined;
   readonly date: string | undefined;
   readonly modified: string | undefined;
@@ -66,6 +74,10 @@ export interface PackageDocument {
   // Item IDs in spine order; `spineItems` has each itemref's details.
   readonly spine: ReadonlyArray<string>;
   readonly spineItems: ReadonlyArray<SpineItem>;
+  // The ID the spine's `toc` names.
+  readonly toc: string | undefined;
+  // The guide's `reference` elements.
+  readonly guide: ReadonlyArray<Xml.XmlElement>;
   readonly metadata: Metadata;
   // The package metadata's links (EPUB 3).
   readonly links: Collection["links"];
@@ -86,11 +98,14 @@ export const resolve = (href: string, from: string) => {
   }
 };
 
-// The items upstream registers: those with an `id`, the last item of each.
+// The items upstream registers: those with an `id` and an `href`, the last item of each ID.
 export const registered = (opf: PackageDocument) =>
   new Map(
     opf.items.flatMap((item) =>
-      Xml.attribute(item.element, "id") === undefined ? [] : [[item.id, item] as const],
+      Xml.attribute(item.element, "id") === undefined ||
+      Xml.attribute(item.element, "href") === undefined
+        ? []
+        : [[item.id, item] as const],
     ),
   ).values();
 
@@ -106,11 +121,13 @@ export const read = (
   path: string,
   version: "2" | "3",
 ): PackageDocument => {
-  const children = Xml.childElements(document.root).filter((child) => child.ns === OPF_NS);
+  const children = Xml.childElements(document.root).filter((child) =>
+    PACKAGE_NAMESPACES.has(child.ns),
+  );
   const manifest = children.find((child) => child.local === "manifest");
   const spine = children.find((child) => child.local === "spine");
   const items = (manifest === undefined ? [] : Xml.childElements(manifest))
-    .filter((element) => element.ns === OPF_NS && element.local === "item")
+    .filter((element) => PACKAGE_NAMESPACES.has(element.ns) && element.local === "item")
     .map((element) => {
       const href = (Xml.attribute(element, "href") ?? "").trim();
       return {
@@ -127,7 +144,7 @@ export const read = (
     });
   const prefixes = Vocabularies.parsePrefixes(Xml.attribute(document.root, "prefix"));
   const spineItems = (spine === undefined ? [] : Xml.childElements(spine))
-    .filter((element) => element.ns === OPF_NS && element.local === "itemref")
+    .filter((element) => PACKAGE_NAMESPACES.has(element.ns) && element.local === "itemref")
     .map((element) => ({
       idref: (Xml.attribute(element, "idref") ?? "").trim(),
       padded: (Xml.attribute(element, "idref") ?? "").trim() !== Xml.attribute(element, "idref"),
@@ -139,6 +156,7 @@ export const read = (
       ),
     }));
   const itemrefs = spineItems.map((itemref) => itemref.idref);
+  const guide = children.find((child) => child.local === "guide");
   const linksOf = (element: Xml.XmlElement | undefined) =>
     (element === undefined ? [] : Xml.childElements(element))
       .filter((link) => link.ns === OPF_NS && link.local === "link")
@@ -165,6 +183,10 @@ export const read = (
     items,
     spine: itemrefs,
     spineItems,
+    toc: spine === undefined ? undefined : Xml.attribute(spine, "toc")?.trim(),
+    guide: (guide === undefined ? [] : Xml.childElements(guide)).filter(
+      (element) => PACKAGE_NAMESPACES.has(element.ns) && element.local === "reference",
+    ),
     metadata: readMetadata(document, children, prefixes),
     links: linksOf(children.find((child) => child.local === "metadata")),
     collections,
@@ -193,6 +215,18 @@ const readMetadata = (
   const identifier =
     identifiers.find((element) => Xml.attribute(element, "id")?.trim() === uniqueIdentifier) ??
     identifiers[0];
+  const declared = Xml.attribute(document.root, "unique-identifier");
+  const uidElement =
+    declared === undefined || declared === ""
+      ? undefined
+      : identifiers.find((element) => {
+          const id = Xml.attribute(element, "id");
+          return id !== undefined && id !== "" && JavaText.trim(id) === declared;
+        });
+  // Upstream keeps the text an element holds directly.
+  const uidText = uidElement?.children.flatMap((child) =>
+    child.kind === "text" ? [child.text] : [],
+  );
   // Upstream resolves the property through the declared prefixes, and takes `refines="#"` as no
   // refinement at all.
   const layouts = elements.filter(
@@ -239,6 +273,8 @@ const readMetadata = (
     description: values("description")[0],
     rights: values("rights")[0],
     identifier: identifier === undefined ? undefined : Xml.textContent(identifier).trim(),
+    uid:
+      uidText === undefined || uidText.length === 0 ? undefined : JavaText.trim(uidText.join("")),
     language: values("language")[0],
     date: values("date")[0],
     types: values("type"),
