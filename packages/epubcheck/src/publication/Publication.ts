@@ -239,15 +239,19 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       yield* reportFindings(read.findings);
       references.push(...read.references);
       overlays.push({ item, path: item.path, overlay: read.overlay });
-      // Upstream asks an overlay that plays remote audio to declare it, at the end of its `smil`
-      // element, matched by local name.
-      const remote = read.references.some(
+      // Upstream asks an overlay that plays remote audio to declare it, at the end of every
+      // `smil` element, matched by local name, after the first such clip.
+      const remote = read.references.find(
         (reference) => reference.type === "audio" && reference.target.kind === "remote",
       );
-      const smil = [document.value.root, ...Xml.descendants(document.value.root)].some(
-        (element) => element.local === "smil",
+      const ends = [document.value.root, ...Xml.descendants(document.value.root)].filter(
+        (element) =>
+          element.local === "smil" &&
+          remote !== undefined &&
+          (element.endLine > remote.line ||
+            (element.endLine === remote.line && element.endColumn > remote.column)),
       );
-      if (remote && smil && !item.properties.includes("remote-resources")) {
+      for (const _ of item.properties.includes("remote-resources") ? [] : ends) {
         yield* report.message("OPF-014", Report.location(item.path), "remote-resources");
       }
     }

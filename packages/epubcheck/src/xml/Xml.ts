@@ -142,6 +142,21 @@ const externalEntities = (subset: string) => {
   return found;
 };
 
+// A public ID holds only PubidChars, which saxes does not check: Xerces' error, and the offset
+// in the DOCTYPE just past the first other character.
+const invalidPublicId = (raw: string) => {
+  const literal = /^\s*[^\s[>]+\s+PUBLIC\s+(["'])/d.exec(raw);
+  const start = literal?.indices?.[0]?.[1];
+  if (literal === null || start === undefined) return undefined;
+  for (let at = start; at < raw.length && raw[at] !== literal[1]; at++) {
+    if (/[\x20\r\na-zA-Z0-9\-'()+,./:=?;!*#@$_%]/.test(raw[at] ?? "")) continue;
+    const code = raw.charCodeAt(at).toString(16);
+    const message = `An invalid XML character (Unicode: 0x${code}) was found in the public identifier.`;
+    return { message, offset: at + 1 };
+  }
+  return undefined;
+};
+
 // A DOCTYPE's parts; Xerces collapses the spaces and line breaks of a public ID.
 const parseDoctype = (raw: string) => {
   const match =
@@ -547,20 +562,9 @@ export const parse = (input: string, options: ParseOptions = {}) => {
         ...positionAt(subsetOffset + end),
       })),
     };
-    // A public ID holds only PubidChars; saxes does not check.
-    const publicLiteral = /^\s*[^\s[>]+\s+PUBLIC\s+(["'])/d.exec(raw);
-    const literalStart = publicLiteral?.indices?.[0]?.[1];
-    if (publicLiteral !== null && literalStart !== undefined) {
-      const quote = publicLiteral[1];
-      for (let at = literalStart; at < raw.length && raw[at] !== quote; at++) {
-        const code = raw.charCodeAt(at);
-        if (/[\x20\r\na-zA-Z0-9\-'()+,./:=?;!*#@$_%]/.test(raw[at] ?? "")) continue;
-        fail({
-          message: `An invalid XML character (Unicode: 0x${code.toString(16)}) was found in the public identifier.`,
-          ...positionAt(rawOffset + at + 1),
-        });
-        break;
-      }
+    const invalid = invalidPublicId(raw);
+    if (invalid !== undefined) {
+      fail({ message: invalid.message, ...positionAt(rawOffset + invalid.offset) });
     }
     // An external ID needs a system literal after a public one; saxes does not check.
     const publicOnly = /^\s*[^\s[>]+\s+PUBLIC\s+(?:"[^"]*"|'[^']*')(?!\s*["'])/d.exec(raw);
@@ -727,6 +731,13 @@ export const peekPackage = (source: string): PackagePeek => {
       if (trimmed !== "") types.push(trimmed);
       type = undefined;
     }
+  });
+  // Upstream's peek locates a bad public ID nowhere, and reads no further.
+  parser.on("doctype", (raw) => {
+    const invalid = invalidPublicId(raw);
+    if (done || error !== undefined || invalid === undefined) return;
+    error = { message: invalid.message, line: -1, column: -1 };
+    done = true;
   });
   parser.on("error", (cause) => {
     if (done || error !== undefined) return;
