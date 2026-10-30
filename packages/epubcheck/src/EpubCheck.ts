@@ -133,11 +133,7 @@ const make = Effect.gen(function* () {
       );
       if (Option.isNone(opfResult)) continue;
       metadata ??= opfResult.value.metadata;
-      for (const item of PackageDocument.registered(opfResult.value)) {
-        if (item.path !== undefined && !item.href.includes("#")) {
-          declared.add(item.path.normalize("NFC"));
-        }
-      }
+      for (const file of PackageDocument.declaredPaths(opfResult.value)) declared.add(file);
       if (opfResult.value.version === "3") {
         for (const link of opfResult.value.links) {
           if (link.path !== undefined) declared.add(link.path.normalize("NFC"));

@@ -84,6 +84,16 @@ describe("PackageChecks URLs", () => {
       ids: ["RSC-007w"],
     },
     {
+      name: "an item without an ID in META-INF",
+      parts: { manifest: '<item href="../META-INF/x.png" media-type="image/png"/>' },
+      ids: [],
+    },
+    {
+      name: "a link to a missing file that only an item with a fragment names",
+      parts: { metadata: link("y.png"), manifest: item("y.png#f") },
+      ids: ["RSC-007w"],
+    },
+    {
       name: "a link to a declared item that is missing",
       parts: { metadata: link("y.png"), manifest: item("y.png") },
       ids: [],

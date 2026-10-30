@@ -94,6 +94,13 @@ export const registered = (opf: PackageDocument) =>
     ),
   ).values();
 
+// What upstream's registry finds a resource by: the NFC paths of registered items without a
+// fragment, whose URLs no fragment-less reference equals.
+export const declaredPaths = (opf: PackageDocument) =>
+  [...registered(opf)].flatMap((item) =>
+    item.path === undefined || item.href.includes("#") ? [] : [item.path.normalize("NFC")],
+  );
+
 export const read = (
   document: Xml.XmlDocument,
   path: string,

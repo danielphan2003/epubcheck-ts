@@ -12,6 +12,7 @@ import {
   type Collection,
   type ManifestItem,
   type PackageDocument,
+  declaredPaths,
   registered,
   resolve,
 } from "./PackageDocument.ts";
@@ -104,10 +105,10 @@ const urlSchemeFindings = (element: Xml.XmlElement, href: string, version: "2" |
 
 // Upstream checks URLs as it parses the package document, in document order: EPUB 3 links,
 // items with an ID, and guide references. Once one is absolute, the checker stops reporting
-// queries and leaks (RSC-033, RSC-026).
-const urlChecks = ({ document, opf, container }: Context) => {
+// queries and leaks (RSC-033, RSC-026). Each element's problems go with its other checks.
+const urlProblems = ({ document, opf, container }: Context) => {
   const urls = Url.checker(opf.path, { container: container !== undefined });
-  const findings: Array<Finding> = [];
+  const problems = new Map<Xml.XmlElement, ReadonlyArray<Finding>>();
   for (const element of Xml.descendants(document.root)) {
     const href = Xml.attribute(element, "href");
     if (element.ns !== OPF_NS || href === undefined) continue;
@@ -116,10 +117,26 @@ const urlChecks = ({ document, opf, container }: Context) => {
       (element.local === "link" && opf.version === "3") ||
       (element.local === "item" && Xml.attribute(element, "id") !== undefined);
     if (!checked) continue;
-    for (const { id, args } of urls.check(href).problems) findings.push(at(element, id, ...args));
+    const found = urls.check(href).problems.map(({ id, args }) => at(element, id, ...args));
+    problems.set(element, found);
   }
-  return findings;
+  return problems;
 };
+
+const problemsOf = (urls: ReadonlyMap<Xml.XmlElement, ReadonlyArray<Finding>>, local: string) =>
+  [...urls].flatMap(([element, problems]) => (element.local === local ? problems : []));
+
+// What the checks share: URL problems by element, and container files in NFC (names and hrefs
+// may use different normalization forms for the same name).
+const shared = (context: Context) => ({
+  urls: urlProblems(context),
+  files:
+    context.container === undefined
+      ? undefined
+      : new Set([...context.container].map((file) => file.normalize("NFC"))),
+});
+
+type Checks = Context & ReturnType<typeof shared>;
 
 const opfChildren = (element: Xml.XmlElement | undefined, local: string) =>
   element === undefined
@@ -154,13 +171,8 @@ const allowedFor = (property: string, mediaType: string) => {
   );
 };
 
-const manifestChecks = ({ opf, container }: Context) => {
-  const findings: Array<Finding> = [];
-  // Container names and hrefs may use different Unicode normalization forms for the same name.
-  const files =
-    container === undefined
-      ? undefined
-      : new Set([...container].map((file) => file.normalize("NFC")));
+const manifestChecks = ({ opf, container, urls, files }: Checks) => {
+  const findings: Array<Finding> = [...problemsOf(urls, "item")];
   const byId = new Map(opf.items.map((item) => [item.id, item] as const));
   // Upstream identifies items by normalized URL, fragment included. The last item for a URL is
   // the one it keeps and checks; every other one is a duplicate. An item without one is skipped.
@@ -171,7 +183,8 @@ const manifestChecks = ({ opf, container }: Context) => {
       ? undefined
       : normalizedUrl(item.href, packageUrl);
   // Upstream holds items by ID first: a repeated ID keeps its first position with the last item.
-  const items = [...byId.values()];
+  // Items without an ID are left to the schema.
+  const items = [...registered(opf)];
   const kept = new Map(items.map((item) => [urlOf(item), item] as const));
   for (const item of items) {
     const url = urlOf(item);
@@ -291,7 +304,7 @@ const spineFallbackFinding = (item: ManifestItem, byId: ReadonlyMap<string, Mani
 // Upstream's RenditionVocabs.SPREAD_PROPERTIES.
 const SPREADS = /^(?:rendition:page-spread-(?:left|right|center)|page-spread-(?:left|right))$/;
 
-const spineChecks = ({ document, opf }: Context) => {
+const spineChecks = ({ document, opf, urls }: Checks) => {
   const findings: Array<Finding> = [];
   const items = new Map(opf.items.map((item) => [item.id, item] as const));
   const spine = opfChildren(document.root, "spine")[0];
@@ -333,6 +346,7 @@ const spineChecks = ({ document, opf }: Context) => {
     seen.add(idref);
   }
   if (linear.size > 0 && ![...linear.values()].includes(true)) findings.push(nowhere("OPF-033"));
+  findings.push(...problemsOf(urls, "reference"));
   return findings;
 };
 
@@ -499,7 +513,7 @@ const problemsAt = (
   );
 
 // Property attributes, prefixes, links and outdated features (EPUB 3 only).
-const vocabularyChecks = ({ document, opf, container }: Context) => {
+const vocabularyChecks = ({ document, opf, urls, files }: Checks) => {
   const findings: Array<Finding> = [];
   const root = document.root;
   const prefixes = Vocabularies.parsePrefixes(Xml.attribute(root, "prefix"));
@@ -550,16 +564,7 @@ const vocabularyChecks = ({ document, opf, container }: Context) => {
   const collections = [...Xml.descendants(root)].filter(
     (element) => element.ns === OPF_NS && element.local === "collection",
   );
-  // Container files, and the resources upstream's registry holds.
-  const files =
-    container === undefined
-      ? undefined
-      : new Set([...container].map((file) => file.normalize("NFC")));
-  const declared = new Set(
-    [...registered(opf)].flatMap((item) =>
-      item.path === undefined ? [] : [item.path.normalize("NFC")],
-    ),
-  );
+  const declared = new Set(declaredPaths(opf));
   const links = [
     ...opfChildren(opfChildren(root, "metadata")[0], "link").map((link) => ({
       link,
@@ -578,6 +583,7 @@ const vocabularyChecks = ({ document, opf, container }: Context) => {
   for (const { link, place } of links) {
     const href = Xml.attribute(link, "href");
     const url = href === undefined ? null : URL.parse(href, packageUrl);
+    findings.push(...(urls.get(link) ?? []));
     if (href !== undefined) findings.push(...urlSchemeFindings(link, href, opf.version));
     if (url?.protocol === "data:") continue;
     if (
@@ -706,11 +712,13 @@ const collectionChecks = ({ opf }: Context) => {
   return findings;
 };
 
-export const check = (context: Context) => [
-  ...urlChecks(context),
-  ...(context.opf.version === "3" ? vocabularyChecks(context) : []),
-  ...metadataChecks(context),
-  ...manifestChecks(context),
-  ...spineChecks(context),
-  ...(context.opf.version === "3" ? collectionChecks(context) : []),
-];
+export const check = (context: Context) => {
+  const checks = { ...context, ...shared(context) };
+  return [
+    ...(context.opf.version === "3" ? vocabularyChecks(checks) : []),
+    ...metadataChecks(checks),
+    ...manifestChecks(checks),
+    ...spineChecks(checks),
+    ...(context.opf.version === "3" ? collectionChecks(checks) : []),
+  ];
+};

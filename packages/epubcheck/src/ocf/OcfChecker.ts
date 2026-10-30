@@ -254,8 +254,10 @@ const checkContainerFile = Effect.fn("OcfChecker.checkContainerFile")(function* 
       continue;
     }
     const mediaType = (Xml.attribute(element, "media-type") ?? "unknown").trim().toLowerCase();
-    if (mediaType === PACKAGE_MEDIA_TYPE) rootfiles.push(resolveRootfile(fullPath));
-    declared.push(resolveRootfile(fullPath));
+    const rootfile = resolveRootfile(fullPath);
+    if (mediaType === PACKAGE_MEDIA_TYPE) rootfiles.push(rootfile);
+    // Upstream declares the rootfile's URL with its fragment, which no container file equals.
+    if (!fullPath.includes("#")) declared.push(rootfile);
   }
   return Option.some<ContainerLinks>({
     rootfiles,
