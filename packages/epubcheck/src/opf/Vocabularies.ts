@@ -243,16 +243,33 @@ const isJavaUri = (value: string) => {
   );
 };
 
-// The prefixes content documents reserve for `epub:type`: only the deprecated magazine ones.
-export const CONTENT_RESERVED: Readonly<Record<string, Reserved>> = { msv: MSV, prism: PRISM };
+const STRUCTURE_URI = "http://www.idpf.org/epub/vocab/structure/#";
+
+// What prefix declarations start from in each kind of document, as upstream's
+// parsePrefixDeclaration takes it: the reserved prefixes, the vocabularies a declared URI may
+// name, and the URIs no prefix may name.
+export const PACKAGE_PREFIXES = {
+  reserved: RESERVED,
+  known: KNOWN_BY_URI,
+  forbidden: FORBIDDEN_URIS,
+};
+type PrefixScope = typeof PACKAGE_PREFIXES;
+// Content documents reserve only the deprecated magazine prefixes for `epub:type`.
+export const CONTENT_PREFIXES: PrefixScope = {
+  reserved: { msv: MSV, prism: PRISM },
+  known: new Map([MSV, PRISM].map((vocab) => [vocab.uri, vocab] as const)),
+  forbidden: new Set([STRUCTURE_URI]),
+};
+export const OVERLAY_PREFIXES: PrefixScope = {
+  reserved: {},
+  known: new Map<string, Reserved>(),
+  forbidden: new Set([STRUCTURE_URI]),
+};
 
 // Parses a `prefix` attribute with upstream's state machine: optional leading whitespace, then
 // `prefix:` and a URI separated by one space, with whitespace between mappings.
-// `reservedPrefixes` are the prefixes available without a declaration.
-export const parsePrefixes = (
-  value: string | undefined,
-  reservedPrefixes: Readonly<Record<string, Reserved>> = RESERVED,
-) => {
+export const parsePrefixes = (value: string | undefined, scope = PACKAGE_PREFIXES) => {
+  const reservedPrefixes = scope.reserved;
   const vocabs = new Map<string, Reserved>(Object.entries(reservedPrefixes));
   const problems: Array<Problem> = [];
   if (value === undefined) return { vocabs, problems };
@@ -260,7 +277,7 @@ export const parsePrefixes = (
   const named = () => prefix ?? "null";
   const declare = (prefix: string, uri: string) => {
     if (prefix === "_") problems.push({ id: "OPF-007a", args: [] });
-    else if (FORBIDDEN_URIS.has(uri)) problems.push({ id: "OPF-007b", args: [prefix] });
+    else if (scope.forbidden.has(uri)) problems.push({ id: "OPF-007b", args: [prefix] });
     else if (uri === DC_ELEMENTS) problems.push({ id: "OPF-007c", args: [] });
     else {
       const reserved = reservedPrefixes[prefix];
@@ -268,7 +285,7 @@ export const parsePrefixes = (
         problems.push({ id: "OPF-007", args: [prefix] });
       if (reserved !== undefined && reserved.deprecated)
         problems.push({ id: "OPF-086c", args: [prefix] });
-      const known = KNOWN_BY_URI.get(uri) ?? { uri, deprecated: false, terms: unchecked };
+      const known = scope.known.get(uri) ?? { uri, deprecated: false, terms: unchecked };
       vocabs.set(prefix, { ...known, reservedIn: undefined });
     }
   };
