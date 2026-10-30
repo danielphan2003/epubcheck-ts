@@ -134,6 +134,16 @@ describe("Xml.parse errors", () => {
         column: 23,
       },
     },
+    // Xerces reports the character past the invalid one.
+    {
+      name: "a tab in a public identifier",
+      source: '<!DOCTYPE svg PUBLIC "-//W3C//DTD\tSVG 1.1//EN" "s.dtd"><svg/>',
+      error: {
+        message: "An invalid XML character (Unicode: 0x9) was found in the public identifier.",
+        line: 1,
+        column: 35,
+      },
+    },
     {
       name: "an unsupported version, spaced out",
       source: '<?xml  version = "1.5"?><r/>',

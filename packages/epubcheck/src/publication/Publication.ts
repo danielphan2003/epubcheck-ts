@@ -20,7 +20,6 @@ import * as Url from "../references/Url.ts";
 import * as Report from "../report/Report.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as Xml from "../xml/Xml.ts";
-import * as XmlChecker from "../xml/XmlChecker.ts";
 
 // Upstream's reports name the documents they check by their container paths as URLs.
 const reportPath = (path: string) => Url.encodePath(path.normalize("NFC"));
@@ -213,16 +212,6 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       references.push(...keys.references);
       yield* reportFindings(keys.findings);
     }
-    // XHTML and SVG documents check their DOCTYPE with their other content rules.
-    if (
-      Option.isSome(document) &&
-      opf.version === "3" &&
-      (kind === "ncx" || kind === "mo" || kind === "skm")
-    ) {
-      yield* reportFindings(
-        XmlChecker.externalIdentifiers(document.value.doctype, item.path, item.mediaType),
-      );
-    }
     const typedAs = opf.version === "3" ? EPUB_TYPE_MEDIA_TYPES[kind] : undefined;
     if (Option.isSome(document) && typedAs !== undefined) {
       yield* reportFindings(EpubType.check(document.value, item.path, typedAs));
@@ -250,11 +239,15 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       yield* reportFindings(read.findings);
       references.push(...read.references);
       overlays.push({ item, path: item.path, overlay: read.overlay });
-      // Upstream asks an overlay that plays remote audio to declare it, once it is read.
+      // Upstream asks an overlay that plays remote audio to declare it, at the end of its `smil`
+      // element, matched by local name.
       const remote = read.references.some(
         (reference) => reference.type === "audio" && reference.target.kind === "remote",
       );
-      if (remote && !item.properties.includes("remote-resources")) {
+      const smil = [document.value.root, ...Xml.descendants(document.value.root)].some(
+        (element) => element.local === "smil",
+      );
+      if (remote && smil && !item.properties.includes("remote-resources")) {
         yield* report.message("OPF-014", Report.location(item.path), "remote-resources");
       }
     }
@@ -264,9 +257,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
     yield* reportFindings(ContentRules.schemeFindings(document.value, item.path, opf.version));
     if (opf.version === "3") {
-      yield* reportFindings(
-        ContentRules.check(document.value, item.path, kind === "svg" ? "svg" : "xhtml"),
-      );
+      yield* reportFindings(ContentRules.check(document.value, item.path));
       const fixed = fixedLayout.has(item.path);
       yield* reportFindings(
         kind === "svg"
@@ -496,9 +487,7 @@ export const checkDocumentReferences = Effect.fn("Publication.checkDocumentRefer
   }
   yield* reportFindings(ContentRules.schemeFindings(document.value, path, version));
   if (version === "3") {
-    yield* reportFindings(
-      ContentRules.check(document.value, path, kind === "svg" ? "svg" : "xhtml"),
-    );
+    yield* reportFindings(ContentRules.check(document.value, path));
   }
   const context: Collect.Context = {
     version,

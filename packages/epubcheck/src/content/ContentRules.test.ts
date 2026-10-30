@@ -102,7 +102,7 @@ describe("ContentRules.check links", () => {
       `<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" epub:prefix="x: http://example.org/x#"><head><title>t</title>${link}</head><body><p>x</p></body></html>`,
     );
     if (Result.isFailure(parsed)) throw new Error(parsed.failure.message);
-    const findings = ContentRules.check(parsed.success, "a.xhtml", "xhtml");
+    const findings = ContentRules.check(parsed.success, "a.xhtml");
     expect(findings.map((finding) => finding.id).filter((id) => ids.has(id))).toEqual(expected);
   });
 });

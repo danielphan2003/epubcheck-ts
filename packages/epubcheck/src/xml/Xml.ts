@@ -142,14 +142,15 @@ const externalEntities = (subset: string) => {
   return found;
 };
 
+// A DOCTYPE's parts; Xerces collapses the spaces and line breaks of a public ID.
 const parseDoctype = (raw: string) => {
   const match =
-    /^\s*([^\s[>]+)(?:\s+(?:PUBLIC\s+(["'])(.*?)\2(?:\s+(["'])(.*?)\4)?|SYSTEM\s+(["'])(.*?)\6))?\s*(?:\[([\s\S]*)\])?\s*$/.exec(
+    /^\s*([^\s[>]+)(?:\s+(?:PUBLIC\s+(["'])([\s\S]*?)\2(?:\s+(["'])([\s\S]*?)\4)?|SYSTEM\s+(["'])([\s\S]*?)\6))?\s*(?:\[([\s\S]*)\])?\s*$/.exec(
       raw,
     );
   return {
     name: match?.[1] ?? "",
-    publicId: match?.[3],
+    publicId: match?.[3]?.replace(/[ \r\n]+/g, " ").trim(),
     systemId: match?.[5] ?? match?.[7],
     internalSubset: match?.[8],
   };
@@ -546,6 +547,21 @@ export const parse = (input: string, options: ParseOptions = {}) => {
         ...positionAt(subsetOffset + end),
       })),
     };
+    // A public ID holds only PubidChars; saxes does not check.
+    const publicLiteral = /^\s*[^\s[>]+\s+PUBLIC\s+(["'])/d.exec(raw);
+    const literalStart = publicLiteral?.indices?.[0]?.[1];
+    if (publicLiteral !== null && literalStart !== undefined) {
+      const quote = publicLiteral[1];
+      for (let at = literalStart; at < raw.length && raw[at] !== quote; at++) {
+        const code = raw.charCodeAt(at);
+        if (/[\x20\r\na-zA-Z0-9\-'()+,./:=?;!*#@$_%]/.test(raw[at] ?? "")) continue;
+        fail({
+          message: `An invalid XML character (Unicode: 0x${code.toString(16)}) was found in the public identifier.`,
+          ...positionAt(rawOffset + at + 1),
+        });
+        break;
+      }
+    }
     // An external ID needs a system literal after a public one; saxes does not check.
     const publicOnly = /^\s*[^\s[>]+\s+PUBLIC\s+(?:"[^"]*"|'[^']*')(?!\s*["'])/d.exec(raw);
     if (publicOnly !== null) {

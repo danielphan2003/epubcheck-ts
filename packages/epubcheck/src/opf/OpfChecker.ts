@@ -27,7 +27,7 @@ export const check = Effect.fn("OpfChecker.check")(function* (
       ...(version === "2" ? Schemas.PACKAGE_20 : Schemas.PACKAGE_30),
       ...Profiles.packageSchemas(profile),
     ],
-    { version },
+    { version, mediaType: "application/oebps-package+xml", peeked: true },
   );
   if (Option.isNone(document)) return Option.none<PackageDocument.PackageDocument>();
   const opf = PackageDocument.read(document.value, path, version);

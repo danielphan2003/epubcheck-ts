@@ -2,7 +2,6 @@ import type { MessageId } from "../messages/MessageCatalog.ts";
 import type { Finding } from "../references/Collect.ts";
 import * as JavaText from "../util/JavaText.ts";
 import * as Xml from "../xml/Xml.ts";
-import * as XmlChecker from "../xml/XmlChecker.ts";
 
 // EPUB 3 XHTML and SVG content document rules the schemas do not express: the XML version and
 // DOCTYPE, discouraged and deprecated constructs, alternate style sheets, SSML, MathML
@@ -170,36 +169,8 @@ const svgHrefs = (path: string, element: Xml.XmlElement) => {
   return { findings: [], hrefs: [href] };
 };
 
-// Upstream's DeclarationHandler: in EPUB 3, external entities are not allowed, and an `html`
-// DOCTYPE is the HTML5 one.
-const doctypeFindings = (doctype: Xml.XmlDoctype, path: string, kind: "xhtml" | "svg") => {
+export const check = (document: Xml.XmlDocument, path: string) => {
   const findings: Array<Finding> = [];
-  const isHtml = kind === "xhtml" && doctype.name.toLowerCase() === "html";
-  const legacy = doctype.publicId === undefined && doctype.systemId === "about:legacy-compat";
-  if (isHtml && (doctype.publicId !== undefined || doctype.systemId !== undefined) && !legacy) {
-    // Upstream formats a missing public ID with Java's string conversion.
-    const args = [doctype.publicId ?? "null", "<!DOCTYPE html>"];
-    findings.push({ id: "HTM-004", args, path, line: doctype.line, column: doctype.column });
-  } else if (!isHtml) {
-    const mediaType = kind === "svg" ? "image/svg+xml" : "application/xhtml+xml";
-    findings.push(...XmlChecker.externalIdentifiers(doctype, path, mediaType));
-  }
-  for (const entity of doctype.externalEntities) {
-    findings.push({
-      id: "HTM-003",
-      args: [entity.name],
-      path,
-      line: entity.line,
-      column: entity.column,
-    });
-  }
-  return findings;
-};
-
-export const check = (document: Xml.XmlDocument, path: string, kind: "xhtml" | "svg") => {
-  const findings: Array<Finding> = [];
-  if (document.doctype !== undefined)
-    findings.push(...doctypeFindings(document.doctype, path, kind));
   for (const element of [document.root, ...Xml.descendants(document.root)]) {
     for (const attribute of element.attributes) {
       if (attribute.ns === XMLNS_NS && attribute.local === "epub" && attribute.value !== OPS_NS) {
