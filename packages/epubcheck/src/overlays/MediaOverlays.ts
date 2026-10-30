@@ -149,14 +149,17 @@ export interface PublicationContext extends ReadingOrder.Context {
   readonly manifest: ReadonlyArray<ManifestItem>;
 }
 
-// The text link checks upstream's reference checker makes, and its reading order check over all
-// the overlays' links; then the package's media-overlay attributes against the narrators.
+// The text link checks upstream's reference checker makes, its reading order check over all the
+// overlays' links, which it reports after the `toc`'s, and the package's media-overlay
+// attributes against the narrators.
 export const publicationFindings = (
   overlays: ReadonlyArray<{ readonly path: string; readonly overlay: Overlay }>,
   context: PublicationContext,
 ) => {
-  const findings: Array<Finding> = [];
-  const order = ReadingOrder.sequence(context);
+  const links: Array<Finding> = [];
+  const order: Array<Finding> = [];
+  const narrators: Array<Finding> = [];
+  const next = ReadingOrder.sequence(context);
   for (const { path, overlay } of overlays) {
     for (const link of overlay.links) {
       const { target, fragment } = link.resolved;
@@ -167,18 +170,18 @@ export const publicationFindings = (
       // References to other resources are reported elsewhere (RSC-010) and checked no further.
       if (isContentDocument(item.mediaType) && fragment !== undefined && fragment !== "") {
         if (item.mediaType === "application/xhtml+xml" && parsed.id === "") {
-          findings.push(finding(path, link, "MED-017", fragment));
+          links.push(finding(path, link, "MED-017", Url.normalizeFragment(fragment)));
         } else if (item.mediaType === "image/svg+xml" && !parsed.isValid) {
-          findings.push(finding(path, link, "MED-018", fragment));
+          links.push(finding(path, link, "MED-018", Url.normalizeFragment(fragment)));
         }
         if (parsed.id !== "" && context.ids.get(target.path)?.has(parsed.id) !== true) {
-          findings.push(finding(path, link, "RSC-012"));
+          links.push(finding(path, link, "RSC-012"));
         }
       }
-      const broken = order(link.resolved);
+      const broken = next(link.resolved);
       if (broken !== undefined) {
         const name = Url.referenceName(link.resolved);
-        findings.push(
+        order.push(
           finding(path, link, "MED-015", name, ReadingOrder.orderName(broken, context.locale)),
         );
       }
@@ -193,14 +196,14 @@ export const publicationFindings = (
     );
     const at = { line: item.element.line, column: item.element.column };
     if (narrator !== undefined && (declared === undefined || declared === "")) {
-      findings.push(finding(context.packagePath, at, "MED-010"));
+      narrators.push(finding(context.packagePath, at, "MED-010"));
     } else if (narrator !== undefined && declared !== narrator) {
-      findings.push(finding(context.packagePath, at, "MED-012"));
+      narrators.push(finding(context.packagePath, at, "MED-012"));
     } else if (narrator === undefined && declared !== undefined && declared !== "") {
-      findings.push(finding(context.packagePath, at, "MED-013"));
+      narrators.push(finding(context.packagePath, at, "MED-013"));
     }
   }
-  return findings;
+  return { links, order, narrators };
 };
 
 // Narrated documents need CSS for the declared styling classes (CSS-030).

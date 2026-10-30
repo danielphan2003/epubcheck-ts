@@ -87,6 +87,8 @@ describe("ReadingOrder.tocFindings", () => {
       hrefs: ["c1.xhtml#b", "i.png", "c1.xhtml#%61"],
       found: [["toc", "EPUB/c1.xhtml#a", "document"]],
     },
+    // Java's trim keeps a no-break space, so this ID is unknown, not empty.
+    { name: "an ID of a no-break space", hrefs: ["c1.xhtml#b", "c1.xhtml#%C2%A0"], found: [] },
     {
       name: "orders in German",
       hrefs: ["c3.xhtml#c", "c3.xhtml#a", "c2.xhtml#a"],

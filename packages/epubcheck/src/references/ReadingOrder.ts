@@ -1,6 +1,6 @@
 import { keyedSuggestion } from "../messages/MessageCatalog.ts";
+import * as JavaText from "../util/JavaText.ts";
 import * as UrlFragment from "../util/UrlFragment.ts";
-import type { Finding } from "./Collect.ts";
 import * as Url from "./Url.ts";
 
 // Upstream's reading order check, over the `toc` links of the Navigation Documents (NAV-011) and
@@ -38,7 +38,7 @@ export const sequence = ({ items, spine, ids }: Context) => {
     }
     // A fragment that names no ID points at the document's start; an unknown ID is not placed.
     const id = UrlFragment.parse(fragment ?? "", item.mediaType).id;
-    const anchor = id.trim() === "" ? 0 : (ids.get(target.path)?.get(id) ?? -2) + 1;
+    const anchor = JavaText.trim(id) === "" ? 0 : (ids.get(target.path)?.get(id) ?? -2) + 1;
     if (anchor < 0) return undefined;
     const broken = anchor < lastAnchor;
     lastAnchor = anchor;
@@ -60,10 +60,10 @@ export interface TocLink {
 // The `toc` links of every Navigation Document form one sequence.
 export const tocFindings = (links: ReadonlyArray<TocLink>, context: Context) => {
   const next = sequence(context);
-  return links.flatMap(({ resolved, path, line, column }): Array<Finding> => {
+  return links.flatMap(({ resolved, path, line, column }) => {
     const order = next(resolved);
     if (order === undefined) return [];
     const args = ["toc", Url.referenceName(resolved), orderName(order, context.locale)];
-    return [{ id: "NAV-011", args, path, line, column }];
+    return [{ id: "NAV-011" as const, args, path, line, column }];
   });
 };

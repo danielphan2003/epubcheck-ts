@@ -73,6 +73,31 @@ describe("Collect.fromDocument in a Navigation Document", () => {
       found: [],
       toc: ["EPUB/c2.xhtml", "EPUB/c1.xhtml"],
     },
+    // upstream splits `epub:type` on ASCII whitespace only.
+    {
+      name: "a type joined by a no-break space",
+      body: `<nav epub:type="landmarks\u00a0x">${links("https://example.org/x")}</nav>`,
+      found: [],
+      toc: [],
+    },
+    // galimatias strips Java whitespace around a URL; the message quotes it as written.
+    {
+      name: "a remote link after an ideographic space",
+      body: `<nav epub:type="toc">${links("\u3000https://example.org/r")}</nav>`,
+      found: [["NAV-010", "toc", "\u3000https://example.org/r"]],
+      toc: [],
+    },
+    // A document checked alone has its own `file:` URL, whose origin a host-less one shares.
+    {
+      name: "a file link in a document checked alone",
+      body: `<nav epub:type="toc">${links("file:///etc/passwd")}</nav>`,
+      alone: true,
+      found: [
+        ["RSC-030", "file:///etc/passwd"],
+        ["RSC-030", "file:///etc/passwd"],
+      ],
+      toc: ["file:///etc/passwd"],
+    },
     // Upstream checks each link of a Navigation Document twice.
     {
       name: "an invalid URL",
@@ -98,9 +123,9 @@ describe("Collect.fromDocument in a Navigation Document", () => {
       found: [],
       toc: ["EPUB/c1.xhtml#a"],
     },
-  ])("reads $name", ({ head, body, found, toc }) => {
-    const context = { version: "3", container: true } as const;
-    const read = Collect.fromDocument(document(head ?? "", body), "EPUB/nav.xhtml", context, true);
+  ])("reads $name", ({ head, body, alone, found, toc }) => {
+    const context = { version: "3", container: alone !== true, navigation: true } as const;
+    const read = Collect.fromDocument(document(head ?? "", body), "EPUB/nav.xhtml", context);
     expect(read.findings.map(({ id, args }) => [id, ...args])).toEqual(found);
     expect(read.tocLinks.map(({ resolved }) => Url.referenceName(resolved))).toEqual(toc);
   });

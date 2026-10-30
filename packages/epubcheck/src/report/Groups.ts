@@ -1,7 +1,8 @@
 import type { Message } from "./Report.ts";
 
 // Upstream's reports merge messages with the same ID, severity and text, list at most
-// `maxOfEachMessage` locations for each (negative: all), and count the rest.
+// `maxOfEachMessage` locations for each (negative: all), and count the rest. A location equal
+// to a listed one is dropped.
 
 export interface Group {
   readonly first: Message;
@@ -20,12 +21,19 @@ export const group = (messages: ReadonlyArray<Message>, maxOfEachMessage: number
     else existing.all.push(message);
   }
   return [...groups.values()].map(({ first, all }): Group => {
-    const shown = maxOfEachMessage < 0 ? all : all.slice(0, maxOfEachMessage);
-    return {
-      first,
-      locations: shown.map((message) => message.location),
-      additionalLocations: all.length - shown.length,
-    };
+    const locations: Array<Message["location"]> = [];
+    const listed = new Set<string>();
+    let additionalLocations = 0;
+    for (const { location } of all) {
+      const { path, line, column, context } = location;
+      const key = JSON.stringify([path, line, column, context]);
+      if (listed.has(key)) continue;
+      if (maxOfEachMessage < 0 || locations.length < maxOfEachMessage) {
+        locations.push(location);
+        listed.add(key);
+      } else additionalLocations++;
+    }
+    return { first, locations, additionalLocations };
   });
 };
 

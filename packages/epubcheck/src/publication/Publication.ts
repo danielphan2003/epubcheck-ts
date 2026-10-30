@@ -243,7 +243,10 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
           : FixedLayout.xhtmlFindings(document.value, item.path, fixed),
       );
     }
-    const collected = Collect.fromDocument(document.value, item.path, context, kind === "nav");
+    const collected = Collect.fromDocument(document.value, item.path, {
+      ...context,
+      navigation: kind === "nav",
+    });
     tocLinks.push(...collected.tocLinks);
     references.push(...collected.references);
     fonts.push(...collected.fonts);
@@ -253,10 +256,11 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       for (const child of element.children) if (child.kind === "text") count += child.text.length;
     }
     characters.push({ path: reportPath(item.path), count });
-    ids.set(nfc(item.path), Collect.ids(document.value));
+    const found = Collect.idPositions(document.value);
+    ids.set(nfc(item.path), new Set(found.keys()));
     yield* reportFindings(collected.findings);
     if (collected.features.scripts) scripts = true;
-    positions.set(nfc(item.path), Collect.idPositions(document.value));
+    positions.set(nfc(item.path), found);
     const { root } = document.value;
     const end = { line: root.endLine, column: root.endColumn };
     documents.push({ item, path: item.path, features: collected.features, end });
@@ -334,18 +338,24 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     ids: positions,
     locale: report.locale,
   };
+  // Upstream checks the overlays' text links with the other references, then the reading order
+  // of the `toc`, then that of the overlays.
+  const overlayFindings =
+    opf.version === "3"
+      ? MediaOverlays.publicationFindings(overlays, {
+          ...order,
+          packagePath: opf.path,
+          narrators,
+          manifest: opf.items,
+        })
+      : undefined;
+  yield* reportFindings(overlayFindings?.links ?? []);
   yield* reportFindings(ReadingOrder.tocFindings(tocLinks, order));
+  yield* reportFindings(overlayFindings?.order ?? []);
   if (opf.version === "3") {
     yield* reportFindings(MediaOverlays.styleFindings(opf.metadata, documents));
-    yield* reportFindings(
-      MediaOverlays.publicationFindings(overlays, {
-        ...order,
-        packagePath: opf.path,
-        narrators,
-        manifest: opf.items,
-      }),
-    );
   }
+  yield* reportFindings(overlayFindings?.narrators ?? []);
   if (opf.version === "3") {
     const dictionaries = new Set(
       documents.flatMap((document) =>
@@ -458,6 +468,6 @@ export const checkDocumentReferences = Effect.fn("Publication.checkDocumentRefer
     locale: (yield* Report.Report).locale,
   };
   yield* reportFindings(
-    Collect.fromDocument(document.value, path, context, kind === "nav").findings,
+    Collect.fromDocument(document.value, path, { ...context, navigation: kind === "nav" }).findings,
   );
 });
