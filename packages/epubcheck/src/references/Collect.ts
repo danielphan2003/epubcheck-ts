@@ -3,6 +3,8 @@ import * as Result from "effect/Result";
 import * as CssChecker from "../css/CssChecker.ts";
 import type { MessageId } from "../messages/MessageCatalog.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
+import * as JavaText from "../util/JavaText.ts";
+import type { TocLink } from "./ReadingOrder.ts";
 import * as Xml from "../xml/Xml.ts";
 import * as Url from "./Url.ts";
 
@@ -70,6 +72,8 @@ export interface Context {
   readonly undeclaredClasses?: ReadonlyArray<readonly [string, string]> | undefined;
   // The reporting locale, which CSS syntax errors are worded in.
   readonly locale?: string | undefined;
+  // Whether the document is a Navigation Document, which upstream's NavHandler reads too.
+  readonly navigation?: boolean | undefined;
 }
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -210,7 +214,14 @@ const svgHrefs = (element: Xml.XmlElement, epub3: boolean) => {
   return xlink === undefined || xlink === href ? [href] : [href, xlink];
 };
 
-// References, URL findings and features of an XHTML or SVG content document.
+// Java's `\s`, which upstream splits `epub:type` values on: ASCII whitespace only.
+const JAVA_SPACE = /[ \t\n\v\f\r]+/;
+
+// The nav types upstream's NavHandler reads, in the order it tests them: the last one wins.
+const NAV_TYPES = ["toc", "page-list", "landmarks"] as const;
+
+// References, URL findings and features of an XHTML or SVG content document; for a Navigation
+// Document, also the rules of its navs and the `toc` links to check the reading order of.
 export const fromDocument = (document: Xml.XmlDocument, path: string, context: Context) => {
   const references: Array<Reference> = [];
   const findings: Array<Finding> = [];
@@ -233,6 +244,8 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
   let glossary = false;
   let styled = false;
   const remoteStyles: Array<number> = [];
+  const tocLinks: Array<TocLink> = [];
+  let navType: (typeof NAV_TYPES)[number] | undefined;
 
   interface Position {
     readonly line: number;
@@ -340,7 +353,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     register(resource(url, start(element)), type, element, start(element), { resource: true });
   const hyperlink = (element: Xml.XmlElement, href: string | undefined) => {
     if (href === undefined) return;
-    const trimmed = href.trim();
+    const trimmed = JavaText.trim(href);
     if (trimmed === "") {
       findings.push({ id: "HTM-045", args: [], path, ...start(element) });
       return;
@@ -545,10 +558,28 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     if (epub3) {
       if (element.attributes.some((attribute) => EVENT_HANDLERS.has(attribute.local.toLowerCase())))
         scripted = scripts = true;
-      const types = (Xml.attribute(element, "type", OPS_NS) ?? "").split(/\s+/);
+      const types = (Xml.attribute(element, "type", OPS_NS) ?? "").split(JAVA_SPACE);
       if (types.includes("dictionary")) dictionary ??= start(element);
       if (types.includes("index")) index = true;
       if (types.includes("glossary")) glossary = true;
+    }
+    // NavHandler checks each XHTML `a` again, as written, after the hyperlink checks. A nav
+    // without one of its types keeps the current one; any `</nav>` ends it.
+    if (context.navigation !== true || element.ns !== XHTML_NS) return;
+    if (element.local === "nav") {
+      const types = (Xml.attribute(element, "type", OPS_NS) ?? "").split(JAVA_SPACE);
+      navType = NAV_TYPES.findLast((type) => types.includes(type)) ?? navType;
+    } else if (element.local === "a") {
+      const href = Xml.attribute(element, "href");
+      const resolved = check(href, start(element));
+      if (href === undefined || resolved === undefined || navType === undefined) return;
+      // A document checked alone has its own `file:` URL, whose origin a host-less one shares.
+      const remote =
+        resolved.target.kind === "remote" &&
+        (context.container || !resolved.target.url.startsWith("file:///"));
+      if (remote) {
+        findings.push({ id: "NAV-010", args: [navType, href], path, ...start(element) });
+      } else if (navType === "toc") tocLinks.push({ resolved, path, ...start(element) });
     }
   };
 
@@ -559,6 +590,9 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
         child.kind === "text" ? child.text.trim() !== "" : isPalpable(child, palpable),
       ),
     );
+    if (context.navigation === true && element.ns === XHTML_NS && element.local === "nav") {
+      navType = undefined;
+    }
     if (element.ns !== XHTML_NS || !epub3) return;
     if (element.local === "picture") inPicture = false;
     if (element.local === "object") {
@@ -628,7 +662,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     styled: styled || references.some((reference) => reference.type === "stylesheet"),
     remoteStyles,
   };
-  return { references, findings, features, fonts };
+  return { references, findings, features, fonts, tocLinks };
 };
 
 // A Search Key Map Document links search key groups and matches to dictionary content.
@@ -676,20 +710,9 @@ const NOT_PALPABLE = new Set(["html", "head", "script", "link", "meta", "title",
 export const idPositions = (document: Xml.XmlDocument) => {
   const positions = new Map<string, number>();
   for (const element of [document.root, ...Xml.descendants(document.root)]) {
-    const id =
-      Xml.attribute(element, "id") ??
-      Xml.attribute(element, "id", "http://www.w3.org/XML/1998/namespace");
-    if (id !== undefined && !positions.has(id.trim())) positions.set(id.trim(), positions.size);
+    // Upstream registers the `id` attributes, as written.
+    const id = Xml.attribute(element, "id");
+    if (id !== undefined && !positions.has(id)) positions.set(id, positions.size);
   }
   return positions;
-};
-
-// The IDs a fragment can point to.
-export const ids = (document: Xml.XmlDocument) => {
-  const found = new Set<string>();
-  for (const element of [document.root, ...Xml.descendants(document.root)]) {
-    const id = Xml.attribute(element, "id");
-    if (id !== undefined) found.add(id.trim());
-  }
-  return found;
 };

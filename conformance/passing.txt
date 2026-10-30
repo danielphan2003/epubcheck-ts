@@ -887,11 +887,14 @@ epub3/07-content-documents/content-documents-xhtml.feature:990 Report deprecated
 epub3/08-navigation-document/navigation-document.feature:102 Allow nav hyperlinks to have leading and trailig spaces
 epub3/08-navigation-document/navigation-document.feature:109 Report a nav list without content
 epub3/08-navigation-document/navigation-document.feature:117 Report a `toc nav` that links to documents not in the spine
+epub3/08-navigation-document/navigation-document.feature:123 Report external links in the `toc`, `page-list` and `landmarks` `nav` elements
 epub3/08-navigation-document/navigation-document.feature:129 Report a `toc nav` that links to resource that is not a Content Document
 epub3/08-navigation-document/navigation-document.feature:134 Verify a Navigation Document using EPUB CFI
 epub3/08-navigation-document/navigation-document.feature:143 Allow a nested `toc` nav
 epub3/08-navigation-document/navigation-document.feature:149 Verify a `toc nav` with links that match the reading order
 epub3/08-navigation-document/navigation-document.feature:15 Verify a minimal Navigation Document
+epub3/08-navigation-document/navigation-document.feature:154 Report a `toc nav` whose links do not match the spine order
+epub3/08-navigation-document/navigation-document.feature:160 Report a `toc nav` whose link fragments do match the document order
 epub3/08-navigation-document/navigation-document.feature:165 Verify a `toc nav` which does not link to all spine items
 epub3/08-navigation-document/navigation-document.feature:175 Allow a `page-list` nav
 epub3/08-navigation-document/navigation-document.feature:181 Report multiple occurences of `page-list` nav

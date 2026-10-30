@@ -13,6 +13,7 @@ import * as OcfChecker from "../ocf/OcfChecker.ts";
 import type { Collection, ManifestItem, PackageDocument } from "../opf/PackageDocument.ts";
 import * as Collect from "../references/Collect.ts";
 import * as Profiles from "../profiles/Profiles.ts";
+import * as ReadingOrder from "../references/ReadingOrder.ts";
 import * as ReferenceChecker from "../references/ReferenceChecker.ts";
 import * as Url from "../references/Url.ts";
 import * as Report from "../report/Report.ts";
@@ -123,8 +124,10 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     readonly features: Collect.Features;
     readonly end: { readonly line: number; readonly column: number };
   }> = [];
-  // Style sheets, for the fonts the reports list.
+  // The fonts style sheets declare, which the reports list.
   const fonts: Array<{ readonly embedded: boolean; readonly name: string }> = [];
+  // The `toc` links of the Navigation Documents, in the order they are read.
+  const tocLinks: Array<ReadingOrder.TocLink> = [];
   for (const item of opf.items) {
     // An item for the package document itself is OPF-099, not a content document.
     if (item.path === undefined || item.path === opf.path) continue;
@@ -240,7 +243,11 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
           : FixedLayout.xhtmlFindings(document.value, item.path, fixed),
       );
     }
-    const collected = Collect.fromDocument(document.value, item.path, context);
+    const collected = Collect.fromDocument(document.value, item.path, {
+      ...context,
+      navigation: kind === "nav",
+    });
+    tocLinks.push(...collected.tocLinks);
     references.push(...collected.references);
     fonts.push(...collected.fonts);
     const elements = [document.value.root, ...Xml.descendants(document.value.root)];
@@ -249,10 +256,11 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       for (const child of element.children) if (child.kind === "text") count += child.text.length;
     }
     characters.push({ path: reportPath(item.path), count });
-    ids.set(nfc(item.path), Collect.ids(document.value));
+    const found = Collect.idPositions(document.value);
+    ids.set(nfc(item.path), new Set(found.keys()));
     yield* reportFindings(collected.findings);
     if (collected.features.scripts) scripts = true;
-    positions.set(nfc(item.path), Collect.idPositions(document.value));
+    positions.set(nfc(item.path), found);
     const { root } = document.value;
     const end = { line: root.endLine, column: root.endColumn };
     documents.push({ item, path: item.path, features: collected.features, end });
@@ -324,19 +332,30 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
   }
   yield* reportFindings(ReferenceChecker.check(references, publication));
+  const order = {
+    items: publication.items,
+    spine: opf.spine.flatMap((idref) => byId.get(idref)?.path ?? []).map(nfc),
+    ids: positions,
+    locale: report.locale,
+  };
+  // Upstream checks the overlays' text links with the other references, then the reading order
+  // of the `toc`, then that of the overlays.
+  const overlayFindings =
+    opf.version === "3"
+      ? MediaOverlays.publicationFindings(overlays, {
+          ...order,
+          packagePath: opf.path,
+          narrators,
+          manifest: opf.items,
+        })
+      : undefined;
+  yield* reportFindings(overlayFindings?.links ?? []);
+  yield* reportFindings(ReadingOrder.tocFindings(tocLinks, order));
+  yield* reportFindings(overlayFindings?.order ?? []);
   if (opf.version === "3") {
     yield* reportFindings(MediaOverlays.styleFindings(opf.metadata, documents));
-    yield* reportFindings(
-      MediaOverlays.publicationFindings(overlays, {
-        items: publication.items,
-        ids: positions,
-        spine: opf.spine.flatMap((idref) => byId.get(idref)?.path ?? []).map(nfc),
-        packagePath: opf.path,
-        narrators,
-        manifest: opf.items,
-      }),
-    );
   }
+  yield* reportFindings(overlayFindings?.narrators ?? []);
   if (opf.version === "3") {
     const dictionaries = new Set(
       documents.flatMap((document) =>
@@ -448,5 +467,7 @@ export const checkDocumentReferences = Effect.fn("Publication.checkDocumentRefer
     undeclaredClasses: MediaOverlays.undeclaredClasses({}),
     locale: (yield* Report.Report).locale,
   };
-  yield* reportFindings(Collect.fromDocument(document.value, path, context).findings);
+  yield* reportFindings(
+    Collect.fromDocument(document.value, path, { ...context, navigation: kind === "nav" }).findings,
+  );
 });

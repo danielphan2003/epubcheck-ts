@@ -138,7 +138,7 @@ const normalizeRemote = (url: URL) => {
 
 // A fragment as upstream's URLs hold it: controls and non-ASCII characters percent-encoded,
 // and escapes of unreserved characters decoded.
-const normalizeFragment = (fragment: string) => {
+export const normalizeFragment = (fragment: string) => {
   let encoded = "";
   for (const char of fragment) {
     const code = char.codePointAt(0) ?? 0;
@@ -224,12 +224,15 @@ export const checker = (documentPath: string, options: { readonly container: boo
     const problems: Array<Problem> = [];
     if (input.startsWith("file:")) problems.push({ id: "RSC-030", args: [input] });
     const value = input.startsWith("data:") ? input.replace(/[ \t\n\v\f\r]/g, "") : input;
-    const url = parse(value, base);
+    // galimatias strips Java whitespace around the URL, where the WHATWG parser strips only C0
+    // controls and spaces; messages quote it as written.
+    const stripped = JavaText.stripWhitespace(value);
+    const url = parse(stripped, base);
     const syntax = syntaxProblem(value);
     if (syntax !== undefined) problems.push({ id: "RSC-020", args: [value, syntax] });
     if (url === undefined) return { problems, url };
-    const a = parse(value, testA)?.href ?? "";
-    const b = parse(value, testB)?.href ?? "";
+    const a = parse(stripped, testA)?.href ?? "";
+    const b = parse(stripped, testB)?.href ?? "";
     if (isBase) {
       testA = a;
       testB = b;
@@ -254,7 +257,10 @@ export const checker = (documentPath: string, options: { readonly container: boo
   return {
     check: (input: string) => {
       const { problems, url } = resolve(input, false);
-      const hash = input.indexOf("#");
+      // The fragment galimatias reads: from the URL stripped of whitespace around it, and of
+      // tabs and line breaks anywhere.
+      const cleaned = JavaText.stripWhitespace(input).replace(/[\t\n\r]/g, "");
+      const hash = cleaned.indexOf("#");
       const scheme = /^\s*([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(input)?.[1]?.toLowerCase();
       // An absolute URL only the WHATWG parser rejects is still a remote URL upstream.
       if (
@@ -266,14 +272,14 @@ export const checker = (documentPath: string, options: { readonly container: boo
         const target: Target = { kind: "remote", url: input.trim().split("#")[0] ?? "", scheme };
         const resolved: Resolved = {
           target,
-          fragment: hash < 0 ? undefined : input.slice(hash + 1),
+          fragment: hash < 0 ? undefined : cleaned.slice(hash + 1),
         };
         return { problems, resolved };
       }
       if (url === undefined) return { problems, resolved: undefined };
       const resolved: Resolved = {
         target: targetOf(url),
-        fragment: hash < 0 ? undefined : input.slice(hash + 1),
+        fragment: hash < 0 ? undefined : cleaned.slice(hash + 1),
       };
       return { problems, resolved };
     },
