@@ -56,7 +56,7 @@ epubcheck-ts detects.
 
 <!-- conformance:start -->
 
-Upstream suite: EPUBCheck v5.4.0. Passing **1113 / 1251** scenarios (89.0%); scenarios that expect reported messages: **598 / 720** (83.1%).
+Upstream suite: EPUBCheck v5.4.0. Passing **1130 / 1251** scenarios (90.3%); scenarios that expect reported messages: **615 / 720** (85.4%).
 
 | Area                                    | Passing | Total |      % |
 | --------------------------------------- | ------: | ----: | -----: |
@@ -79,7 +79,7 @@ Upstream suite: EPUBCheck v5.4.0. Passing **1113 / 1251** scenarios (89.0%); sce
 | `epub3/06-layouts`                      |      20 |    20 | 100.0% |
 | `epub3/07-content-documents`            |     200 |   235 |  85.1% |
 | `epub3/08-navigation-document`          |      36 |    40 |  90.0% |
-| `epub3/09-media-overlays`               |      32 |    50 |  64.0% |
+| `epub3/09-media-overlays`               |      49 |    50 |  98.0% |
 | `epub3/B-external-identifiers`          |       1 |     3 |  33.3% |
 | `epub3/C-viewport-meta-tag`             |      34 |    34 | 100.0% |
 | `epub3/D-vocabularies`                  |      79 |    79 | 100.0% |

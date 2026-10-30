@@ -853,9 +853,16 @@ epub3/09-media-overlays/media-overlays.feature:102 Allow clock values with the f
 epub3/09-media-overlays/media-overlays.feature:107 Allow clock values with the partial clock syntax (`mm:ss.milli`)
 epub3/09-media-overlays/media-overlays.feature:112 Allow clock values with the timecount syntax (`XXmin`)
 epub3/09-media-overlays/media-overlays.feature:117 Report invalid clock values
+epub3/09-media-overlays/media-overlays.feature:123 Report if the `clipBegin` value is after the `clipEnd` value
+epub3/09-media-overlays/media-overlays.feature:129 Report if the `clipEnd` value equals the `clipBegin` value
+epub3/09-media-overlays/media-overlays.feature:135 Report an audio clip that is not a Core Media Type
+epub3/09-media-overlays/media-overlays.feature:145 Report an overlay document whose text elements do not match the dom order of the corresponding content document
 epub3/09-media-overlays/media-overlays.feature:15 Verify that a Media Overlays Document can have any extension
 epub3/09-media-overlays/media-overlays.feature:154 Allow empty fragment identifiers
+epub3/09-media-overlays/media-overlays.feature:159 Report a fragment identifier that does not resolve to an element
+epub3/09-media-overlays/media-overlays.feature:165 Warn about XHTML scheme-based fragments
 epub3/09-media-overlays/media-overlays.feature:171 Allow SVG fragment identifiers
+epub3/09-media-overlays/media-overlays.feature:176 Warn about invalid SVG fragment identifiers
 epub3/09-media-overlays/media-overlays.feature:184 Allow epub:type properties in the default vocabulary
 epub3/09-media-overlays/media-overlays.feature:188 Allow custom epub:type properties with a declared prefix
 epub3/09-media-overlays/media-overlays.feature:202 Verify 'media:active-class' and 'media:playback-active-class' properties referring to classes defined in a stylesheet
@@ -865,15 +872,24 @@ epub3/09-media-overlays/media-overlays.feature:22 Verify a minimal EPUB 3 public
 epub3/09-media-overlays/media-overlays.feature:223 Verify 'media:active-class' and 'media:playback-active-class' properties referring to classes defined in stylesheet linked from SVG
 epub3/09-media-overlays/media-overlays.feature:230 Verify 'media:active-class' and 'media:playback-active-class' properties referring to classes defined in stylesheet imported from SVG
 epub3/09-media-overlays/media-overlays.feature:237 Verify 'media:active-class' and 'media:playback-active-class' properties referring to classes defined in stylesheet linked as processing instruction from SVG
+epub3/09-media-overlays/media-overlays.feature:243 Report when well-known class names are found in CSS but not declared in the package document
+epub3/09-media-overlays/media-overlays.feature:251 Report when 'media:active-class' is defined but no CSS was found in the XHTML content document
+epub3/09-media-overlays/media-overlays.feature:257 Report when 'media:playback-active-class' is defined but no CSS was found in the XHTML content document
+epub3/09-media-overlays/media-overlays.feature:263 Report when 'media:active-class' is defined but no CSS was found in the SVG content document
 epub3/09-media-overlays/media-overlays.feature:269 Report a 'media:active-class' property with a refines attribute
 epub3/09-media-overlays/media-overlays.feature:27 Verify a minimal Media Overlay document
 epub3/09-media-overlays/media-overlays.feature:276 Report a 'media:playback-active-class' property with a refines attribute
 epub3/09-media-overlays/media-overlays.feature:283 Report  a 'media:active-class' property that defines more than one class
 epub3/09-media-overlays/media-overlays.feature:290 Report  a 'media:playback-active-class' property that defines more than one class
+epub3/09-media-overlays/media-overlays.feature:303 Report an EPUB content document referenced from an overlay that is missing its media-overlay attribute
+epub3/09-media-overlays/media-overlays.feature:309 Report an EPUB content document that references the wrong overlay
+epub3/09-media-overlays/media-overlays.feature:315 Report an EPUB content document that declares a media-overlay attribute but is not referenced from the overlay
+epub3/09-media-overlays/media-overlays.feature:32 Report an EPUB content document that is declared in more than one overlay
 epub3/09-media-overlays/media-overlays.feature:321 a Media Overlay must have the media type 'application/smil+xml'
 epub3/09-media-overlays/media-overlays.feature:328 Report use of the media-overlay attribute on non-EPUB Content Documents
 epub3/09-media-overlays/media-overlays.feature:338 the entire publication duration must be defined
 epub3/09-media-overlays/media-overlays.feature:345 the duration of each Media Overlay must be defined
+epub3/09-media-overlays/media-overlays.feature:352 the total duration should be the sum of all Media Overlay durations
 epub3/09-media-overlays/media-overlays.feature:358 the total duration has a 1s tolerance
 epub3/09-media-overlays/media-overlays.feature:38 Verify a minimal EPUB 3 publication with Media Overlays for SVG content
 epub3/09-media-overlays/media-overlays.feature:48 Report a `meta` element used in the `head` container
@@ -881,6 +897,7 @@ epub3/09-media-overlays/media-overlays.feature:57 Allow a `metadata` element wit
 epub3/09-media-overlays/media-overlays.feature:65 Report media clips used as direct children of a `seq` element
 epub3/09-media-overlays/media-overlays.feature:76 Report a `par` element with more than one `text` child
 epub3/09-media-overlays/media-overlays.feature:83 Report a `par` element with a `seq` child
+epub3/09-media-overlays/media-overlays.feature:96 Report an audio file URL with a fragment
 epub3/B-external-identifiers/external-identifiers.feature:14 Verify DOCTYPE declarations with allowed external identifiers
 epub3/C-viewport-meta-tag/viewport-syntax.feature:15 parsing valid viewport values
 epub3/C-viewport-meta-tag/viewport-syntax.feature:17 parsing valid viewport values

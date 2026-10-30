@@ -16,3 +16,4 @@ reported message, which a checker that reports nothing cannot pass.
 | [#9](https://github.com/danielphan2003/epubcheck-ts/pull/9)   | Resources: fallbacks, core media types, resource types             | 1033 / 1251 | 518 / 720 |
 | [#10](https://github.com/danielphan2003/epubcheck-ts/pull/10) | Profiles: dictionaries, EDUPUB, indexes, previews, data navigation | 1091 / 1251 | 576 / 720 |
 | [#11](https://github.com/danielphan2003/epubcheck-ts/pull/11) | Layout: fixed-layout viewports, page spreads                       | 1113 / 1251 | 598 / 720 |
+| [#12](https://github.com/danielphan2003/epubcheck-ts/pull/12) | Media overlays: clips, text references, styling                    | 1130 / 1251 | 615 / 720 |

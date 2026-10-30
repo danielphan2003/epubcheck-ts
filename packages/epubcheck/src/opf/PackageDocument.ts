@@ -37,6 +37,9 @@ export interface Metadata {
   readonly types: ReadonlyArray<string>;
   // The global `rendition:layout` values: those of metas that refine nothing.
   readonly layouts: ReadonlyArray<string>;
+  // Media Overlays styling class names (`media:active-class`, `media:playback-active-class`).
+  readonly activeClass: string | undefined;
+  readonly playbackActiveClass: string | undefined;
 }
 
 // A `collection` element (EPUB 3): its roles, its own links, and the collections nested in it.
@@ -184,6 +187,23 @@ const readMetadata = (
         false,
       )[0] === "rendition:layout",
   );
+  // The first package `meta` for a property, resolved through the declared prefixes as upstream
+  // resolves it; unrefined unless `refined` allows any.
+  const meta = (property: string, refined = false) => {
+    const element = elements.find(
+      (candidate) =>
+        candidate.ns === OPF_NS &&
+        candidate.local === "meta" &&
+        (refined || Xml.attribute(candidate, "refines") === undefined) &&
+        Vocabularies.canonicalNames(
+          Xml.attribute(candidate, "property"),
+          "meta",
+          prefixes,
+          false,
+        )[0] === property,
+    );
+    return element === undefined ? undefined : Xml.textContent(element).trim();
+  };
   const modified = elements.find(
     (element) =>
       element.ns === OPF_NS &&
@@ -203,6 +223,9 @@ const readMetadata = (
     date: values("date")[0],
     types: values("type"),
     layouts: layouts.map((element) => Xml.textContent(element).trim()),
+    // Upstream notes the styling classes whether or not their metas refine anything.
+    activeClass: meta("media:active-class", true),
+    playbackActiveClass: meta("media:playback-active-class", true),
     modified: modified === undefined ? undefined : Xml.textContent(modified).trim(),
   };
 };

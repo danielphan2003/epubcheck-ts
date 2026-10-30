@@ -156,6 +156,8 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
       }
       continue;
     }
+    // An overlay link's fragment is checked with the other overlay rules.
+    if (type === "overlay-text") continue;
     if (!resourceFindings(reference, item.mediaType, item)) continue;
     // A search key must lead to a spine item, unless an EPUB CFI says where.
     if (type === "search-key" && !publication.spine.has(item)) {

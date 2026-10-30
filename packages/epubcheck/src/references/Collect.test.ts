@@ -80,3 +80,48 @@ describe("Collect.srcsetUrls", () => {
     expect(Collect.srcsetUrls(srcset)).toEqual(urls);
   });
 });
+
+describe("Collect.cssSelectors", () => {
+  it.each([
+    {
+      name: "a selector list",
+      css: "p,\n  .a > b { color: red }",
+      selectors: [
+        { text: "p", line: 1, column: 1 },
+        { text: ".a > b ", line: 2, column: 3 },
+      ],
+    },
+    {
+      name: "rules in @media, not at-rule preludes or declarations",
+      css: "@media print { .a { x: y } }\n@font-face { src: url(a.otf) }",
+      selectors: [{ text: ".a ", line: 1, column: 16 }],
+    },
+    {
+      name: "a selector after a comment, not one in a string",
+      css: '/* .x { } */ .a[title=".b"] { }',
+      selectors: [{ text: '.a[title=""] ', line: 1, column: 14 }],
+    },
+  ])("reads $name", ({ css, selectors }) => {
+    expect(Collect.cssSelectors(css)).toEqual(selectors);
+  });
+});
+
+// Each answer is EPUBCheck 5.4.0's CSS-029.
+describe("Collect.fromCss", () => {
+  const context = {
+    version: "3",
+    container: true,
+    undeclaredClasses: [["-epub-media-overlay-active", "media:active-class"]],
+  } as const;
+  it.each([
+    { css: "p, .-epub-media-overlay-active b { }", at: [[1, 4]] },
+    { css: "/* .-epub-media-overlay-active { } */", at: [] },
+    { css: "a:not(.-epub-media-overlay-active) { }", at: [] },
+    { css: ":not(p).-epub-media-overlay-active { }", at: [[1, 1]] },
+    { css: ".\\-epub-media-overlay-active { }", at: [[1, 1]] },
+    { css: ".-epub-media-overlay-active2 { }", at: [] },
+  ])("reports CSS-029 for $css", ({ css, at }) => {
+    const { findings } = Collect.fromCss(css, "EPUB/a.css", context);
+    expect(findings.map((finding) => [finding.line, finding.column])).toEqual(at);
+  });
+});

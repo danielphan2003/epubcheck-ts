@@ -26,7 +26,9 @@ export type ReferenceType =
   | "svg-symbol"
   | "cite"
   // A Search Key Map's link to dictionary content.
-  | "search-key";
+  | "search-key"
+  // A Media Overlay's link to the content it narrates.
+  | "overlay-text";
 
 export interface Finding {
   readonly id: MessageId;
@@ -62,6 +64,9 @@ export interface Context {
   readonly container: boolean;
   // The media type of a resource in a publication: its manifest item's, or a data URL's own.
   readonly mediaTypeOf?: ((target: Url.Target) => string | undefined) | undefined;
+  // Media Overlays styling classes the package does not declare, with their properties, which a
+  // selector using them is reported for (CSS-029).
+  readonly undeclaredClasses?: ReadonlyArray<readonly [string, string]> | undefined;
 }
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -84,6 +89,8 @@ export interface Features {
   // Content that allows the `index` and `glossary` properties.
   readonly index: boolean;
   readonly glossary: boolean;
+  // Whether the document has a style sheet or `style` element (not just `style` attributes).
+  readonly styled: boolean;
   // Where each `style` element or attribute whose CSS uses remote resources starts.
   readonly remoteStyles: ReadonlyArray<number>;
 }
@@ -324,6 +331,122 @@ const canonical = (value: string) => {
   return JSON.stringify([parsed.essence, sorted]);
 };
 
+// The selectors of a style sheet's rules, outside comments and strings, with their positions
+// (1-based, relative to the CSS text). At-rule preludes and declarations are not selectors; the
+// rules of conditional group at-rules such as `@media` are.
+export const cssSelectors = (css: string) => {
+  const selectors: Array<{
+    readonly text: string;
+    readonly line: number;
+    readonly column: number;
+  }> = [];
+  let index = 0;
+  let line = 1;
+  let column = 1;
+  const advance = () => {
+    const char = css[index];
+    index++;
+    if (char === "\n" || (char === "\r" && css[index] !== "\n")) {
+      line++;
+      column = 1;
+    } else column++;
+  };
+  // Whether each open block holds rules (the style sheet itself, `@media`, ...) or anything else.
+  const blocks: Array<boolean> = [];
+  let prelude: Array<{ readonly char: string; readonly line: number; readonly column: number }> =
+    [];
+  const holdsRules = () => blocks.at(-1) ?? true;
+  while (index < css.length) {
+    const char = css[index] ?? "";
+    if (char === "/" && css[index + 1] === "*") {
+      const end = css.indexOf("*/", index + 2);
+      const stop = end < 0 ? css.length : end + 2;
+      while (index < stop) advance();
+      prelude.push({ char: " ", line, column });
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      prelude.push({ char: '""', line, column });
+      advance();
+      while (index < css.length && css[index] !== char && css[index] !== "\n") {
+        if (css[index] === "\\") advance();
+        advance();
+      }
+      advance();
+      continue;
+    }
+    if (char === "{") {
+      const text = prelude.map((each) => each.char).join("");
+      const rules = holdsRules();
+      if (rules && !text.trimStart().startsWith("@")) {
+        // A selector list: each selector starts at its first character after a top-level comma.
+        let depth = 0;
+        let begin = 0;
+        const flush = (until: number) => {
+          const part = prelude.slice(begin, until);
+          const first = part.findIndex((each) => !/\s/.test(each.char));
+          const at = part[first];
+          if (at !== undefined) {
+            const text = part
+              .slice(first)
+              .map((each) => each.char)
+              .join("");
+            selectors.push({ text, line: at.line, column: at.column });
+          }
+        };
+        prelude.forEach((each, position) => {
+          if (each.char === "(" || each.char === "[") depth++;
+          else if (each.char === ")" || each.char === "]") depth--;
+          else if (each.char === "," && depth === 0) {
+            flush(position);
+            begin = position + 1;
+          }
+        });
+        flush(prelude.length);
+      }
+      const name = /^\s*@(-?[\w-]+)/.exec(text)?.[1]?.toLowerCase() ?? "";
+      blocks.push(
+        rules && /^(?:-\w+-)?(?:media|supports|document|layer|container|scope)$/.test(name),
+      );
+      prelude = [];
+      advance();
+      continue;
+    }
+    if (char === "}" || (char === ";" && holdsRules())) {
+      if (char === "}") blocks.pop();
+      prelude = [];
+      advance();
+      continue;
+    }
+    if (holdsRules()) prelude.push({ char, line, column });
+    advance();
+  }
+  return selectors;
+};
+
+// Upstream's findClassName: a class of the selector itself, not one inside a pseudo-class's
+// arguments or an attribute selector, compared once unescaped.
+const usesClass = (selector: string, name: string) => {
+  let depth = 0;
+  let top = "";
+  for (const char of selector) {
+    if (char === "(" || char === "[") depth++;
+    else if (char === ")" || char === "]") depth = Math.max(depth - 1, 0);
+    else if (depth === 0) top += char;
+  }
+  const classes = top.matchAll(
+    /\.((?:[\w-]|[^\x00-\x7f]|\\(?:[0-9a-fA-F]{1,6}\s?|[^\n0-9a-fA-F]))+)/g,
+  );
+  return [...classes].some(
+    ([, ident = ""]) =>
+      ident.replace(
+        /\\(?:([0-9a-fA-F]{1,6})\s?|(.))/g,
+        (_, hex: string | undefined, char: string) =>
+          hex === undefined ? char : String.fromCodePoint(Number.parseInt(hex, 16)),
+      ) === name,
+  );
+};
+
 // A style sheet, or the CSS of a `style` element or attribute (`offset` lines into its document).
 export const fromCss = (css: string, path: string, context: Context, offset = 0) => {
   const references: Array<Reference> = [];
@@ -358,6 +481,14 @@ export const fromCss = (css: string, path: string, context: Context, offset = 0)
     }
     references.push({ ...resolved, type, resource: false, path, line, column: found.column });
   }
+  const undeclared = context.undeclaredClasses ?? [];
+  for (const selector of undeclared.length === 0 ? [] : cssSelectors(css)) {
+    for (const [name, property] of undeclared) {
+      if (!usesClass(selector.text, name)) continue;
+      const at = { line: offset + selector.line, column: selector.column };
+      findings.push({ id: "CSS-029", args: [name, property], path, ...at });
+    }
+  }
   return { references, findings, remote };
 };
 
@@ -391,6 +522,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
   let dictionary: Features["dictionary"];
   let index = false;
   let glossary = false;
+  let styled = false;
   const remoteStyles: Array<number> = [];
 
   interface Position {
@@ -581,6 +713,8 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
           if (epub3) addResource(element, Xml.attribute(element, "src"), "script");
           break;
         case "style":
+          // Upstream counts a `style` element as CSS only when it has text.
+          if (Xml.textContent(element).length > 0) styled = true;
           css(Xml.textContent(element), element.line);
           break;
         default:
@@ -682,6 +816,8 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
           if (epub3) addResource(element, Xml.attribute(element, "src"), "script");
           break;
         case "style":
+          // Upstream counts a `style` element as CSS only when it has text.
+          if (Xml.textContent(element).length > 0) styled = true;
           css(Xml.textContent(element), element.line);
           break;
         default:
@@ -781,6 +917,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     dictionary,
     index,
     glossary,
+    styled: styled || references.some((reference) => reference.type === "stylesheet"),
     remoteStyles,
   };
   return { references, findings, features };
@@ -826,6 +963,18 @@ const EMBEDDED = new Set([
   "video",
 ]);
 const NOT_PALPABLE = new Set(["html", "head", "script", "link", "meta", "title", "style"]);
+
+// Each ID's position in document order.
+export const idPositions = (document: Xml.XmlDocument) => {
+  const positions = new Map<string, number>();
+  for (const element of [document.root, ...Xml.descendants(document.root)]) {
+    const id =
+      Xml.attribute(element, "id") ??
+      Xml.attribute(element, "id", "http://www.w3.org/XML/1998/namespace");
+    if (id !== undefined && !positions.has(id.trim())) positions.set(id.trim(), positions.size);
+  }
+  return positions;
+};
 
 // The IDs a fragment can point to.
 export const ids = (document: Xml.XmlDocument) => {
