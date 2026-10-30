@@ -133,7 +133,7 @@ describe("Collect.fromDocument in a Navigation Document", () => {
 
 describe("Collect.fromDocument in a Data Navigation Document", () => {
   // Each row's findings and NAV-009 checks are EPUBCheck 5.4.0's: the region links are those it
-  // checks against fixed-layout items.
+  // checks against fixed-layout items, after each link's hyperlink checks.
   it.each([
     {
       name: "a region link",
@@ -190,7 +190,8 @@ describe("Collect.fromDocument in a Data Navigation Document", () => {
       dataNav: dataNav ?? true,
     });
     expect(read.findings.map(({ id, args }) => [id, ...args])).toEqual(found);
-    expect(read.regionLinks.map(({ resolved }) => Url.referenceName(resolved))).toEqual(region);
+    const links = read.references.filter((reference) => reference.type === "region-based-nav");
+    expect(links.map((reference) => Url.referenceName(reference))).toEqual(region);
   });
 });
 

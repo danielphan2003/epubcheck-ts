@@ -21,6 +21,8 @@ export interface Publication {
   // Remote manifest items, by `Url.remoteKey`.
   readonly remoteItems: ReadonlyMap<string, ManifestItem>;
   readonly spine: ReadonlySet<ManifestItem>;
+  // The IDs of fixed-layout items, as upstream marks them.
+  readonly fixedLayout: ReadonlySet<string>;
   // What each ID of each document upstream registers IDs of names, as `Collect.documentIds` reads it.
   readonly ids: ReadonlyMap<string, ReadonlyMap<string, IdType>>;
   // Documents that failed to parse: upstream knows the IDs before the error, we know none.
@@ -135,6 +137,13 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
   const undeclared = new Set<string>();
   for (const reference of references) {
     const { target, type } = reference;
+    if (type === "region-based-nav") {
+      const item = target.kind === "local" ? publication.items.get(target.path) : undefined;
+      if (item === undefined || !publication.fixedLayout.has(item.id)) {
+        findings.push(finding(reference, "NAV-009"));
+      }
+      continue;
+    }
     // Data URLs are resources of their own, registered with their type normalized, never in the
     // spine. The package document is a resource too, of a type no reference may point to (checked
     // later).

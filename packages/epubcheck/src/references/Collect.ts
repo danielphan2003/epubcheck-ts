@@ -34,7 +34,9 @@ export type ReferenceType =
   // A Search Key Map's link to dictionary content.
   | "search-key"
   // A Media Overlay's link to the content it narrates.
-  | "overlay-text";
+  | "overlay-text"
+  // A link of a region-based nav, which must point to a fixed-layout item (NAV-009).
+  | "region-based-nav";
 
 export interface Finding {
   readonly id: MessageId;
@@ -266,8 +268,6 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
   let rdfa = false;
   const remoteStyles: Array<number> = [];
   const tocLinks: Array<TocLink> = [];
-  // The links of a region-based nav, which must point to fixed-layout documents (NAV-009).
-  const regionLinks: Array<TocLink> = [];
   let regionBased = false;
   let navType: (typeof NAV_TYPES)[number] | undefined;
 
@@ -389,7 +389,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     register(resolved, "hyperlink", element, start(element));
     if (epub3 && resolved.target.kind === "data") {
       findings.push({ id: "RSC-029", args: [], path, ...start(element) });
-    } else if (regionBased) regionLinks.push({ resolved, path, ...start(element) });
+    } else if (regionBased) register(resolved, "region-based-nav", element, start(element));
   };
   const fonts: Array<{ readonly embedded: boolean; readonly name: string }> = [];
   // A `style` element or attribute, its lines counted from its element's.
@@ -710,7 +710,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     rdfa,
     remoteStyles,
   };
-  return { references, findings, features, fonts, tocLinks, regionLinks };
+  return { references, findings, features, fonts, tocLinks };
 };
 
 // A Search Key Map Document links search key groups and matches to dictionary content.
