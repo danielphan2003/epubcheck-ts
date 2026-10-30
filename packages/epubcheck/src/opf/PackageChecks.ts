@@ -264,6 +264,10 @@ const spineChecks = ({ document, opf }: Context) => {
   const spine = opfChildren(document.root, "spine")[0];
   const itemrefs = opfChildren(spine, "itemref");
   const fixed = FixedLayout.fixedLayoutIds(opf);
+  const merged = new Map<string, Set<string>>();
+  for (const { idref, properties } of opf.spineItems) {
+    merged.set(idref, new Set([...(merged.get(idref) ?? []), ...properties]));
+  }
   const seen = new Set<string>();
   // Upstream marks a manifest item non-linear for any `linear="no"` reference, and never back.
   const linear = new Map<string, boolean>();
@@ -286,13 +290,10 @@ const spineChecks = ({ document, opf }: Context) => {
       findings.push(...spineFallbackFinding(item, items));
       if (item.properties.includes("data-nav")) findings.push(at(item.element, "OPF-077"));
     }
-    // Page spreads belong to pre-paginated content; upstream also reports them under `roll`.
+    // Page spreads belong to pre-paginated content; upstream also reports them under `roll`, once
+    // per spine entry, from the properties of all the item's itemrefs.
     if (opf.version === "3" && (!fixed.has(idref) || opf.metadata.layout === "roll")) {
-      // Upstream reads the properties into a set.
-      const properties = new Set(
-        (Xml.attribute(itemref, "properties") ?? "").split(/[ \t\n\v\f\r]+/),
-      );
-      for (const property of properties) {
+      for (const property of merged.get(idref) ?? []) {
         if (SPREADS.test(property)) findings.push(at(item.element, "OPF-100", property));
       }
     }
