@@ -54,6 +54,18 @@ describe("Xml.parse doctype", () => {
       at: [1, 16],
       entities: [],
     },
+    {
+      name: "a comment and CRLF line ends first",
+      doctype: '<!-- c -->\r\n<!DOCTYPE html SYSTEM "b" [\r\n<!ENTITY e SYSTEM "e.txt">\r\n]>',
+      at: [2, 27],
+      entities: [["e", 3, 27]],
+    },
+    {
+      name: "an unparsed entity",
+      doctype: '<!DOCTYPE html [\n<!ENTITY n SYSTEM "n.png" NDATA png>\n]>',
+      at: [1, 16],
+      entities: [],
+    },
   ])("locates $name", ({ doctype, at, entities }) => {
     const parsed = Xml.parse(`${doctype}<html/>`);
     if (Result.isFailure(parsed)) throw new Error(parsed.failure.message);

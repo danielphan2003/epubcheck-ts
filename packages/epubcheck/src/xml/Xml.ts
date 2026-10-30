@@ -70,6 +70,8 @@ export interface XmlError {
   readonly message: string;
   readonly line: number;
   readonly column: number;
+  // The XML version, when the failure came after the root element started.
+  readonly version?: string | undefined;
 }
 
 const EXTERNAL_ID =
@@ -104,10 +106,11 @@ const externalEntities = (subset: string) => {
       else if (char === quote) quote = undefined;
       end++;
     }
-    const entity = /^<!ENTITY\s+(%\s+)?([^\s%"'>]+)\s+(?:SYSTEM|PUBLIC)[\s"']/.exec(
-      subset.slice(index, end + 1),
-    );
-    if (entity !== null)
+    const declaration = subset.slice(index, end + 1);
+    const entity = /^<!ENTITY\s+(%\s+)?([^\s%"'>]+)\s+(?:SYSTEM|PUBLIC)[\s"']/.exec(declaration);
+    // Xerces reports unparsed (`NDATA`) entities apart.
+    const unparsed = /\sNDATA\s/.test(declaration.replace(/"[^"]*"|'[^']*'/g, ""));
+    if (entity !== null && !unparsed)
       found.push({ name: (entity[1] === undefined ? "" : "%") + entity[2], end: end + 1 });
     index = end + 1;
   }
@@ -459,7 +462,9 @@ export const decodeDocument = (bytes: Uint8Array): Decoded => {
 
 export const decode = (bytes: Uint8Array) => decodeDocument(bytes).text ?? "";
 
-export const parse = (source: string, options: ParseOptions = {}) => {
+export const parse = (input: string, options: ParseOptions = {}) => {
+  // XML 1.0 normalizes line ends before parsing, so offsets and positions agree with Xerces.
+  const source = input.replace(/\r\n?/g, "\n");
   const parser = new SaxesParser({ xmlns: true, position: true });
   const stack: Array<XmlElement> = [];
   let root: XmlElement | undefined;
@@ -480,9 +485,6 @@ export const parse = (source: string, options: ParseOptions = {}) => {
     else parent.children.push({ kind: "text", text });
   };
 
-  parser.on("xmldecl", (decl) => {
-    declaration = { encoding: decl.encoding, version: decl.version };
-  });
   const fail = (failure: XmlError) => {
     error ??= failure;
   };
@@ -490,9 +492,21 @@ export const parse = (source: string, options: ParseOptions = {}) => {
     const before = source.slice(0, offset).split("\n");
     return { line: before.length, column: (before.at(-1)?.length ?? 0) + 1 };
   };
+  parser.on("xmldecl", (decl) => {
+    declaration = { encoding: decl.encoding, version: decl.version };
+    // Xerces knows XML 1.0 and 1.1 only, and stops just past the version literal.
+    if (decl.version !== undefined && decl.version !== "1.0" && decl.version !== "1.1") {
+      const literal = /^\uFEFF?<\?xml\s+version\s*=\s*(["'])[^"']*\1/.exec(source)?.[0] ?? "";
+      fail({
+        message: `XML version "${decl.version}" is not supported, only XML 1.0 is supported.`,
+        ...positionAt(literal.length),
+      });
+    }
+  });
   let broken = new Map<string, string>();
   parser.on("doctype", (raw) => {
-    const rawOffset = source.indexOf("<!DOCTYPE") + "<!DOCTYPE".length;
+    // The parser stands just past the declaration's `>`; a DOCTYPE inside a comment is no match.
+    const rawOffset = parser.position - 1 - raw.length;
     const parts = parseDoctype(raw);
     const subsetOffset =
       parts.internalSubset === undefined ? 0 : rawOffset + raw.indexOf(parts.internalSubset);
@@ -577,6 +591,12 @@ export const parse = (source: string, options: ParseOptions = {}) => {
   });
 
   parser.write(source).close();
+  // Upstream checks the XML version at the root's start tag, which a later failure keeps.
+  const failed = (failure: XmlError) =>
+    root !== undefined &&
+    (root.line < failure.line || (root.line === failure.line && root.column <= failure.column))
+      ? Result.fail({ ...failure, version: declaration.version })
+      : Result.fail(failure);
   const unterminated = unterminatedReference(source);
   if (
     unterminated !== undefined &&
@@ -584,9 +604,9 @@ export const parse = (source: string, options: ParseOptions = {}) => {
       unterminated.line < error.line ||
       (unterminated.line === error.line && unterminated.column <= error.column))
   ) {
-    return Result.fail(unterminated);
+    return failed(unterminated);
   }
-  if (error !== undefined) return Result.fail(error);
+  if (error !== undefined) return failed(error);
   if (root === undefined)
     return Result.fail({ message: "document has no root element", line: 1, column: 1 });
   return Result.succeed({

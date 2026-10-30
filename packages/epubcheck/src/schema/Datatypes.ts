@@ -22,7 +22,8 @@ export interface Param {
   readonly value: string;
 }
 
-const collapse = (value: string) => value.replace(/[\t\n\r ]+/g, " ").trim();
+// Only XML whitespace: `String.trim` would also strip U+00A0 and other Unicode spaces.
+const collapse = (value: string) => value.replace(/[\t\n\r ]+/g, " ").replace(/^ | $/g, "");
 const preserve = (value: string) => value;
 const replaceWhitespace = (value: string) => value.replace(/[\t\n\r]/g, " ");
 

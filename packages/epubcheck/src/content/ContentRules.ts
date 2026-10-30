@@ -1,5 +1,6 @@
 import type { MessageId } from "../messages/MessageCatalog.ts";
 import type { Finding } from "../references/Collect.ts";
+import * as JavaText from "../util/JavaText.ts";
 import * as Xml from "../xml/Xml.ts";
 
 // EPUB 3 XHTML and SVG content document rules the schemas do not express: the XML version and
@@ -117,14 +118,19 @@ const at = (
   column: element.column,
 });
 
+// URL schemes galimatias parses strictly; it fails on their invalid hosts, but not on ports.
+const SPECIAL_SCHEMES = new Set(["ftp", "file", "gopher", "http", "https", "ws", "wss"]);
+const PORT = /^([^:]+:\/\/(?:[^@/?#]*@)?(?:\[[^\]]*\]|[^:/?#]*)):[^/?#]*/;
+
 // Upstream's checkHRef: a link to an absolute URL outside the container needs a scheme upstream
 // knows (HTM-025); blank links and `.` are checked elsewhere.
 const schemeFinding = (path: string, element: Xml.XmlElement, href: string | undefined) => {
-  const value = href?.trim() ?? "";
+  const value = JavaText.trim(href ?? "");
   if (value === "" || value === ".") return [];
-  const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(value)?.[1];
-  if (scheme === undefined || !URL.canParse(value)) return [];
-  return REGISTERED_SCHEMES.has(scheme.toLowerCase()) ? [] : [at(path, element, "HTM-025")];
+  const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(value)?.[1]?.toLowerCase();
+  if (scheme === undefined || REGISTERED_SCHEMES.has(scheme)) return [];
+  if (SPECIAL_SCHEMES.has(scheme) && !URL.canParse(value.replace(PORT, "$1"))) return [];
+  return [at(path, element, "HTM-025")];
 };
 
 // Upstream's getSVGHrefs: an SVG link element's `href`, and its deprecated `xlink:href`.
@@ -180,15 +186,8 @@ export const check = (document: Xml.XmlDocument, path: string, kind: "xhtml" | "
       if (DISCOURAGED.has(element.local))
         findings.push(at(path, element, "HTM-055", element.local));
       if (element.local === "link") findings.push(...linkFindings(path, element));
-      if (element.local === "a" || element.local === "area") {
-        findings.push(...schemeFinding(path, element, Xml.attribute(element, "href")));
-      }
     } else if (element.ns === SVG_NS && XLINKED.has(element.local)) {
-      const svg = svgHrefs(path, element);
-      findings.push(...svg.findings);
-      if (element.local === "a") {
-        for (const href of svg.hrefs) findings.push(...schemeFinding(path, element, href));
-      }
+      findings.push(...svgHrefs(path, element).findings);
     } else if (element.ns === MATHML_NS && element.local === "math") {
       const hasAnnotation = Xml.descendants(element).some(
         (descendant) => descendant.ns === MATHML_NS && descendant.local === "annotation-xml",
@@ -203,6 +202,24 @@ export const check = (document: Xml.XmlDocument, path: string, kind: "xhtml" | "
           column: element.endColumn,
         });
       }
+    }
+  }
+  return findings;
+};
+
+// HTM-025 for the links upstream's OPSHandler checks in either version: XHTML `a` and `area`, and
+// SVG `a`, by its `xlink:href` in EPUB 2 and by both hrefs in EPUB 3.
+export const schemeFindings = (document: Xml.XmlDocument, path: string, version: "2" | "3") => {
+  const findings: Array<Finding> = [];
+  for (const element of [document.root, ...Xml.descendants(document.root)]) {
+    if (element.ns === XHTML_NS && (element.local === "a" || element.local === "area")) {
+      findings.push(...schemeFinding(path, element, Xml.attribute(element, "href")));
+    } else if (element.ns === SVG_NS && element.local === "a") {
+      const hrefs =
+        version === "3"
+          ? svgHrefs(path, element).hrefs
+          : [Xml.attribute(element, "href", XLINK_NS)];
+      for (const href of hrefs) findings.push(...schemeFinding(path, element, href));
     }
   }
   return findings;
