@@ -40,6 +40,10 @@ jobs:
       - name: Test
         run: vp run test
 
+      - name: Pack
+        working-directory: packages/epubcheck
+        run: pnpm pack --out "$RUNNER_TEMP/epubcheck-ts-%v.tgz"
+
   conformance:
     name: Conformance
     runs-on: ubuntu-latest

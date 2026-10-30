@@ -9,7 +9,16 @@ This is early work. See the conformance score below for what it checks today.
 
 ## Usage
 
-The library and CLI run from source on Node.js 24 or later. There is no npm release yet.
+The library and CLI run from source on Node.js 24 or later. There is no npm release. Each `v*` tag attaches a
+tarball of the compiled package to a GitHub release (see [Releases](https://github.com/danielphan2003/epubcheck-ts/releases)),
+which you can add to another project:
+
+```sh
+pnpm add -D https://github.com/danielphan2003/epubcheck-ts/releases/download/v0.1.0/epubcheck-ts-0.1.0.tgz
+```
+
+The tarball pins the `effect` and `@effect/platform-node` versions it was built with, so keep your own on the same
+versions. To work on the checker itself:
 
 ```sh
 pnpm install
