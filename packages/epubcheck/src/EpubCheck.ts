@@ -174,8 +174,11 @@ const make = Effect.gen(function* () {
       }
       const at = ocf.value.obfuscated.get(name);
       if (at === undefined) continue;
+      // Upstream keeps the last item for each URL; one with a fragment names no file.
       for (const { opf } of renditions) {
-        const item = opf.items.find((candidate) => candidate.path?.normalize("NFC") === name);
+        const item = opf.items.findLast(
+          (candidate) => !candidate.href.includes("#") && candidate.path?.normalize("NFC") === name,
+        );
         if (item === undefined) continue;
         if (!MediaTypes.isCoreFont(item.mediaType)) {
           const location = Report.location("META-INF/encryption.xml", at.line, at.column);

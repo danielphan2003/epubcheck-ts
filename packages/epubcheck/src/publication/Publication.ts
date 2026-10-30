@@ -14,6 +14,7 @@ import type { Collection, ManifestItem, PackageDocument } from "../opf/PackageDo
 import * as Collect from "../references/Collect.ts";
 import * as Profiles from "../profiles/Profiles.ts";
 import * as ReadingOrder from "../references/ReadingOrder.ts";
+import * as PackageChecks from "../opf/PackageChecks.ts";
 import * as ReferenceChecker from "../references/ReferenceChecker.ts";
 import * as Url from "../references/Url.ts";
 import * as Report from "../report/Report.ts";
@@ -142,8 +143,9 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       continue;
     }
     // Upstream checks each item it can read, whatever its type, and none it cannot decrypt.
-    if (encrypted.has(nfc(item.path))) {
-      yield* report.message("RSC-004", Report.location(item.path), item.path);
+    // An item URL with a fragment names no container file (RSC-001), so it is not one of them.
+    if (encrypted.has(nfc(item.path)) && !item.href.includes("#")) {
+      yield* report.message("RSC-004", Report.location(item.path), Url.encodePath(nfc(item.path)));
       continue;
     }
     if (kind === "ncx" && !isToc) continue;
@@ -341,6 +343,15 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
         yield* report.message(scripts ? "RSC-006b" : "RSC-006", itemLocation(item), name);
       }
     }
+  }
+  // Upstream registers each media overlay its item check sees before any other reference, and
+  // checks a manifest fallback on it like on any loaded resource.
+  for (const item of opf.version === "3" ? PackageChecks.checkedItems(opf) : []) {
+    const overlay = byId.get(Xml.attribute(item.element, "media-overlay")?.trim() ?? "");
+    if (overlay?.fallback === undefined) continue;
+    const name =
+      overlay.path === undefined ? Url.remoteKey(overlay.href) : Url.encodePath(nfc(overlay.path));
+    yield* report.message("OBS-001", itemLocation(item), "content-fallback", name);
   }
   yield* reportFindings(ReferenceChecker.check(references, publication));
   const order = {

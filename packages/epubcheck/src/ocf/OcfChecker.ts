@@ -8,12 +8,12 @@ import * as Result from "effect/Result";
 import * as JavaText from "../util/JavaText.ts";
 
 import * as Profiles from "../profiles/Profiles.ts";
-import * as Encryption from "./Encryption.ts";
 import * as Report from "../report/Report.ts";
 import * as Schemas from "../schema/Schemas.ts";
 import * as Xml from "../xml/Xml.ts";
 import * as XmlChecker from "../xml/XmlChecker.ts";
 import * as Container from "./Container.ts";
+import * as Encryption from "./Encryption.ts";
 import * as FilenameChecker from "./FilenameChecker.ts";
 import * as Zip from "./Zip.ts";
 
@@ -40,7 +40,7 @@ export interface OcfResult {
   // The resources `META-INF/encryption.xml` lists, which upstream cannot decrypt, and where
   // each obfuscated one is declared.
   readonly encrypted: ReadonlySet<string>;
-  readonly obfuscated: ReadonlyMap<string, { readonly line: number; readonly column: number }>;
+  readonly obfuscated: ReadonlyMap<string, Encryption.Position>;
 }
 
 interface ContainerLinks {
@@ -395,8 +395,8 @@ export const check = Effect.fn("OcfChecker.check")(function* (
       checksVersion: handled.has(file),
     });
     if (file === "META-INF/encryption.xml" && Option.isSome(document)) {
-      const files = new Set(container.files.map((file) => file.normalize("NFC")));
-      encryption = Encryption.read(document.value, files);
+      const names = new Set(container.files.map((name) => name.normalize("NFC")));
+      encryption = Encryption.read(document.value, names);
       for (const { id, args, path: at, line, column } of encryption.findings) {
         yield* report.message(id, Report.location(at, line, column), ...args);
       }

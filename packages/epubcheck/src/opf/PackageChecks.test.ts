@@ -239,6 +239,20 @@ describe("PackageChecks collection roles", () => {
         '<collection role="a:b"><collection role="x http://[x/ http://invalid%"><link href="c.xhtml"/></collection></collection>',
       roles: ["http://[x/"],
     },
+    // galimatias fails on URLs of its special schemes only, and strips Java whitespace first.
+    {
+      name: "roles of other schemes and padded roles",
+      collections:
+        '<collection role="foo://a:b urn:a%zz \u2002http://ok/"><link href="c.xhtml"/></collection>',
+      roles: [],
+    },
+    // Only collections of the package namespace are read.
+    {
+      name: "a collection in no namespace",
+      collections:
+        '<collection xmlns="" role="http://invalid%"><link href="c.xhtml"/></collection>',
+      roles: [],
+    },
     // A role without a scheme is no URL, and a no-break space does not separate roles.
     {
       name: "roles without a scheme or separated by a no-break space",

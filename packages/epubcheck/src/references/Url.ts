@@ -29,6 +29,7 @@ const CONTAINER = "https://ocf.epubcheck.invalid/";
 const TEST_A = "https://a.example.org/A/";
 const TEST_B = "https://b.example.org/B/";
 const SPECIAL = new Set(["ftp", "file", "gopher", "http", "https", "ws", "wss"]);
+export const isSpecialScheme = (scheme: string) => SPECIAL.has(scheme);
 
 const isUrlCodePoint = (code: number) =>
   /[A-Za-z0-9!$&'()*+,\-./:;=?@_~]/.test(String.fromCodePoint(code)) ||

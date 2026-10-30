@@ -38,6 +38,22 @@ describe("Encryption.read", () => {
       encrypted: ["EPUB/f.otf", "EPUB/i.png"],
       obfuscated: ["EPUB/f.otf", "EPUB/i.png"],
     },
+    // A URL with a fragment names no container file.
+    {
+      name: "a URL with a fragment",
+      body: data(IDPF, "EPUB/f.otf#x"),
+      found: [["RSC-007", "EPUB/f.otf#x"]],
+      encrypted: [],
+      obfuscated: [],
+    },
+    // An `xml:base` stays in force after its element ends, for the next `EncryptedData` too.
+    {
+      name: "URLs against a base",
+      body: `<enc:EncryptedData xml:base="EPUB/"><enc:EncryptionMethod Algorithm="${IDPF}"/><enc:CipherData><enc:CipherReference URI="f.otf"/></enc:CipherData></enc:EncryptedData>${data(AES, "i.png")}`,
+      found: [["OBS-001", "font-obfuscation"]],
+      encrypted: ["EPUB/f.otf", "EPUB/i.png"],
+      obfuscated: ["EPUB/f.otf"],
+    },
     {
       name: "a missing resource",
       body: data(IDPF, "EPUB/nope.otf"),
