@@ -62,6 +62,9 @@ export interface Context {
   readonly container: boolean;
   // The media type of a resource in a publication: its manifest item's, or a data URL's own.
   readonly mediaTypeOf?: ((target: Url.Target) => string | undefined) | undefined;
+  // Media Overlays styling classes the package does not declare, with their properties, which a
+  // selector using them is reported for (CSS-029).
+  readonly undeclaredClasses?: ReadonlyArray<readonly [string, string]> | undefined;
 }
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -326,6 +329,102 @@ const canonical = (value: string) => {
   return JSON.stringify([parsed.essence, sorted]);
 };
 
+// The selectors of a style sheet's rules, outside comments and strings, with their positions
+// (1-based, relative to the CSS text). At-rule preludes and declarations are not selectors; the
+// rules of conditional group at-rules such as `@media` are.
+export const cssSelectors = (css: string) => {
+  const selectors: Array<{
+    readonly text: string;
+    readonly line: number;
+    readonly column: number;
+  }> = [];
+  let index = 0;
+  let line = 1;
+  let column = 1;
+  const advance = () => {
+    const char = css[index];
+    index++;
+    if (char === "\n" || (char === "\r" && css[index] !== "\n")) {
+      line++;
+      column = 1;
+    } else column++;
+  };
+  // Whether each open block holds rules (the style sheet itself, `@media`, ...) or anything else.
+  const blocks: Array<boolean> = [];
+  let prelude: Array<{ readonly char: string; readonly line: number; readonly column: number }> =
+    [];
+  const holdsRules = () => blocks.at(-1) ?? true;
+  while (index < css.length) {
+    const char = css[index] ?? "";
+    if (char === "/" && css[index + 1] === "*") {
+      const end = css.indexOf("*/", index + 2);
+      const stop = end < 0 ? css.length : end + 2;
+      while (index < stop) advance();
+      prelude.push({ char: " ", line, column });
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      prelude.push({ char: '""', line, column });
+      advance();
+      while (index < css.length && css[index] !== char && css[index] !== "\n") {
+        if (css[index] === "\\") advance();
+        advance();
+      }
+      advance();
+      continue;
+    }
+    if (char === "{") {
+      const text = prelude.map((each) => each.char).join("");
+      const rules = holdsRules();
+      if (rules && !text.trimStart().startsWith("@")) {
+        // A selector list: each selector starts at its first character after a top-level comma.
+        let depth = 0;
+        let begin = 0;
+        const flush = (until: number) => {
+          const part = prelude.slice(begin, until);
+          const first = part.findIndex((each) => !/\s/.test(each.char));
+          const at = part[first];
+          if (at !== undefined) {
+            const text = part
+              .slice(first)
+              .map((each) => each.char)
+              .join("");
+            selectors.push({ text, line: at.line, column: at.column });
+          }
+        };
+        prelude.forEach((each, position) => {
+          if (each.char === "(" || each.char === "[") depth++;
+          else if (each.char === ")" || each.char === "]") depth--;
+          else if (each.char === "," && depth === 0) {
+            flush(position);
+            begin = position + 1;
+          }
+        });
+        flush(prelude.length);
+      }
+      const name = /^\s*@(-?[\w-]+)/.exec(text)?.[1]?.toLowerCase() ?? "";
+      blocks.push(
+        rules && /^(?:-\w+-)?(?:media|supports|document|layer|container|scope)$/.test(name),
+      );
+      prelude = [];
+      advance();
+      continue;
+    }
+    if (char === "}" || (char === ";" && holdsRules())) {
+      if (char === "}") blocks.pop();
+      prelude = [];
+      advance();
+      continue;
+    }
+    if (holdsRules()) prelude.push({ char, line, column });
+    advance();
+  }
+  return selectors;
+};
+
+const usesClass = (selector: string, name: string) =>
+  new RegExp(`\\.${name}(?![\\w-]|[^\\x00-\\x7f]|\\\\)`).test(selector);
+
 // A style sheet, or the CSS of a `style` element or attribute (`offset` lines into its document).
 export const fromCss = (css: string, path: string, context: Context, offset = 0) => {
   const references: Array<Reference> = [];
@@ -359,6 +458,14 @@ export const fromCss = (css: string, path: string, context: Context, offset = 0)
       });
     }
     references.push({ ...resolved, type, resource: false, path, line, column: found.column });
+  }
+  const undeclared = context.undeclaredClasses ?? [];
+  for (const selector of undeclared.length === 0 ? [] : cssSelectors(css)) {
+    for (const [name, property] of undeclared) {
+      if (!usesClass(selector.text, name)) continue;
+      const at = { line: offset + selector.line, column: selector.column };
+      findings.push({ id: "CSS-029", args: [name, property], path, ...at });
+    }
   }
   return { references, findings, remote };
 };
@@ -584,7 +691,8 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
           if (epub3) addResource(element, Xml.attribute(element, "src"), "script");
           break;
         case "style":
-          styled = true;
+          // Upstream counts a `style` element as CSS only when it has text.
+          if (Xml.textContent(element).length > 0) styled = true;
           css(Xml.textContent(element), element.line);
           break;
         default:
@@ -686,7 +794,8 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
           if (epub3) addResource(element, Xml.attribute(element, "src"), "script");
           break;
         case "style":
-          styled = true;
+          // Upstream counts a `style` element as CSS only when it has text.
+          if (Xml.textContent(element).length > 0) styled = true;
           css(Xml.textContent(element), element.line);
           break;
         default:

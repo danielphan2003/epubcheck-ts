@@ -77,16 +77,19 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     ids,
     unparsed,
   };
+  const mediaTypeOf = (target: Url.Target) =>
+    target.kind === "local"
+      ? publication.items.get(target.path)?.mediaType
+      : target.kind === "remote"
+        ? publication.remoteItems.get(target.url)?.mediaType
+        : target.mediaType;
   const context: Collect.Context = {
     version: opf.version,
     container: true,
-    mediaTypeOf: (target) =>
-      target.kind === "local"
-        ? publication.items.get(target.path)?.mediaType
-        : target.kind === "remote"
-          ? publication.remoteItems.get(target.url)?.mediaType
-          : target.mediaType,
+    mediaTypeOf,
+    undeclaredClasses: MediaOverlays.undeclaredClasses(opf.metadata),
   };
+  const narrators = new Map<string, string>();
   const references: Array<Collect.Reference> = [];
   let scripts = false;
   const positions = new Map<string, ReadonlyMap<string, number>>();
@@ -101,7 +104,6 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     readonly features: Collect.Features;
     readonly end: { readonly line: number; readonly column: number };
   }> = [];
-  const styleSheets: Array<{ readonly path: string; readonly css: string }> = [];
   for (const item of opf.items) {
     // An item for the package document itself is OPF-099, not a content document.
     if (item.path === undefined || item.path === opf.path) continue;
@@ -119,7 +121,6 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
     if (isCss) {
       const text = new TextDecoder().decode(bytes.value);
-      styleSheets.push({ path: item.path, css: text });
       const css = Collect.fromCss(text, item.path, context);
       references.push(...css.references);
       yield* reportFindings(css.findings);
@@ -157,7 +158,11 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       yield* reportFindings(keys.findings);
     }
     if (Option.isSome(document) && kind === "mo") {
-      const read = MediaOverlays.read(document.value, item.path);
+      const read = MediaOverlays.read(document.value, item.path, {
+        id: item.id,
+        mediaTypeOf,
+        narrators,
+      });
       yield* reportFindings(read.findings);
       overlays.push({ item, path: item.path, overlay: read.overlay });
     }
@@ -220,14 +225,15 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
   }
   yield* reportFindings(ReferenceChecker.check(references, publication));
-  if (opf.version === "3" && overlays.length > 0) {
-    yield* reportFindings(MediaOverlays.styleFindings(opf.metadata, documents, styleSheets));
+  if (opf.version === "3") {
+    yield* reportFindings(MediaOverlays.styleFindings(opf.metadata, documents));
     yield* reportFindings(
       MediaOverlays.publicationFindings(overlays, {
         items: publication.items,
         ids: positions,
         spine: opf.spine.flatMap((idref) => byId.get(idref)?.path ?? []).map(nfc),
         packagePath: opf.path,
+        narrators,
       }),
     );
   }
@@ -282,6 +288,11 @@ export const checkDocumentReferences = Effect.fn("Publication.checkDocumentRefer
     yield* reportFindings(MediaOverlays.read(document.value, path).findings);
   }
   if (Option.isNone(document) || kind === "mo" || kind === "ncx" || kind === "skm") return;
-  const context: Collect.Context = { version, container: false };
+  const context: Collect.Context = {
+    version,
+    container: false,
+    // A document checked alone has no package to declare the styling classes in.
+    undeclaredClasses: MediaOverlays.undeclaredClasses({}),
+  };
   yield* reportFindings(Collect.fromDocument(document.value, path, context).findings);
 });

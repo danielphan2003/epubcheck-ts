@@ -398,19 +398,23 @@ const metadataChecks = ({ document, opf, container }: Context) => {
     for (const element of metadataElements(root)) {
       if (hasRefinesCycle(element, prefixes)) findings.push(atEnd(element, "OPF-065"));
     }
-    // The total `media:duration` should be the sum of the overlays' durations, within 1 s.
+    // Upstream's checkMediaOverlaysDuration: the first unrefined `media:duration` against the sum
+    // of the refined ones, within a second; an unreadable value stops the check.
     const durations = opfChildren(opfChildren(root, "metadata")[0], "meta").filter(
-      (meta) => (Xml.attribute(meta, "property") ?? "").trim() === "media:duration",
+      (meta) =>
+        Vocabularies.canonicalNames(Xml.attribute(meta, "property"), "meta", prefixes, false)[0] ===
+        "media:duration",
     );
-    const total = durations.find((meta) => Xml.attribute(meta, "refines") === undefined);
-    const parts = durations.filter((meta) => Xml.attribute(meta, "refines") !== undefined);
-    const totalSeconds = total === undefined ? undefined : ClockValue.parse(Xml.textContent(total));
-    const partSeconds = parts.map((meta) => ClockValue.parse(Xml.textContent(meta)));
+    const primary = (meta: Xml.XmlElement) => (Xml.attribute(meta, "refines") ?? "#") === "#";
+    const total = durations.find(primary);
+    const totalMillis = total === undefined ? undefined : ClockValue.parse(Xml.textContent(total));
+    const parts = durations
+      .filter((meta) => !primary(meta))
+      .map((meta) => ClockValue.parse(Xml.textContent(meta)));
     if (
-      totalSeconds !== undefined &&
-      parts.length > 0 &&
-      partSeconds.every((seconds) => seconds !== undefined) &&
-      Math.abs(totalSeconds - partSeconds.reduce((sum, seconds) => sum + (seconds ?? 0), 0)) > 1
+      totalMillis !== undefined &&
+      parts.every((millis) => millis !== undefined) &&
+      Math.abs(totalMillis - parts.reduce((sum, millis) => sum + (millis ?? 0), 0)) > 1000
     ) {
       findings.push(nowhere("MED-016"));
     }

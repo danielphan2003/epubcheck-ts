@@ -80,3 +80,28 @@ describe("Collect.srcsetUrls", () => {
     expect(Collect.srcsetUrls(srcset)).toEqual(urls);
   });
 });
+
+describe("Collect.cssSelectors", () => {
+  it.each([
+    {
+      name: "a selector list",
+      css: "p,\n  .a > b { color: red }",
+      selectors: [
+        { text: "p", line: 1, column: 1 },
+        { text: ".a > b ", line: 2, column: 3 },
+      ],
+    },
+    {
+      name: "rules in @media, not at-rule preludes or declarations",
+      css: "@media print { .a { x: y } }\n@font-face { src: url(a.otf) }",
+      selectors: [{ text: ".a ", line: 1, column: 16 }],
+    },
+    {
+      name: "a selector after a comment, not one in a string",
+      css: '/* .x { } */ .a[title=".b"] { }',
+      selectors: [{ text: '.a[title=""] ', line: 1, column: 14 }],
+    },
+  ])("reads $name", ({ css, selectors }) => {
+    expect(Collect.cssSelectors(css)).toEqual(selectors);
+  });
+});
