@@ -122,6 +122,17 @@ describe("ContentRules.svgLinkNames", () => {
     },
     { name: "a nested title", body: '<a href="#r"><g><title>n</title></g></a>', found: 0 },
     { name: "an empty text", body: '<a href="#r"><text></text></a>', found: 0 },
+    // An XHTML link inside SVG is one too, and resets the flag.
+    {
+      name: "an XHTML link in a foreign object",
+      body: '<title>t</title><foreignObject><div xmlns="http://www.w3.org/1999/xhtml"><a href="#r">t</a></div></foreignObject>',
+      found: 1,
+    },
+    {
+      name: "a named XHTML link after an unnamed one",
+      body: '<a href="#r"><rect/></a><foreignObject><div xmlns="http://www.w3.org/1999/xhtml"><a href="#r" aria-label="n">t</a></div></foreignObject>',
+      found: 1,
+    },
     // One flag for the document: an inner unnamed link leaves the outer one unnamed too.
     {
       name: "nested links",

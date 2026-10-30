@@ -284,9 +284,9 @@ export const epub2Doctype = (document: Xml.XmlDocument, path: string) => {
   return [at(path, doctype, "HTM-004", found, expected)];
 };
 
-// Upstream's SVG link names (ACC-011): an SVG `a` is named by a non-empty `xlink:title` or
-// `aria-label`, or by any SVG `title` or `text` element that starts after it. Upstream keeps one
-// flag for the whole document, and checks it at the end of every `a` inside SVG.
+// Upstream's SVG link names (ACC-011): an `a` inside SVG, XHTML ones included, is named by a
+// non-empty `xlink:title` or `aria-label`, or by any SVG `title` or `text` element that starts
+// after it. Upstream keeps one flag for the whole document, and checks it at each `a`'s end.
 export const svgLinkNames = (document: Xml.XmlDocument, path: string, svgDocument: boolean) => {
   const findings: Array<Finding> = [];
   let inSvg = false;
@@ -311,13 +311,15 @@ export const svgLinkNames = (document: Xml.XmlDocument, path: string, svgDocumen
     }
     stack.push([element, true]);
     for (const child of Xml.childElements(element).reverse()) stack.push([child, false]);
-    if (element.ns !== SVG_NS) continue;
-    if (element.local === "svg") inSvg = true;
-    else if (element.local === "a" && (inSvg || svgDocument)) {
+    const anchor = element.local === "a" && (element.ns === SVG_NS || element.ns === XHTML_NS);
+    if (anchor && (inSvg || svgDocument)) {
       named =
         (Xml.attribute(element, "title", XLINK_NS) ?? "") !== "" ||
         (Xml.attribute(element, "aria-label") ?? "") !== "";
-    } else if (element.local === "title" || element.local === "text") named = true;
+    }
+    if (element.ns !== SVG_NS) continue;
+    if (element.local === "svg") inSvg = true;
+    else if (element.local === "title" || element.local === "text") named = true;
   }
   return findings;
 };

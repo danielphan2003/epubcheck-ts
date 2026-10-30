@@ -521,7 +521,8 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
       const style = Xml.attribute(element, "style");
       if (style !== undefined && style !== "") css(style, element.line, true);
     } else if (element.ns === SVG_NS) {
-      switch (element.local) {
+      // Upstream matches SVG element names in lowercase.
+      switch (element.local.toLowerCase()) {
         case "svg":
           if (!isSvgDocument) svg = true;
           break;
@@ -724,35 +725,33 @@ const EMBEDDED = new Set([
 ]);
 const NOT_PALPABLE = new Set(["html", "head", "script", "link", "meta", "title", "style"]);
 
-// Each ID's position in document order.
-// What each ID names, as upstream registers it: an SVG paint server, clip path or symbol, or any
-// other element. The first element with an ID gives it its type.
-export const idTypes = (document: Xml.XmlDocument) => {
-  const types = new Map<string, "svg-paint" | "svg-clip-path" | "svg-symbol" | "generic">();
-  for (const element of [document.root, ...Xml.descendants(document.root)]) {
-    const id = Xml.attribute(element, "id");
-    if (id === undefined || types.has(id)) continue;
-    const name = element.ns === SVG_NS ? element.local.toLowerCase() : "";
-    types.set(
-      id,
-      name === "lineargradient" || name === "radialgradient" || name === "pattern"
-        ? "svg-paint"
-        : name === "clippath"
-          ? "svg-clip-path"
-          : name === "symbol"
-            ? "svg-symbol"
-            : "generic",
-    );
-  }
-  return types;
+export type IdType = "svg-paint" | "svg-clip-path" | "svg-symbol" | "generic";
+
+// The SVG elements whose IDs have a type of their own, by name in lowercase.
+const SVG_ID_TYPES: Readonly<Record<string, IdType>> = {
+  lineargradient: "svg-paint",
+  radialgradient: "svg-paint",
+  pattern: "svg-paint",
+  clippath: "svg-clip-path",
+  symbol: "svg-symbol",
 };
 
-export const idPositions = (document: Xml.XmlDocument) => {
+const DTBOOK_NS = "http://www.daisy.org/z3986/2005/dtbook/";
+
+// A document's IDs as upstream registers them, with their types and positions in document order.
+// The first element with an ID gives its type: an SVG paint server, clip path or symbol, or any
+// other element. A DTBook document registers its own elements' IDs only.
+export const documentIds = (document: Xml.XmlDocument, dtbook = false) => {
+  const types = new Map<string, IdType>();
   const positions = new Map<string, number>();
   for (const element of [document.root, ...Xml.descendants(document.root)]) {
+    if (dtbook && element.ns !== DTBOOK_NS) continue;
     // Upstream registers the `id` attributes, as written.
     const id = Xml.attribute(element, "id");
-    if (id !== undefined && !positions.has(id)) positions.set(id, positions.size);
+    if (id === undefined || types.has(id)) continue;
+    const own = element.ns === SVG_NS ? SVG_ID_TYPES[element.local.toLowerCase()] : undefined;
+    types.set(id, own ?? "generic");
+    positions.set(id, positions.size);
   }
-  return positions;
+  return { types, positions };
 };

@@ -3,7 +3,7 @@ import * as Fallbacks from "../opf/Fallbacks.ts";
 import type { ManifestItem } from "../opf/PackageDocument.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as UrlFragment from "../util/UrlFragment.ts";
-import type { Features, Finding, idTypes, Reference, ReferenceType } from "./Collect.ts";
+import type { Features, Finding, IdType, Reference, ReferenceType } from "./Collect.ts";
 import * as Url from "./Url.ts";
 
 // Checks the collected references once all documents are read, in upstream's order: a remote
@@ -21,8 +21,8 @@ export interface Publication {
   // Remote manifest items, by `Url.remoteKey`.
   readonly remoteItems: ReadonlyMap<string, ManifestItem>;
   readonly spine: ReadonlySet<ManifestItem>;
-  // What each ID of each content document names, as `Collect.idTypes` reads it.
-  readonly ids: ReadonlyMap<string, ReturnType<typeof idTypes>>;
+  // What each ID of each document upstream registers IDs of names, as `Collect.documentIds` reads it.
+  readonly ids: ReadonlyMap<string, ReadonlyMap<string, IdType>>;
   // Documents that failed to parse: upstream knows the IDs before the error, we know none.
   readonly unparsed: ReadonlySet<string>;
 }
@@ -31,6 +31,10 @@ export interface Publication {
 const SVG_TYPES = new Set<ReferenceType>(["svg-paint", "svg-clip-path", "svg-symbol"]);
 // These may also name any element without a type of its own.
 const LINKS = new Set<ReferenceType>(["svg-symbol", "cite", "hyperlink"]);
+// Whether a reference names an ID of the wrong type; one upstream registers none has no type.
+const mismatched = (type: ReferenceType, idType: IdType | undefined) =>
+  ((type === "svg-paint" || type === "svg-clip-path") && idType !== type) ||
+  (LINKS.has(type) && idType !== type && idType !== "generic");
 
 // Remote audio, video and fonts are allowed in EPUB 3, by reference type or declared type.
 const REMOTE_TYPES = new Set<ReferenceType>(["audio", "video", "font"]);
@@ -135,11 +139,20 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
     // spine. The package document is a resource too, of a type no reference may point to (checked
     // later).
     if (target.kind === "data") {
+      // Upstream looks it up without its fragment, which galimatias serializes as `data://`.
+      if (reference.fragment !== undefined) {
+        findings.push(finding(reference, "RSC-007", "data://"));
+        continue;
+      }
       const mediaType = MediaTypes.normalize(target.mediaType);
       if (type === "hyperlink") {
         const linkable = isLinkable(mediaType, publication.version);
         findings.push(finding(reference, linkable ? "RSC-011" : "RSC-010"));
-      } else resourceFindings(reference, mediaType);
+      } else if (resourceFindings(reference, mediaType)) {
+        if (SVG_TYPES.has(type) && reference.fragment === undefined) {
+          findings.push(finding(reference, "RSC-015"));
+        }
+      }
       continue;
     }
     // Upstream registers the package document as a resource outside the spine, of a type that
@@ -155,6 +168,15 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
       } else if (type === "search-key" && !cfi) {
         findings.push(finding(reference, "RSC-021", Url.nameOf(target)));
       } else if (type === "hyperlink" && !cfi) findings.push(finding(reference, "RSC-010"));
+      else if (SVG_TYPES.has(type) && fragment === undefined) {
+        findings.push(finding(reference, "RSC-015"));
+      } else if (
+        fragment !== undefined &&
+        UrlFragment.parse(fragment, PACKAGE_TYPE).id !== "" &&
+        mismatched(type, undefined)
+      ) {
+        findings.push(finding(reference, "RSC-014"));
+      }
       continue;
     }
     const item = itemOf(reference, publication);
@@ -235,14 +257,7 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
       findings.push(finding(reference, "RSC-012"));
       continue;
     }
-    // Upstream compares the ID's type, which is none outside content documents.
-    const strict = type === "svg-paint" || type === "svg-clip-path";
-    if (
-      (strict && idType !== type) ||
-      (LINKS.has(type) && idType !== type && idType !== "generic")
-    ) {
-      findings.push(finding(reference, "RSC-014"));
-    }
+    if (mismatched(type, idType)) findings.push(finding(reference, "RSC-014"));
   }
   return findings;
 };
