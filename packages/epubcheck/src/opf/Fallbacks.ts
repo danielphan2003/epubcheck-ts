@@ -1,0 +1,51 @@
+import * as Xml from "../xml/Xml.ts";
+import type { ManifestItem } from "./PackageDocument.ts";
+
+// Upstream's OPS content document types, and its FallbackChainResolver's answer to whether an
+// item, or the manifest fallback chain it starts, is one.
+
+export const isBlessedItemType = (mediaType: string, version: "2" | "3") =>
+  mediaType === "application/xhtml+xml" ||
+  mediaType === (version === "2" ? "application/x-dtbook+xml" : "image/svg+xml");
+
+export const isDeprecatedBlessedItemType = (mediaType: string) =>
+  mediaType === "text/x-oeb1-document" || mediaType === "text/html";
+
+export const isBlessedImageType = (mediaType: string, version: "2" | "3") =>
+  ["image/gif", "image/png", "image/jpeg", "image/svg+xml"].includes(mediaType) ||
+  (version === "3" && ["image/webp", "image/avif", "image/jxl"].includes(mediaType));
+
+export const isStyleType = (mediaType: string) =>
+  mediaType === "text/css" || mediaType === "text/x-oeb1-css";
+
+// An item whose chain loops never resolves, so it keeps only its own type. In EPUB 2, a
+// `fallback-style` naming a style sheet counts as a content document fallback.
+export const contentDocumentFallback = (
+  items: ReadonlyMap<string, ManifestItem>,
+  version: "2" | "3",
+) => {
+  const resolved = new Map<string, boolean>();
+  const own = (item: ManifestItem) =>
+    isBlessedItemType(item.mediaType, version) || isDeprecatedBlessedItemType(item.mediaType);
+  // Annotated, as it is recursive: undefined for an item that never resolves.
+  const resolve = (item: ManifestItem, visiting: Set<string>): boolean | undefined => {
+    const known = resolved.get(item.id);
+    if (known !== undefined) return known;
+    if (visiting.has(item.id)) return undefined;
+    const fallback = item.fallback === undefined ? undefined : items.get(item.fallback);
+    let content = own(item);
+    if (fallback !== undefined) {
+      visiting.add(item.id);
+      const inherited = resolve(fallback, visiting);
+      visiting.delete(item.id);
+      if (inherited === undefined) return undefined;
+      content ||= inherited;
+    }
+    const styleId = Xml.attribute(item.element, "fallback-style")?.trim() ?? "";
+    const style = version === "2" && styleId !== "" ? items.get(styleId) : undefined;
+    if (style !== undefined && isStyleType(style.mediaType)) content = true;
+    resolved.set(item.id, content);
+    return content;
+  };
+  return (item: ManifestItem) => resolve(item, new Set()) ?? own(item);
+};

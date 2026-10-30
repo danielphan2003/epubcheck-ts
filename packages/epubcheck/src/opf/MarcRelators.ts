@@ -1,5 +1,5 @@
 // MARC relator codes upstream accepts as `opf:role` values in EPUB 2 (OPF-052).
-export const MARC_RELATORS: ReadonlySet<string> = new Set([
+export const MARC_RELATORS = new Set([
   "abr",
   "acp",
   "act",

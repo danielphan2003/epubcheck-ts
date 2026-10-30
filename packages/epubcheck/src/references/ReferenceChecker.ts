@@ -1,4 +1,5 @@
 import type { MessageId } from "../messages/MessageCatalog.ts";
+import * as Fallbacks from "../opf/Fallbacks.ts";
 import type { ManifestItem } from "../opf/PackageDocument.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as UrlFragment from "../util/UrlFragment.ts";
@@ -33,17 +34,12 @@ const isRemoteMediaType = (mediaType: string) =>
 // Hyperlinks and citations are not publication resources.
 const NAVIGATION = new Set<ReferenceType>(["hyperlink", "cite"]);
 
-// What a hyperlink may point to; other types are reported as non-standard (RSC-010).
+// What a hyperlink may point to, without a fallback; other types are non-standard (RSC-010).
 const isLinkable = (mediaType: string, version: "2" | "3") =>
-  mediaType === "application/xhtml+xml" ||
-  mediaType === (version === "3" ? "image/svg+xml" : "application/x-dtbook+xml") ||
-  mediaType === "text/x-oeb1-document" ||
-  mediaType === "text/html";
+  Fallbacks.isBlessedItemType(mediaType, version) ||
+  Fallbacks.isDeprecatedBlessedItemType(mediaType);
 
-// The content documents of each version, which may be a fallback for what a hyperlink reaches.
-const isContentDocument = (mediaType: string, version: "2" | "3") =>
-  mediaType === "application/xhtml+xml" ||
-  mediaType === (version === "3" ? "image/svg+xml" : "application/x-dtbook+xml");
+const PACKAGE_TYPE = "application/oebps-package+xml";
 
 const essence = (mediaType: string) => (mediaType.split(";")[0] ?? "").trim().toLowerCase();
 const isContent = (mediaType: string) =>
@@ -96,6 +92,7 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
     return false;
   };
   const hasCoreFallback = (item: ManifestItem | undefined) => hasFallback(item, MediaTypes.isCore);
+  const contentFallback = Fallbacks.contentDocumentFallback(publication.byId, publication.version);
   // A foreign resource needs a fallback (RSC-032), and a script must be JavaScript.
   const resourceFindings = (reference: Reference, mediaType: string, item?: ManifestItem) => {
     const name = Url.nameOf(reference.target);
@@ -132,9 +129,11 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
       } else resourceFindings(reference, mediaType);
       continue;
     }
+    // Upstream registers the package document as a resource, which is no content document.
     if (target.kind === "local" && target.path === publication.packagePath) {
-      // A guide reference to the package document is to a foreign resource upstream registers.
-      if (type === "generic") resourceFindings(reference, "application/oebps-package+xml");
+      const cfi = UrlFragment.parse(reference.fragment ?? "", PACKAGE_TYPE).scheme === "epubcfi";
+      if (type === "hyperlink" && !cfi) findings.push(finding(reference, "RSC-010"));
+      else if (type !== "hyperlink") resourceFindings(reference, PACKAGE_TYPE);
       continue;
     }
     const item = itemOf(reference, publication);
@@ -194,10 +193,7 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
     }
     // Upstream does not check where EPUB CFIs lead.
     if (type === "hyperlink" && parsed.scheme !== "epubcfi") {
-      if (
-        !isLinkable(item.mediaType, publication.version) &&
-        !hasFallback(item, (fallback) => isContentDocument(fallback, publication.version))
-      ) {
+      if (!isLinkable(item.mediaType, publication.version) && !contentFallback(item)) {
         findings.push(finding(reference, "RSC-010"));
         continue;
       }

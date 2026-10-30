@@ -1105,6 +1105,7 @@ epub3/E-obsolete-features/outdated-features.feature:116 Report the OPF 2 meta el
 epub3/E-obsolete-features/outdated-features.feature:126 Report the OPF 2 guide element as outdated (USAGE)
 epub3/E-obsolete-features/outdated-features.feature:134 'guide' should not contain two entries of the same type pointing to the same resource
 epub3/E-obsolete-features/outdated-features.feature:151 When an NCX document is present, it must be identified in the 'toc' attribute of the spine
+epub3/E-obsolete-features/outdated-features.feature:158 The 'toc' attribute of the spine must point to an NCX document
 epub3/E-obsolete-features/outdated-features.feature:165 Report validation errors in legacy NCX documents
 epub3/E-obsolete-features/outdated-features.feature:172 Verify an NCX which does not link to all spine items
 epub3/E-obsolete-features/outdated-features.feature:183 Report the 'rendition:flow' property  as outdated (USAGE)

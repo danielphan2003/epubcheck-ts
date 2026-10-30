@@ -292,11 +292,12 @@ const linkFindings = (path: string, link: Xml.XmlElement) => {
 const XHTML11_PUBLIC_ID = "-//W3C//DTD XHTML 1.1//EN";
 const XHTML11_SYSTEM_ID = "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd";
 
-// EPUB 2 XHTML documents may only use the XHTML 1.1 DOCTYPE, if any (HTM-004).
+// EPUB 2 XHTML documents may only use the XHTML 1.1 DOCTYPE, if any (HTM-004). Upstream
+// checks only a DOCTYPE for the `html` root, as written.
 export const epub2Doctype = (document: Xml.XmlDocument, path: string) => {
   const doctype = document.doctype;
   const found =
-    doctype === undefined
+    doctype === undefined || doctype.name !== "html"
       ? undefined
       : doctype.publicId !== XHTML11_PUBLIC_ID
         ? (doctype.publicId ?? "")

@@ -1,12 +1,13 @@
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as Xml from "../xml/Xml.ts";
+import * as JavaText from "../util/JavaText.ts";
 import { percentDecode } from "../util/UrlFragment.ts";
 import * as Vocabularies from "./Vocabularies.ts";
 
 // The parts of a package document that other checks need: manifest items and the spine.
 
-const OPF_NS = "http://www.idpf.org/2007/opf";
-// Legacy OEBPS 1.2 package documents use their own namespace.
+export const OPF_NS = "http://www.idpf.org/2007/opf";
+// Legacy OEBPS 1.2 package documents use their own namespace, or none.
 export const OEB_PACKAGE_NS = "http://openebook.org/namespaces/oeb-package/1.0/";
 const DC_NS = "http://purl.org/dc/elements/1.1/";
 
@@ -33,6 +34,9 @@ export interface Metadata {
   readonly description: string | undefined;
   readonly rights: string | undefined;
   readonly identifier: string | undefined;
+  // Upstream's publication identifier: the identifier whose `id` is `unique-identifier`, as
+  // written, if it has text.
+  readonly uid: string | undefined;
   readonly language: string | undefined;
   readonly date: string | undefined;
   readonly modified: string | undefined;
@@ -68,7 +72,7 @@ export interface PackageDocument {
   // Item IDs in spine order; `spineItems` has each itemref's details.
   readonly spine: ReadonlyArray<string>;
   readonly spineItems: ReadonlyArray<SpineItem>;
-  // The NCX item the spine names (`toc`).
+  // The ID the spine's `toc` names.
   readonly toc: string | undefined;
   // The guide's `reference` elements.
   readonly guide: ReadonlyArray<Xml.XmlElement>;
@@ -112,7 +116,8 @@ export const read = (
   path: string,
   version: "2" | "3",
 ): PackageDocument => {
-  const ns = document.root.ns === OEB_PACKAGE_NS ? OEB_PACKAGE_NS : OPF_NS;
+  const ns =
+    document.root.ns === OEB_PACKAGE_NS || document.root.ns === "" ? document.root.ns : OPF_NS;
   const children = Xml.childElements(document.root).filter((child) => child.ns === ns);
   const manifest = children.find((child) => child.local === "manifest");
   const spine = children.find((child) => child.local === "spine");
@@ -146,6 +151,7 @@ export const read = (
       ),
     }));
   const itemrefs = spineItems.map((itemref) => itemref.idref);
+  const guide = children.find((child) => child.local === "guide");
   const linksOf = (element: Xml.XmlElement | undefined) =>
     (element === undefined ? [] : Xml.childElements(element))
       .filter((link) => link.ns === OPF_NS && link.local === "link")
@@ -173,9 +179,9 @@ export const read = (
     spine: itemrefs,
     spineItems,
     toc: spine === undefined ? undefined : Xml.attribute(spine, "toc")?.trim(),
-    guide: Xml.childElements(
-      children.find((child) => child.local === "guide") ?? document.root,
-    ).filter((element) => element.ns === ns && element.local === "reference"),
+    guide: (guide === undefined ? [] : Xml.childElements(guide)).filter(
+      (element) => element.ns === ns && element.local === "reference",
+    ),
     metadata: readMetadata(document, children, prefixes),
     links: linksOf(children.find((child) => child.local === "metadata")),
     collections,
@@ -204,6 +210,18 @@ const readMetadata = (
   const identifier =
     identifiers.find((element) => Xml.attribute(element, "id")?.trim() === uniqueIdentifier) ??
     identifiers[0];
+  const declared = Xml.attribute(document.root, "unique-identifier");
+  const uidElement =
+    declared === undefined || declared === ""
+      ? undefined
+      : identifiers.find((element) => {
+          const id = Xml.attribute(element, "id");
+          return id !== undefined && id !== "" && JavaText.trim(id) === declared;
+        });
+  // Upstream keeps the text an element holds directly.
+  const uidText = uidElement?.children.flatMap((child) =>
+    child.kind === "text" ? [child.text] : [],
+  );
   // Upstream resolves the property through the declared prefixes, and takes `refines="#"` as no
   // refinement at all.
   const layouts = elements.filter(
@@ -250,6 +268,8 @@ const readMetadata = (
     description: values("description")[0],
     rights: values("rights")[0],
     identifier: identifier === undefined ? undefined : Xml.textContent(identifier).trim(),
+    uid:
+      uidText === undefined || uidText.length === 0 ? undefined : JavaText.trim(uidText.join("")),
     language: values("language")[0],
     date: values("date")[0],
     types: values("type"),

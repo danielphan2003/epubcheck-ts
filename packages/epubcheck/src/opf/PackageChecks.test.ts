@@ -117,8 +117,8 @@ describe("PackageChecks URLs", () => {
 });
 
 describe("PackageChecks guide", () => {
-  const pkg = (guide: string, version: string) =>
-    `<package xmlns="http://www.idpf.org/2007/opf" version="${version}.0" unique-identifier="id"><metadata/><manifest><item id="c" href="c.xhtml" media-type="application/xhtml+xml"/><item id="css" href="s.css" media-type="text/css"/><item id="svg" href="s.svg" media-type="image/svg+xml"/><item id="r" href="https://example.org/r.mp3" media-type="audio/mpeg"/></manifest><spine><itemref idref="c"/></spine><guide>${guide}</guide></package>`;
+  const pkg = (guide: string, version: string, manifest = "") =>
+    `<package xmlns="http://www.idpf.org/2007/opf" version="${version}.0" unique-identifier="id"><metadata/><manifest><item id="c" href="c.xhtml" media-type="application/xhtml+xml"/><item id="css" href="s.css" media-type="text/css"/><item id="svg" href="s.svg" media-type="image/svg+xml"/>${manifest}</manifest><spine><itemref idref="c"/></spine><guide>${guide}</guide></package>`;
   const reference = (href: string) => `<reference type="text" title="t" href="${href}"/>`;
   const files = new Set(["EPUB/package.opf", "EPUB/c.xhtml", "EPUB/s.css", "EPUB/s.svg"]);
   // Each row was checked against EPUBCheck 5.4.0 on a packaged EPUB, or alone with `--mode opf`.
@@ -139,6 +139,12 @@ describe("PackageChecks guide", () => {
     { name: "the package document", guide: reference(""), found: ["OPF-031 EPUB/package.opf"] },
     { name: "a query", guide: reference("c.xhtml?q"), found: [] },
     {
+      name: "a query after a remote manifest item",
+      guide: reference("c.xhtml?q"),
+      manifest: '<item id="r" href="https://example.org/r.mp3" media-type="audio/mpeg"/>',
+      found: ["OPF-031 EPUB/c.xhtml?q"],
+    },
+    {
       name: "a query after an absolute URL",
       guide: reference("https://example.org/x.xhtml") + reference("c.xhtml?q"),
       found: ["OPF-031 https://example.org/x.xhtml", "OPF-031 EPUB/c.xhtml?q"],
@@ -151,7 +157,7 @@ describe("PackageChecks guide", () => {
     },
   ] as const)("reports $name", ({ guide, found, ...row }) => {
     const version = "version" in row ? row.version : "3";
-    const document = Xml.parse(pkg(guide, version));
+    const document = Xml.parse(pkg(guide, version, "manifest" in row ? row.manifest : ""));
     if (Result.isFailure(document)) throw new Error(document.failure.message);
     const findings = PackageChecks.check({
       document: document.success,

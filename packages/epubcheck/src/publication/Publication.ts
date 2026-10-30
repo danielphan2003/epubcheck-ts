@@ -120,8 +120,12 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     // An item for the package document itself is OPF-099, not a content document.
     if (item.path === undefined || item.path === opf.path) continue;
     const kind = ContentChecker.kindOf(item.mediaType, item.properties, opf.version);
-    // Upstream checks an NCX only as the spine's `toc`.
+    // Upstream checks an NCX only as the spine's `toc`, and cannot read anything else as one.
     if (kind === "ncx" && item.id !== opf.toc) continue;
+    if (item.id === opf.toc && item.mediaType !== "application/x-dtbncx+xml") {
+      yield* report.message("CHK-008", Report.location(opf.path), item.path);
+      continue;
+    }
     const isCss = item.mediaType === "text/css";
     const isImage = MediaTypes.isBitmap(item.mediaType);
     if (kind === undefined && !isCss && !isImage) continue;
@@ -176,7 +180,12 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       yield* reportFindings(EpubType.check(document.value, item.path, typedAs));
     }
     if (Option.isSome(document) && kind === "ncx") {
-      yield* reportFindings(Ncx.check(document.value, item.path, opf.metadata.identifier));
+      // Upstream fails comparing an empty publication identifier with the NCX's (CHK-008).
+      const uid = opf.metadata.uid;
+      yield* reportFindings(
+        Ncx.check(document.value, item.path, uid === "" ? undefined : uid, opf.version),
+      );
+      if (uid === "") yield* report.message("CHK-008", Report.location(opf.path), item.path);
       const links = Ncx.references(document.value, item.path, context);
       references.push(...links.references);
       yield* reportFindings(links.findings);
@@ -244,6 +253,16 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       yield* report.message(scripts ? "OPF-096b" : "OPF-096", itemLocation(item), item.path);
     }
   }
+  // Upstream checks guide references like any other reference to a resource (RSC-007, RSC-012),
+  // and counts them as loading remote items.
+  const guideUrls = Url.checker(opf.path, { container: true });
+  for (const reference of opf.guide) {
+    const href = Xml.attribute(reference, "href");
+    const resolved = href === undefined ? undefined : guideUrls.check(href).resolved;
+    if (resolved === undefined) continue;
+    const at = { path: opf.path, line: reference.line, column: reference.column };
+    references.push({ ...resolved, type: "generic", resource: false, ...at });
+  }
   // Upstream's rule for remote items: only audio, video, Flash and fonts may be remote. A remote
   // spine item is an error, and so is any other remote item no reference loads, unless a script
   // might fetch it.
@@ -269,15 +288,6 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
         yield* report.message(scripts ? "RSC-006b" : "RSC-006", itemLocation(item), name);
       }
     }
-  }
-  // Upstream checks guide references like any other reference to a resource (RSC-007, RSC-012).
-  const guideUrls = Url.checker(opf.path, { container: true });
-  for (const reference of opf.guide) {
-    const href = Xml.attribute(reference, "href");
-    const resolved = href === undefined ? undefined : guideUrls.check(href).resolved;
-    if (resolved === undefined) continue;
-    const at = { path: opf.path, line: reference.line, column: reference.column };
-    references.push({ ...resolved, type: "generic", resource: false, ...at });
   }
   yield* reportFindings(ReferenceChecker.check(references, publication));
   if (opf.version === "3") {
