@@ -357,7 +357,10 @@ export const check = Effect.fn("OcfChecker.check")(function* (
       const mapping = links.value.mapping;
       const bytes = mapping === undefined ? Option.none() : yield* readResource(container, mapping);
       if (mapping !== undefined && Option.isSome(bytes)) {
-        yield* XmlChecker.check(bytes.value, mapping, Schemas.RENDITION_MAPPING);
+        yield* XmlChecker.check(bytes.value, mapping, Schemas.RENDITION_MAPPING, {
+          version,
+          mediaType: "application/xhtml+xml",
+        });
       }
     }
   }
@@ -391,8 +394,12 @@ export const check = Effect.fn("OcfChecker.check")(function* (
   for (const [file, schemas] of metaFiles) {
     const bytes = yield* readResource(container, file);
     if (Option.isNone(bytes)) continue;
+    // Upstream reads each again as `application/xml`, `container.xml` too.
     const document = yield* XmlChecker.check(bytes.value, file, schemas, {
       checksVersion: handled.has(file),
+      version,
+      mediaType: "application/xml",
+      peeked: file === CONTAINER_FILE,
     });
     if (file === "META-INF/encryption.xml" && Option.isSome(document)) {
       const names = new Set(container.files.map((name) => name.normalize("NFC")));

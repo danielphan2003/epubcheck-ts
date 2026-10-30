@@ -27,7 +27,8 @@ export const check = Effect.fn("OpfChecker.check")(function* (
       ...(version === "2" ? Schemas.PACKAGE_20 : Schemas.PACKAGE_30),
       ...Profiles.packageSchemas(profile),
     ],
-    { version },
+    // In a publication, upstream peeks at the package document first; checked alone, it does not.
+    { version, mediaType: "application/oebps-package+xml", peeked: container !== undefined },
   );
   if (Option.isNone(document)) return Option.none<PackageDocument.PackageDocument>();
   const opf = PackageDocument.read(document.value, path, version);

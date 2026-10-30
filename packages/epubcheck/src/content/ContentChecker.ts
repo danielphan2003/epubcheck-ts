@@ -79,6 +79,16 @@ const withPreprocessing =
     return { ...prepared, findings: [...preprocessed.findings, ...(prepared.findings ?? [])] };
   };
 
+// The media type each kind is parsed as, for the DOCTYPE checks.
+const MEDIA_TYPES: Readonly<Record<ContentKind, string>> = {
+  xhtml: "application/xhtml+xml",
+  nav: "application/xhtml+xml",
+  svg: "image/svg+xml",
+  mo: "application/smil+xml",
+  ncx: "application/x-dtbncx+xml",
+  skm: "application/vnd.epub.search-key-map+xml",
+};
+
 export const check = Effect.fn("ContentChecker.check")(function* (
   bytes: Uint8Array,
   path: string,
@@ -93,5 +103,6 @@ export const check = Effect.fn("ContentChecker.check")(function* (
     isXhtml: kind === "xhtml" || kind === "nav",
     informative: version === "3" && (kind === "xhtml" || kind === "nav" || kind === "svg"),
     version,
+    mediaType: MEDIA_TYPES[kind],
   });
 });

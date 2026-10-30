@@ -239,6 +239,21 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       yield* reportFindings(read.findings);
       references.push(...read.references);
       overlays.push({ item, path: item.path, overlay: read.overlay });
+      // Upstream asks an overlay that plays remote audio to declare it, at the end of every
+      // `smil` element, matched by local name, after the first such clip.
+      const remote = read.references.find(
+        (reference) => reference.type === "audio" && reference.target.kind === "remote",
+      );
+      const ends = [document.value.root, ...Xml.descendants(document.value.root)].filter(
+        (element) =>
+          element.local === "smil" &&
+          remote !== undefined &&
+          (element.endLine > remote.line ||
+            (element.endLine === remote.line && element.endColumn > remote.column)),
+      );
+      for (const _ of item.properties.includes("remote-resources") ? [] : ends) {
+        yield* report.message("OPF-014", Report.location(item.path), "remote-resources");
+      }
     }
     if (Option.isNone(document) || kind === "mo" || kind === "ncx" || kind === "skm") continue;
     if (opf.version === "2" && kind === "xhtml") {
@@ -246,9 +261,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
     yield* reportFindings(ContentRules.schemeFindings(document.value, item.path, opf.version));
     if (opf.version === "3") {
-      yield* reportFindings(
-        ContentRules.check(document.value, item.path, kind === "svg" ? "svg" : "xhtml"),
-      );
+      yield* reportFindings(ContentRules.check(document.value, item.path));
       const fixed = fixedLayout.has(item.path);
       yield* reportFindings(
         kind === "svg"
@@ -478,9 +491,7 @@ export const checkDocumentReferences = Effect.fn("Publication.checkDocumentRefer
   }
   yield* reportFindings(ContentRules.schemeFindings(document.value, path, version));
   if (version === "3") {
-    yield* reportFindings(
-      ContentRules.check(document.value, path, kind === "svg" ? "svg" : "xhtml"),
-    );
+    yield* reportFindings(ContentRules.check(document.value, path));
   }
   const context: Collect.Context = {
     version,

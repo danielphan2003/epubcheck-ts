@@ -39,6 +39,65 @@ interface SchemaFinding {
   readonly informative?: boolean;
 }
 
+// The DOCTYPE external identifiers EPUB 3 tolerates, by the media type upstream parses as.
+const EXTERNAL_IDENTIFIERS: Readonly<Record<string, readonly [string, string]>> = {
+  "image/svg+xml": ["-//W3C//DTD SVG 1.1//EN", "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd"],
+  "application/x-dtbncx+xml": [
+    "-//NISO//DTD ncx 2005-1//EN",
+    "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd",
+  ],
+};
+
+// What upstream's resolver bundles. It reads the package document and `container.xml` before it
+// knows the version, and then fetches any other DTD, so it reads them only offline.
+const BUNDLED_DTDS = new Set([
+  "about:legacy-compat",
+  "http://openebook.org/dtds/oeb-1.2/oebpkg12.dtd",
+  "http://http://idpf.org/dtds/oeb-1.2/oebpkg12.dtd",
+  "http://openebook.org/dtds/oeb-1.2/oeb12.ent",
+  "http://openebook.org/dtds/oeb-1.2/oebdoc12.dtd",
+  "http://www.idpf.org/dtds/2007/opf.dtd",
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd",
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd",
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml-lat1.ent",
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml-symbol.ent",
+  "http://www.w3.org/TR/xhtml1/DTD/xhtml-special.ent",
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd",
+  "http://www.daisy.org/z3986/2005/dtbook-2005-2.dtd",
+  "http://www.daisy.org/z3986/2005/ncx-2005-1.dtd",
+  "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd",
+  "http://www.w3.org/MarkUp/DTD/xhtml11.dtd",
+]);
+
+// Upstream's DeclarationHandler, which reads every DOCTYPE, in EPUB 3: an XHTML document's
+// `html` one is HTML5's (HTM-004), another names only its media type's own external
+// identifiers (OPF-073), and no entity is external (HTM-003).
+export const declarationFindings = (doctype: Xml.XmlDoctype, mediaType: string) => {
+  const at = { line: doctype.line, column: doctype.column };
+  const identified = doctype.publicId !== undefined || doctype.systemId !== undefined;
+  const html = mediaType === "application/xhtml+xml" && doctype.name.toLowerCase() === "html";
+  const legacy = doctype.publicId === undefined && doctype.systemId === "about:legacy-compat";
+  const allowed = EXTERNAL_IDENTIFIERS[mediaType];
+  const foreign = allowed?.[0] !== doctype.publicId || allowed?.[1] !== doctype.systemId;
+  // Upstream formats a missing public ID with Java's string conversion.
+  const declared = !identified
+    ? []
+    : html
+      ? legacy
+        ? []
+        : [{ id: "HTM-004" as const, args: [doctype.publicId ?? "null", "<!DOCTYPE html>"], ...at }]
+      : foreign
+        ? [{ id: "OPF-073" as const, args: [], ...at }]
+        : [];
+  const entities = doctype.externalEntities.map(({ name, line, column }) => ({
+    id: "HTM-003" as const,
+    args: [name],
+    line,
+    column,
+  }));
+  return [...declared, ...entities];
+};
+
 // The preprocessing and schema errors of a parsed document.
 const validateDocument = (
   document: Xml.XmlDocument,
@@ -94,9 +153,21 @@ export const check = Effect.fn("XmlChecker.check")(function* (
     readonly version?: "2" | "3";
     // Upstream checks the XML version (HTM-001) only where its XML handler parses the file.
     readonly checksVersion?: boolean;
+    // The media type upstream parses the file as, for its EPUB 3 DOCTYPE checks.
+    readonly mediaType?: string;
+    // Upstream reads the file before it knows the version, resolving only its bundled DTDs.
+    readonly peeked?: boolean;
   } = {},
 ) {
-  const { prepare, isXhtml = false, informative = false, version, checksVersion = true } = options;
+  const {
+    prepare,
+    isXhtml = false,
+    informative = false,
+    version,
+    checksVersion = true,
+    mediaType,
+    peeked = false,
+  } = options;
   const report = yield* Report.Report;
   const decoded = Xml.decodeDocument(bytes);
   if (decoded.encoding === "UTF-16") {
@@ -124,7 +195,14 @@ export const check = Effect.fn("XmlChecker.check")(function* (
     yield* report.message("RSC-016", Report.location(path, line, column), message);
     return Option.none<Xml.XmlDocument>();
   }
-  // Upstream's XMLHandler checks the XML version of every document it parses.
+  // The DOCTYPE comes before the root, at whose start tag upstream checks the XML version.
+  const { doctype } = parsed.success;
+  const readable = !peeked || doctype?.systemId === undefined || BUNDLED_DTDS.has(doctype.systemId);
+  if (version === "3" && mediaType !== undefined && doctype !== undefined && readable) {
+    for (const { id, args, line, column } of declarationFindings(doctype, mediaType)) {
+      yield* report.message(id, Report.location(path, line, column), ...args);
+    }
+  }
   const xmlVersion = parsed.success.version;
   if (checksVersion && xmlVersion !== undefined && xmlVersion !== "1.0") {
     yield* report.message("HTM-001", Report.location(path), xmlVersion);
