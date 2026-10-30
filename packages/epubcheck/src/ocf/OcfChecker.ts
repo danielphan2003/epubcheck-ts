@@ -30,6 +30,8 @@ export interface PackageDocument {
 export interface OcfResult {
   readonly container: Container.Container;
   readonly packageDocuments: ReadonlyArray<PackageDocument>;
+  // Files container.xml declares: every rootfile, whatever its media type, and mapping documents.
+  readonly declared: ReadonlyArray<string>;
   // The `mimetype` file's content, trimmed, which upstream's reports give as the format.
   readonly formatName: string | undefined;
 }
@@ -38,6 +40,7 @@ interface ContainerLinks {
   readonly rootfiles: ReadonlyArray<string>;
   // The last Rendition Mapping Document link, the only one upstream keeps.
   readonly mapping: string | undefined;
+  readonly declared: ReadonlyArray<string>;
 }
 
 // Upstream ICU canonicalCaseFold: NFD, then full case folding. Lower-upper-lower approximates
@@ -223,10 +226,11 @@ const checkContainerFile = Effect.fn("OcfChecker.checkContainerFile")(function* 
     return Option.none<ContainerLinks>();
   }
   const document = yield* parseXml(container, CONTAINER_FILE);
-  const none = { rootfiles: [], mapping: undefined };
+  const none = { rootfiles: [], mapping: undefined, declared: [] };
   if (Option.isNone(document)) return Option.some<ContainerLinks>(none);
   const rootfiles: Array<string> = [];
-  const mapping = [...Xml.descendants(document.value.root)]
+  const declared: Array<string> = [];
+  const mappings = [...Xml.descendants(document.value.root)]
     .filter(
       (element) =>
         element.ns === CONTAINER_NS &&
@@ -236,8 +240,7 @@ const checkContainerFile = Effect.fn("OcfChecker.checkContainerFile")(function* 
     .flatMap((element) => {
       const href = Xml.attribute(element, "href")?.trim();
       return href === undefined || href === "" ? [] : [resolveRootfile(href)];
-    })
-    .at(-1);
+    });
   for (const element of Xml.descendants(document.value.root)) {
     if (element.ns !== CONTAINER_NS || element.local !== "rootfile") continue;
     const location = Report.location(CONTAINER_FILE, element.line, element.column);
@@ -251,9 +254,16 @@ const checkContainerFile = Effect.fn("OcfChecker.checkContainerFile")(function* 
       continue;
     }
     const mediaType = (Xml.attribute(element, "media-type") ?? "unknown").trim().toLowerCase();
-    if (mediaType === PACKAGE_MEDIA_TYPE) rootfiles.push(resolveRootfile(fullPath));
+    const rootfile = resolveRootfile(fullPath);
+    if (mediaType === PACKAGE_MEDIA_TYPE) rootfiles.push(rootfile);
+    // Upstream declares the rootfile's URL with its fragment, which no container file equals.
+    if (!fullPath.includes("#")) declared.push(rootfile);
   }
-  return Option.some<ContainerLinks>({ rootfiles, mapping });
+  return Option.some<ContainerLinks>({
+    rootfiles,
+    mapping: mappings.at(-1),
+    declared: [...declared, ...mappings],
+  });
 });
 
 export const check = Effect.fn("OcfChecker.check")(function* (
@@ -383,5 +393,10 @@ export const check = Effect.fn("OcfChecker.check")(function* (
       }
     }
   }
-  return Option.some<OcfResult>({ container, packageDocuments, formatName });
+  return Option.some<OcfResult>({
+    container,
+    packageDocuments,
+    declared: links.value.declared,
+    formatName,
+  });
 });

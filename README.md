@@ -56,11 +56,11 @@ epubcheck-ts detects.
 
 <!-- conformance:start -->
 
-Upstream suite: EPUBCheck v5.4.0. Passing **1146 / 1251** scenarios (91.6%); scenarios that expect reported messages: **631 / 720** (87.6%).
+Upstream suite: EPUBCheck v5.4.0. Passing **1163 / 1251** scenarios (93.0%); scenarios that expect reported messages: **647 / 720** (89.9%).
 
 | Area                                    | Passing | Total |      % |
 | --------------------------------------- | ------: | ----: | -----: |
-| `cli`                                   |      51 |    53 |  96.2% |
+| `cli`                                   |      52 |    53 |  98.1% |
 | `epub-accessibility`                    |       5 |     5 | 100.0% |
 | `epub-dictionaries`                     |      34 |    34 | 100.0% |
 | `epub-distributable-objects`            |       2 |     2 | 100.0% |
@@ -70,12 +70,12 @@ Upstream suite: EPUBCheck v5.4.0. Passing **1146 / 1251** scenarios (91.6%); sce
 | `epub-previews`                         |      10 |    10 | 100.0% |
 | `epub-region-nav`                       |       8 |    10 |  80.0% |
 | `epub-scriptable-components`            |       2 |     2 | 100.0% |
-| `epub2`                                 |      78 |    99 |  78.8% |
+| `epub2`                                 |      81 |    99 |  81.8% |
 | `epub3/00-minimal`                      |       5 |     5 | 100.0% |
 | `epub3/02-epub-publication-conformance` |       2 |     2 | 100.0% |
 | `epub3/03-resources`                    |     129 |   129 | 100.0% |
-| `epub3/04-ocf`                          |      89 |   100 |  89.0% |
-| `epub3/05-package-document`             |     120 |   130 |  92.3% |
+| `epub3/04-ocf`                          |      98 |   100 |  98.0% |
+| `epub3/05-package-document`             |     124 |   130 |  95.4% |
 | `epub3/06-layouts`                      |      20 |    20 | 100.0% |
 | `epub3/07-content-documents`            |     216 |   235 |  91.9% |
 | `epub3/08-navigation-document`          |      36 |    40 |  90.0% |

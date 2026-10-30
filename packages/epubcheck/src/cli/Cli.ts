@@ -584,7 +584,8 @@ const run = Effect.fn("Cli.run")(function* (
         ? message.location.path
         : JsonReport.locationPath(result, message.location, containerPath);
     const file = name.endsWith(where) ? name : `${name}/${where}`;
-    const body = message.message.replace(/\s+/g, " ");
+    // Java's `\s`, which leaves U+00A0 and other Unicode spaces alone.
+    const body = message.message.replace(/[ \t\n\v\f\r]+/g, " ");
     return `${message.severity}(${MessageCatalog.displayId(message.id)}): ${file}(${message.location.line},${message.location.column}): ${body}`;
   };
   const print = (message: Report.Message) => {
