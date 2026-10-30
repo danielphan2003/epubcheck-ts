@@ -109,25 +109,20 @@ const make = Effect.gen(function* () {
     profile: Profile,
   ) {
     const report = yield* Report.Report;
+    // Upstream's reports describe a publication it cannot open with their defaults.
+    const unopened = {
+      publication: undefined,
+      created: undefined,
+      formatName: undefined,
+      summary: yield* Summary.summarize(undefined, [], false),
+    };
     const exists = yield* fs.exists(target).pipe(Effect.orElseSucceed(() => false));
     if (!exists) {
       yield* report.message("PKG-018", Report.location(path.basename(target)));
-      return {
-        publication: undefined,
-        created: undefined,
-        formatName: undefined,
-        summary: undefined,
-      };
+      return unopened;
     }
     const ocf = yield* OcfChecker.check(target, profile);
-    if (Option.isNone(ocf)) {
-      return {
-        publication: undefined,
-        created: undefined,
-        formatName: undefined,
-        summary: undefined,
-      };
-    }
+    if (Option.isNone(ocf)) return unopened;
     const { created } = ocf.value.container;
     const { formatName } = ocf.value;
     let metadata: PackageDocument.Metadata | undefined;
@@ -163,7 +158,7 @@ const make = Effect.gen(function* () {
       );
       renditions.push({ opf: opfResult.value, resources });
     }
-    const summary = yield* Summary.summarize(ocf.value.container, renditions);
+    const summary = yield* Summary.summarize(ocf.value.container, renditions, ocf.value.complete);
     // Container files no package document declares (OCF files aside) are reported as usages.
     for (const file of ocf.value.complete ? ocf.value.container.files : []) {
       if (
@@ -221,28 +216,21 @@ const make = Effect.gen(function* () {
       overrides,
     });
     const profile = request.profile ?? "default";
-    const run =
+    // A single document has no publication to describe.
+    const checked =
       mode === "epub"
-        ? checkPublication(target, profile)
-        : checkDocument(target, mode, request.version ?? "3", profile).pipe(
-            Effect.as({
-              publication: undefined,
-              created: undefined,
-              formatName: undefined,
-              summary: undefined,
-            }),
+        ? yield* checkPublication(target, profile).pipe(
+            Effect.provideService(Report.Report, report),
+            Effect.provide(platform),
+          )
+        : yield* checkDocument(target, mode, request.version ?? "3", profile).pipe(
+            Effect.provideService(Report.Report, report),
+            Effect.provide(platform),
           );
-    const { publication, created, formatName, summary } = yield* run.pipe(
-      Effect.provideService(Report.Report, report),
-      Effect.provide(platform),
-    );
     return {
       path: target,
       mode,
-      publication,
-      summary,
-      created,
-      formatName,
+      ...(checked === undefined ? {} : checked),
       messages: yield* report.messages,
     } satisfies CheckResult;
   });

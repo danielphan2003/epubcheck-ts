@@ -17,7 +17,9 @@ import * as Url from "../references/Url.ts";
 import * as Report from "../report/Report.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as Xml from "../xml/Xml.ts";
-import * as Summary from "./Summary.ts";
+
+// Upstream's reports name the documents they check by their container paths as URLs.
+const reportPath = (path: string) => Url.encodePath(path.normalize("NFC"));
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -108,8 +110,8 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   const narrators = new Map<string, string>();
   const references: Array<Collect.Reference> = [];
   let scripts = false;
-  // Characters in the content documents, which upstream's reports count.
-  let characters = 0;
+  // Characters in each content document, which upstream's reports count.
+  const characters: Array<{ readonly path: string; readonly count: number }> = [];
   const positions = new Map<string, ReadonlyMap<string, number>>();
   const overlays: Array<{
     readonly item: ManifestItem;
@@ -233,14 +235,15 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     const collected = Collect.fromDocument(document.value, item.path, context);
     references.push(...collected.references);
     const elements = [document.value.root, ...Xml.descendants(document.value.root)];
+    let count = 0;
     for (const element of elements) {
-      for (const child of element.children)
-        if (child.kind === "text") characters += child.text.length;
+      for (const child of element.children) if (child.kind === "text") count += child.text.length;
       // Inline style sheets declare fonts too.
       if ((element.ns === XHTML_NS || element.ns === SVG_NS) && element.local === "style") {
         styleSheets.push({ path: item.path, css: Xml.textContent(element) });
       }
     }
+    characters.push({ path: reportPath(item.path), count });
     ids.set(nfc(item.path), Collect.ids(document.value));
     yield* reportFindings(collected.findings);
     if (collected.features.scripts) scripts = true;
@@ -353,9 +356,10 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       yield* report.message("OPF-078", Report.location(opf.path));
     }
   }
-  // Every reference counts, before any check, and so do the package document's links.
+  // Every reference counts, before any check, and so do the package document's EPUB 3 links.
   const linkUrls = Url.checker(opf.path, { container: true });
-  const links = [...opf.links, ...collectionLinks(opf.collections)].flatMap(({ href }) => {
+  const allLinks = opf.version === "3" ? [...opf.links, ...collectionLinks(opf.collections)] : [];
+  const links = allLinks.flatMap(({ href }) => {
     const resolved = linkUrls.check(href).resolved;
     // Upstream registers no data URL, and no link to a part of the package document (OPF-098).
     const self =
@@ -364,32 +368,28 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       (resolved.fragment ?? "") !== "";
     return resolved === undefined || resolved.target.kind === "data" || self
       ? []
-      : [{ from: opf.path, to: Summary.referenceName(resolved) }];
+      : [{ from: reportPath(opf.path), to: Url.referenceName(resolved) }];
   });
   return {
     scripted: new Set(
-      documents.filter((document) => document.features.scripts).map((document) => document.path),
+      documents
+        .filter((document) => document.features.scripts)
+        .map((document) => reportPath(document.path)),
     ),
     references: [
       ...references.map((reference) => ({
-        from: reference.path,
-        to: Summary.referenceName(reference),
+        from: reportPath(reference.path),
+        to: Url.referenceName(reference),
       })),
       ...links,
     ],
-    fonts: styleSheets.flatMap(({ path, css }) => Summary.fonts(css, path)),
+    fonts: styleSheets.flatMap(({ path, css }) => Collect.fonts(css, path)),
     characters,
-  } satisfies Resources;
+  };
 });
 
 // What the reports need from a checked publication's resources.
-export interface Resources {
-  readonly scripted: ReadonlySet<string>;
-  // Each reference, from the referencing document to its target as upstream names it.
-  readonly references: ReadonlyArray<{ readonly from: string; readonly to: string }>;
-  readonly fonts: ReadonlyArray<{ readonly embedded: boolean; readonly name: string }>;
-  readonly characters: number;
-}
+export type Resources = Effect.Success<ReturnType<typeof checkResources>>;
 
 // The links of collections, nested ones included; annotated, as it is recursive.
 const collectionLinks = (collections: PackageDocument["collections"]): Collection["links"] =>

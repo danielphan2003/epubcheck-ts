@@ -78,6 +78,7 @@ export interface PackageDocument {
   // Item IDs in spine order; `spineItems` has each itemref's details.
   readonly spine: ReadonlyArray<string>;
   readonly spineItems: ReadonlyArray<SpineItem>;
+  readonly hasSpine: boolean;
   // The ID the spine's `toc` names.
   readonly toc: string | undefined;
   // The guide's `reference` elements.
@@ -187,6 +188,7 @@ export const read = (
     items,
     spine: itemrefs,
     spineItems,
+    hasSpine: spine !== undefined,
     toc: spine === undefined ? undefined : Xml.attribute(spine, "toc")?.trim(),
     guide: (guide === undefined ? [] : Xml.childElements(guide)).filter(
       (element) => PACKAGE_NAMESPACES.has(element.ns) && element.local === "reference",

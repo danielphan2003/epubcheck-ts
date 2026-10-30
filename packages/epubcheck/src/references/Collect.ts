@@ -586,6 +586,35 @@ export const fontFaces = (css: string) => {
   });
 };
 
+// The fonts a style sheet's `@font-face` rules name, embedded when the last `src` URL is not a
+// remote one. Upstream keeps the family, style, weight and URL of earlier rules in the sheet,
+// and registers no empty or fragment-only URL.
+export const fonts = (css: string, path: string) => {
+  const urls = Url.checker(path, { container: true });
+  let family: string | undefined;
+  let style: string | undefined;
+  let weight: string | undefined;
+  let source: string | undefined;
+  return fontFaces(css).flatMap((face) => {
+    if (face.family !== undefined) {
+      family = face.family.replace(/^[\t\n\f\r "']+|[\t\n\f\r "']+$/g, "");
+    }
+    style = face.style ?? style;
+    weight = face.weight ?? weight;
+    for (const url of face.urls) {
+      if (url.trim() === "" || url.trim().startsWith("#")) continue;
+      const resolved = urls.check(url).resolved;
+      if (resolved !== undefined) source = Url.referenceName(resolved);
+    }
+    if (family === undefined) return [];
+    const shown = [style, weight].filter(
+      (value) => value !== undefined && value.toLowerCase() !== "normal",
+    );
+    const embedded = source !== undefined && !source.startsWith("http");
+    return [{ embedded, name: [family, ...shown].join(",") }];
+  });
+};
+
 // The URLs an SVG element links to: `xlink:href` in EPUB 2, and `href` too in EPUB 3.
 const svgHrefs = (element: Xml.XmlElement, epub3: boolean) => {
   const xlink = Xml.attribute(element, "href", XLINK_NS);

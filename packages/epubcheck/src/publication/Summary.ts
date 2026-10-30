@@ -4,7 +4,6 @@ import * as Option from "effect/Option";
 import type * as Container from "../ocf/Container.ts";
 import * as PackageChecks from "../opf/PackageChecks.ts";
 import { type ManifestItem, type PackageDocument, registered } from "../opf/PackageDocument.ts";
-import * as Collect from "../references/Collect.ts";
 import * as Url from "../references/Url.ts";
 import { percentDecode } from "../util/UrlFragment.ts";
 import * as Xml from "../xml/Xml.ts";
@@ -54,39 +53,6 @@ const itemName = (item: ManifestItem) => {
   return item.path.normalize("NFC") + fragment;
 };
 
-// How upstream names a reference's target: its container path as a URL, or its URL, with any
-// fragment.
-export const referenceName = ({ target, fragment }: Url.Resolved) => {
-  const name = target.kind === "local" ? Url.encodePath(target.path) : target.url;
-  return fragment === undefined ? name : `${name}#${fragment}`;
-};
-
-// The fonts a style sheet's `@font-face` rules name, embedded when the last `src` URL is not a
-// remote one. Upstream keeps the family, style, weight and URL of earlier rules in the sheet.
-export const fonts = (css: string, path: string) => {
-  const urls = Url.checker(path, { container: true });
-  let family: string | undefined;
-  let style: string | undefined;
-  let weight: string | undefined;
-  let source: string | undefined;
-  return Collect.fontFaces(css).flatMap((face) => {
-    if (face.family !== undefined)
-      family = face.family.replace(/^[\t\n\f\r "']+|[\t\n\f\r "']+$/g, "");
-    style = face.style ?? style;
-    weight = face.weight ?? weight;
-    for (const url of face.urls) {
-      const resolved = urls.check(url).resolved;
-      if (resolved !== undefined) source = referenceName(resolved);
-    }
-    if (family === undefined) return [];
-    const shown = [style, weight].filter(
-      (value) => value !== undefined && value.toLowerCase() !== "normal",
-    );
-    const embedded = source !== undefined && !source.startsWith("http");
-    return [{ embedded, name: [family, ...shown].join(",") }];
-  });
-};
-
 // A media overlay item, as the package document references it.
 const overlayName = (overlay: ManifestItem) =>
   overlay.path === undefined
@@ -100,9 +66,12 @@ const OVERRIDES = {
   spread: ["auto", "both", "landscape", "none", "portrait"],
 } as const;
 
+// `complete` says whether the check went on to the package documents; without a container,
+// upstream still reports its defaults.
 export const summarize = Effect.fn("Summary.summarize")(function* (
-  container: Container.Container,
+  container: Container.Container | undefined,
   renditions: ReadonlyArray<{ readonly opf: PackageDocument; readonly resources: Resources }>,
+  complete: boolean,
 ) {
   const entries = new Map<string, Entry>();
   const entry = (fileName: string) => {
@@ -151,7 +120,8 @@ export const summarize = Effect.fn("Summary.summarize")(function* (
 
   // The container reports every file's storage before any package document is read. An
   // expanded EPUB has no archive: upstream zips it to check it, which these sizes approximate.
-  for (const file of container.files) {
+  for (const file of container?.files ?? []) {
+    if (container === undefined) break;
     const bytes = yield* container
       .read(file)
       .pipe(
@@ -187,7 +157,9 @@ export const summarize = Effect.fn("Summary.summarize")(function* (
     const items = [...registered(opf)];
     const byId = new Map(items.map((item) => [item.id, item] as const));
     // A spine without a known `toc` is not backward compatible.
-    if (opf.toc === undefined || !byId.has(opf.toc)) publication.backwardCompatible = false;
+    if (opf.hasSpine && (opf.toc === undefined || !byId.has(opf.toc))) {
+      publication.backwardCompatible = false;
+    }
     // Itemrefs count when their item is registered; one non-linear itemref makes it non-linear,
     // and their rendition properties add up.
     const itemrefs = opf.spineItems.filter((itemref) => byId.has(itemref.idref));
@@ -227,12 +199,16 @@ export const summarize = Effect.fn("Summary.summarize")(function* (
       const item = byId.get(itemref.idref);
       if (item !== undefined) entry(itemName(item)).spineIndex = index;
     }
+    // Documents report under their encoded paths, which may name no item.
     for (const path of resources.scripted) {
-      entry(path.normalize("NFC")).scripted = true;
+      entry(path).scripted = true;
       publication.scripted = true;
       publication.backwardCompatible = false;
     }
-    publication.characters += resources.characters;
+    for (const { path, count } of resources.characters) {
+      entry(path);
+      publication.characters += count;
+    }
     for (const font of resources.fonts) {
       (font.embedded ? publication.embeddedFonts : publication.remoteFonts).add(font.name);
     }
@@ -241,11 +217,12 @@ export const summarize = Effect.fn("Summary.summarize")(function* (
     const overlays = epub3
       ? PackageChecks.checkedItems(opf).flatMap((item) => {
           const overlay = byId.get(Xml.attribute(item.element, "media-overlay") ?? "");
-          return overlay === undefined ? [] : [{ from: opf.path, to: overlayName(overlay) }];
+          if (overlay === undefined) return [];
+          return [{ from: Url.encodePath(opf.path.normalize("NFC")), to: overlayName(overlay) }];
         })
       : [];
     for (const { from, to } of [...resources.references, ...overlays]) {
-      const target = entry(from.normalize("NFC"));
+      const target = entry(from);
       if (to !== target.fileName) target.referenced.add(to);
     }
   }
@@ -269,8 +246,8 @@ export const summarize = Effect.fn("Summary.summarize")(function* (
     ...publication,
     embeddedFonts: [...publication.embeddedFonts],
     remoteFonts: [...publication.remoteFonts],
-    hasEncryption: container.files.includes("META-INF/encryption.xml"),
-    hasSignatures: container.files.includes("META-INF/signatures.xml"),
+    hasEncryption: complete && container?.files.includes("META-INF/encryption.xml") === true,
+    hasSignatures: complete && container?.files.includes("META-INF/signatures.xml") === true,
     items,
   };
 });
