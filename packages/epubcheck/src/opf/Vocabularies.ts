@@ -375,8 +375,9 @@ export const canonicalNames = (
   value: string | undefined,
   context: PropertyContext,
   prefixes: Prefixes,
+  isList = true,
 ) =>
-  parseProperties(value, context, prefixes, true).properties.map(({ prefix, name, token }) => {
+  parseProperties(value, context, prefixes, isList).properties.map(({ prefix, name, token }) => {
     if (prefix === "") return name;
     const uri = prefixes.vocabs.get(prefix)?.uri;
     const reserved = Object.entries(RESERVED).find(([, vocab]) => vocab.uri === uri)?.[0];

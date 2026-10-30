@@ -143,7 +143,7 @@ export const read = (
     items,
     spine: itemrefs,
     spineItems,
-    metadata: readMetadata(document, children),
+    metadata: readMetadata(document, children, prefixes),
     collections,
   };
 };
@@ -151,6 +151,7 @@ export const read = (
 const readMetadata = (
   document: Xml.XmlDocument,
   children: ReadonlyArray<Xml.XmlElement>,
+  prefixes: Vocabularies.Prefixes,
 ): Metadata => {
   const metadata = children.find((child) => child.local === "metadata");
   // EPUB 2 allows Dublin Core inside a `dc-metadata` wrapper.
@@ -169,12 +170,19 @@ const readMetadata = (
   const identifier =
     identifiers.find((element) => Xml.attribute(element, "id")?.trim() === uniqueIdentifier) ??
     identifiers[0];
+  // Upstream resolves the property through the declared prefixes, and takes `refines="#"` as no
+  // refinement at all.
   const layouts = elements.filter(
     (element) =>
       element.ns === OPF_NS &&
       element.local === "meta" &&
-      Xml.attribute(element, "refines") === undefined &&
-      Xml.attribute(element, "property")?.trim() === "rendition:layout",
+      (Xml.attribute(element, "refines") ?? "#") === "#" &&
+      Vocabularies.canonicalNames(
+        Xml.attribute(element, "property"),
+        "meta",
+        prefixes,
+        false,
+      )[0] === "rendition:layout",
   );
   const modified = elements.find(
     (element) =>

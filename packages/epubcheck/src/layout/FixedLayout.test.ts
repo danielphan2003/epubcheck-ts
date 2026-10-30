@@ -11,15 +11,17 @@ const parse = (source: string) => {
   return document.success;
 };
 
-const opf = (layout: string, manifest: string, spine: string) =>
+const opf = (metadata: string, manifest: string, spine: string) =>
   PackageDocument.read(
     parse(`<package xmlns="http://www.idpf.org/2007/opf" version="3.0"
       prefix="rend: http://www.idpf.org/vocab/rendition/#">
-      <metadata><meta property="rendition:layout">${layout}</meta></metadata>
+      <metadata>${metadata}</metadata>
       <manifest>${manifest}</manifest><spine>${spine}</spine></package>`),
     "EPUB/package.opf",
     "3",
   );
+
+const layout = (value: string) => `<meta property="rendition:layout">${value}</meta>`;
 
 const xhtml = (head: string, body = "") =>
   parse(
@@ -31,7 +33,7 @@ describe("FixedLayout", () => {
   it.each([
     {
       name: "a fallback chain, one level only",
-      layout: "pre-paginated",
+      metadata: layout("pre-paginated"),
       manifest: `<item id="a" href="a.foo" media-type="application/x-foo" fallback="b"/>
         <item id="b" href="b.foo" media-type="application/x-bar" fallback="c"/>
         <item id="c" href="c.xhtml" media-type="application/xhtml+xml"/>`,
@@ -40,42 +42,56 @@ describe("FixedLayout", () => {
     },
     {
       name: "a reflowable itemref in a roll publication",
-      layout: "roll",
+      metadata: layout("roll"),
       manifest: `<item id="c" href="c.xhtml" media-type="application/xhtml+xml"/>`,
       spine: `<itemref idref="c" properties="rendition:layout-reflowable"/>`,
       fixed: ["c"],
     },
     {
       name: "an undefined roll itemref layout",
-      layout: "reflowable",
+      metadata: layout("reflowable"),
       manifest: `<item id="c" href="c.xhtml" media-type="application/xhtml+xml"/>`,
       spine: `<itemref idref="c" properties="rendition:layout-roll"/>`,
       fixed: [],
     },
     {
       name: "an aliased rendition prefix",
-      layout: "reflowable",
+      metadata: layout("reflowable"),
       manifest: `<item id="c" href="c.xhtml" media-type="application/xhtml+xml"/>`,
       spine: `<itemref idref="c" properties="rend:layout-pre-paginated"/>`,
       fixed: ["c"],
     },
     {
+      name: "an aliased layout property",
+      metadata: '<meta property="rend:layout">pre-paginated</meta>',
+      manifest: `<item id="c" href="c.xhtml" media-type="application/xhtml+xml"/>`,
+      spine: `<itemref idref="c"/>`,
+      fixed: ["c"],
+    },
+    {
+      name: "a refined layout",
+      metadata: '<meta property="rendition:layout" refines="#c">pre-paginated</meta>',
+      manifest: `<item id="c" href="c.xhtml" media-type="application/xhtml+xml"/>`,
+      spine: `<itemref idref="c"/>`,
+      fixed: [],
+    },
+    {
       name: "a padded idref",
-      layout: "pre-paginated",
+      metadata: layout("pre-paginated"),
       manifest: `<item id="c" href="c.xhtml" media-type="application/xhtml+xml"/>`,
       spine: `<itemref idref=" c "/>`,
       fixed: [],
     },
     {
       name: "a fallback loop",
-      layout: "pre-paginated",
+      metadata: layout("pre-paginated"),
       manifest: `<item id="a" href="a.xhtml" media-type="application/xhtml+xml" fallback="b"/>
         <item id="b" href="b.xhtml" media-type="application/xhtml+xml" fallback="a"/>`,
       spine: `<itemref idref="a"/>`,
       fixed: ["a"],
     },
-  ])("finds fixed-layout items in $name", ({ layout, manifest, spine, fixed }) => {
-    expect([...FixedLayout.fixedLayoutIds(opf(layout, manifest, spine))]).toEqual(fixed);
+  ])("finds fixed-layout items in $name", ({ metadata, manifest, spine, fixed }) => {
+    expect([...FixedLayout.fixedLayoutIds(opf(metadata, manifest, spine))]).toEqual(fixed);
   });
 
   it.each([
