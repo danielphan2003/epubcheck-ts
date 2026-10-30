@@ -11,7 +11,12 @@ import * as Ncx from "../ncx/Ncx.ts";
 import * as MediaOverlays from "../overlays/MediaOverlays.ts";
 import type * as Container from "../ocf/Container.ts";
 import * as OcfChecker from "../ocf/OcfChecker.ts";
-import type { Collection, ManifestItem, PackageDocument } from "../opf/PackageDocument.ts";
+import {
+  type Collection,
+  type ManifestItem,
+  type PackageDocument,
+  registered,
+} from "../opf/PackageDocument.ts";
 import * as Collect from "../references/Collect.ts";
 import * as Profiles from "../profiles/Profiles.ts";
 import * as ReadingOrder from "../references/ReadingOrder.ts";
@@ -45,6 +50,22 @@ const EPUB_TYPE_MEDIA_TYPES: Partial<Record<ContentChecker.ContentKind, string>>
   svg: "image/svg+xml",
   mo: "application/smil+xml",
 };
+
+// The references upstream counts as using a publication resource (OPF-097); `iframe`, `object`
+// and `embed` are generic there.
+const RESOURCE_TYPES = new Set<Collect.ReferenceType>([
+  "generic",
+  "stylesheet",
+  "font",
+  "image",
+  "audio",
+  "video",
+  "track",
+  "script",
+  "iframe",
+  "object",
+  "embed",
+]);
 
 // Compares an image's leading bytes with its declared media type and file name.
 const checkImage = Effect.fn("Publication.checkImage")(function* (
@@ -133,7 +154,8 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   const fonts: Array<{ readonly embedded: boolean; readonly name: string }> = [];
   // The `toc` links of the Navigation Documents, in the order they are read.
   const tocLinks: Array<ReadingOrder.TocLink> = [];
-  for (const item of opf.items) {
+  // Upstream reads the items it registers: the last of each ID, with an `href`.
+  for (const item of registered(opf)) {
     // An item for the package document itself is OPF-099, not a content document.
     if (item.path === undefined || item.path === opf.path) continue;
     const kind = ContentChecker.kindOf(item.mediaType, item.properties, opf.version);
@@ -153,8 +175,8 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     if (kind === "ncx" && !isToc) continue;
     const isCss = item.mediaType === "text/css";
     const isImage = MediaTypes.isBitmap(item.mediaType);
-    // Upstream registers the IDs of DTBook documents, and in EPUB 2 of HTML and OEB documents,
-    // which it reads with its OPS handler; we read nothing else from them.
+    // Upstream registers the IDs of DTBook documents, and their references, and in EPUB 2 the IDs
+    // of HTML and OEB documents, which it reads with its OPS handler.
     const dtbook = item.mediaType === "application/x-dtbook+xml";
     const legacy =
       opf.version === "2" &&
@@ -167,6 +189,11 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
         const found = Collect.documentIds(parsed.success, dtbook);
         ids.set(nfc(item.path), found.types);
         positions.set(nfc(item.path), found.positions);
+        if (dtbook) {
+          const read = Collect.fromDtbook(parsed.success, item.path, context);
+          yield* reportFindings(read.findings);
+          references.push(...read.references);
+        }
       } else unparsed.add(nfc(item.path));
       continue;
     }
@@ -328,20 +355,6 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   }
   const itemLocation = (item: ManifestItem) =>
     Report.location(opf.path, item.element.line, item.element.column);
-  // EPUB 3 non-linear spine items must be reachable by a hyperlink, or perhaps by a script.
-  // Upstream checks each item once, in manifest order; one non-linear itemref makes it non-linear.
-  const hyperlinked = new Set(
-    references.flatMap(({ type, target }) =>
-      type === "hyperlink" && target.kind === "local" ? [target.path] : [],
-    ),
-  );
-  const nonLinear = new Set(opf.spineItems.flatMap(({ idref, linear }) => (linear ? [] : [idref])));
-  for (const item of opf.version === "3" ? byId.values() : []) {
-    if (!nonLinear.has(item.id) || item.path === undefined) continue;
-    if (!hyperlinked.has(nfc(item.path))) {
-      yield* report.message(scripts ? "OPF-096b" : "OPF-096", itemLocation(item), item.path);
-    }
-  }
   // Upstream checks guide references like any other reference to a resource (RSC-007, RSC-012),
   // and counts them as loading remote items.
   const guideUrls = Url.checker(opf.path, { container: true });
@@ -352,37 +365,79 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     const at = { path: opf.path, line: reference.line, column: reference.column };
     references.push({ ...resolved, type: "generic", resource: false, ...at });
   }
-  // Upstream's rule for remote items: only audio, video, Flash and fonts may be remote. A remote
-  // spine item is an error, and so is any other remote item no reference loads, unless a script
-  // might fetch it.
-  if (opf.version === "3") {
-    const referenced = new Set(
-      references.flatMap(({ target }) => (target.kind === "remote" ? [target.url] : [])),
-    );
-    const spine = new Set(opf.spine);
-    for (const item of opf.items) {
-      const href = item.href.trim();
-      if (item.path !== undefined || href === "" || /^data:/i.test(href)) continue;
-      const type = item.mediaType;
-      if (
-        /^(?:audio|video|font)\/|^application\/font-/.test(type) ||
-        type === "application/x-shockwave-flash" ||
-        type === "application/vnd.ms-opentype"
-      ) {
-        continue;
-      }
+  // The media overlays upstream registers, before any other reference.
+  const overlaid = (opf.version === "3" ? PackageChecks.overlayOwners(opf) : []).flatMap((item) => {
+    // Upstream looks the attribute up as written.
+    const overlay = byId.get(Xml.attribute(item.element, "media-overlay") ?? "");
+    return overlay === undefined ? [] : [{ item, overlay }];
+  });
+  const keyOf = (target: Url.Target) => (target.kind === "local" ? target.path : target.url);
+  const referenced = new Set(
+    references.flatMap(({ target }) => (target.kind === "remote" ? [target.url] : [])),
+  );
+  const hyperlinked = new Set(
+    references.flatMap(({ type, target }) =>
+      type === "hyperlink" && target.kind === "local" ? [target.path] : [],
+    ),
+  );
+  const used = new Set(
+    references.flatMap(({ type, target }) => (RESOURCE_TYPES.has(type) ? [keyOf(target)] : [])),
+  );
+  // Each item's URL as a reference's target would equal it. Upstream's package checker reads the
+  // metadata links, then the items with an ID, and keeps a local query once it has seen an
+  // absolute URL. A reference's target has no fragment, and no local query.
+  const itemUrls = Url.checker(opf.path, { container: true });
+  for (const { href } of opf.version === "3" ? opf.links : []) itemUrls.check(href);
+  const keys = new Map(
+    opf.items.flatMap((item) => {
+      const href = Xml.attribute(item.element, "href");
+      if (Xml.attribute(item.element, "id") === undefined || href === undefined) return [];
+      const { problems, resolved } = itemUrls.check(href);
+      if (resolved === undefined || href.includes("#")) return [];
+      const kept = /^[^#]*\?/.test(href) && problems.every(({ id }) => id !== "RSC-033");
+      return resolved.target.kind === "local" && kept ? [] : [[item, keyOf(resolved.target)]];
+    }),
+  );
+  for (const { overlay } of overlaid) {
+    const key = keys.get(overlay);
+    if (key !== undefined) used.add(key);
+  }
+  const isUsed = (item: ManifestItem) => {
+    const key = keys.get(item);
+    return key !== undefined && used.has(key);
+  };
+  const nonLinear = new Set(opf.spineItems.flatMap(({ idref, linear }) => (linear ? [] : [idref])));
+  // Upstream's checks of each item after reading the resources, in manifest order:
+  // - only audio, video, Flash and fonts may be remote, and a remote item needs a reference to
+  //   load it, unless a script might fetch it (RSC-006);
+  // - an item outside the spine needs a reference that uses it (OPF-097);
+  // - a non-linear spine item needs a hyperlink, or perhaps a script (OPF-096).
+  for (const item of opf.version === "3" ? registered(opf) : []) {
+    const href = item.href.trim();
+    const remote = item.path === undefined && href !== "" && !/^data:/i.test(href);
+    const type = item.mediaType;
+    const mayBeRemote =
+      /^(?:audio|video|font)\/|^application\/font-/.test(type) ||
+      type === "application/x-shockwave-flash" ||
+      type === "application/vnd.ms-opentype";
+    if (remote && !mayBeRemote) {
       const name = Url.humanName(href);
-      if (spine.has(item.id)) yield* report.message("RSC-006", itemLocation(item), name);
+      if (publication.spine.has(item)) yield* report.message("RSC-006", itemLocation(item), name);
       else if (!referenced.has(Url.remoteKey(href))) {
         yield* report.message(scripts ? "RSC-006b" : "RSC-006", itemLocation(item), name);
       }
     }
+    const exempt = publication.spine.has(item) || item.properties.includes("nav");
+    if (!exempt && item.id !== opf.toc && !isUsed(item)) {
+      yield* report.message("OPF-097", itemLocation(item), PackageChecks.itemName(item));
+    }
+    if (nonLinear.has(item.id) && item.path !== undefined && !hyperlinked.has(nfc(item.path))) {
+      yield* report.message(scripts ? "OPF-096b" : "OPF-096", itemLocation(item), item.path);
+    }
   }
-  // Upstream registers each media overlay its item check sees before any other reference, and
-  // checks a manifest fallback on it like on any loaded resource.
-  for (const item of opf.version === "3" ? PackageChecks.checkedItems(opf) : []) {
-    const overlay = byId.get(Xml.attribute(item.element, "media-overlay")?.trim() ?? "");
-    if (overlay?.fallback === undefined) continue;
+  // Upstream checks a manifest fallback on a media overlay like on any loaded resource.
+  for (const { item, overlay } of overlaid) {
+    if (overlay.fallback === undefined) continue;
     const name =
       overlay.path === undefined ? Url.remoteKey(overlay.href) : Url.encodePath(nfc(overlay.path));
     yield* report.message("OBS-001", itemLocation(item), "content-fallback", name);

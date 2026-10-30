@@ -206,6 +206,25 @@ export const checkedItems = (opf: PackageDocument) => {
   });
 };
 
+// Java reads `+-^` in this class as a range, as JavaScript does.
+const MEDIA_TYPE_FORM = /^[a-zA-Z0-9!#$&+-^_]+\/[a-zA-Z0-9!#$&+-^_]+$/;
+// The items whose media overlay upstream's checkItem registers: those it sees, but for data
+// URLs and media types not of the form `type/subtype`.
+export const overlayOwners = (opf: PackageDocument) =>
+  checkedItems(opf).filter(
+    (item) => !/^data:/i.test(item.href.trim()) && MEDIA_TYPE_FORM.test(item.mediaType),
+  );
+
+// How upstream names a manifest item: a remote one by its URL, a data URL cut to 30 characters,
+// and a local one by its decoded container path, in NFC, with any fragment.
+export const itemName = (item: ManifestItem) => {
+  if (/^data:/i.test(item.href)) return `${item.href.replace(/[\t\n\f\r ]/g, "").slice(0, 30)}…`;
+  if (item.path === undefined) return Url.humanName(item.href);
+  const hash = item.href.indexOf("#");
+  const fragment = hash < 0 ? "" : `#${percentDecode(item.href.slice(hash + 1))}`;
+  return item.path.normalize("NFC") + fragment;
+};
+
 const manifestChecks = ({ opf, container, urls, files }: Checks) => {
   const findings: Array<Finding> = [...problemsOf(urls, "item")];
   const byId = new Map(opf.items.map((item) => [item.id, item] as const));

@@ -1,5 +1,6 @@
 import * as Result from "effect/Result";
 
+import * as ContentRules from "../content/ContentRules.ts";
 import * as CssChecker from "../css/CssChecker.ts";
 import type { MessageId } from "../messages/MessageCatalog.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
@@ -766,6 +767,40 @@ const SVG_ID_TYPES: Readonly<Record<string, IdType>> = {
 };
 
 const DTBOOK_NS = "http://www.daisy.org/z3986/2005/dtbook/";
+
+// The references upstream's DTBookHandler registers: `a` and `link` hrefs as generic, except
+// remote `a` hrefs marked external (OPF-021 for a scheme it does not know), and `img` sources
+// as images. Any `xml:base` stays in force after its element, as in upstream's BaseURLHandler.
+export const fromDtbook = (document: Xml.XmlDocument, path: string, context: Context) => {
+  const references: Array<Reference> = [];
+  const findings: Array<Finding> = [];
+  const urls = Url.checker(path, context);
+  for (const element of [document.root, ...Xml.descendants(document.root)]) {
+    const base = Xml.attribute(element, "base", XML_NS);
+    const at = { path, line: element.line, column: element.column };
+    if (base !== undefined) {
+      for (const problem of urls.setBase(base)) findings.push({ ...problem, ...at });
+    }
+    if (element.ns !== DTBOOK_NS) continue;
+    const { local } = element;
+    const name = local === "img" ? "src" : local === "a" || local === "link" ? "href" : undefined;
+    const url = name === undefined ? undefined : Xml.attribute(element, name);
+    if (url === undefined) continue;
+    const { problems, resolved } = urls.check(url);
+    for (const problem of problems) findings.push({ ...problem, ...at });
+    if (resolved === undefined) continue;
+    const external = local === "a" && Xml.attribute(element, "external") === "true";
+    if (external && resolved.target.kind === "remote") {
+      if (!ContentRules.REGISTERED_SCHEMES.has(resolved.target.scheme)) {
+        findings.push({ id: "OPF-021", args: [Url.humanName(url)], ...at });
+      }
+      continue;
+    }
+    const type = local === "img" ? "image" : "generic";
+    references.push({ ...resolved, type, resource: false, ...at });
+  }
+  return { references, findings };
+};
 
 // A document's IDs as upstream registers them, with their types and positions in document order.
 // The first element with an ID gives its type: an SVG paint server, clip path or symbol, or any
