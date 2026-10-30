@@ -254,7 +254,10 @@ export const checker = (documentPath: string, options: { readonly container: boo
   return {
     check: (input: string) => {
       const { problems, url } = resolve(input, false);
-      const hash = input.indexOf("#");
+      // The fragment galimatias reads: from the URL stripped of whitespace around it, and of
+      // tabs and line breaks anywhere.
+      const cleaned = JavaText.stripWhitespace(input).replace(/[\t\n\r]/g, "");
+      const hash = cleaned.indexOf("#");
       const scheme = /^\s*([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(input)?.[1]?.toLowerCase();
       // An absolute URL only the WHATWG parser rejects is still a remote URL upstream.
       if (
@@ -266,14 +269,14 @@ export const checker = (documentPath: string, options: { readonly container: boo
         const target: Target = { kind: "remote", url: input.trim().split("#")[0] ?? "", scheme };
         const resolved: Resolved = {
           target,
-          fragment: hash < 0 ? undefined : input.slice(hash + 1),
+          fragment: hash < 0 ? undefined : cleaned.slice(hash + 1),
         };
         return { problems, resolved };
       }
       if (url === undefined) return { problems, resolved: undefined };
       const resolved: Resolved = {
         target: targetOf(url),
-        fragment: hash < 0 ? undefined : input.slice(hash + 1),
+        fragment: hash < 0 ? undefined : cleaned.slice(hash + 1),
       };
       return { problems, resolved };
     },

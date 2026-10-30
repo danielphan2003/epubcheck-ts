@@ -1,6 +1,7 @@
 import type { MessageId } from "../messages/MessageCatalog.ts";
 import type { ManifestItem, Metadata } from "../opf/PackageDocument.ts";
 import type { Finding, Reference } from "../references/Collect.ts";
+import * as ReadingOrder from "../references/ReadingOrder.ts";
 import * as Url from "../references/Url.ts";
 import * as ClockValue from "../util/ClockValue.ts";
 import * as UrlFragment from "../util/UrlFragment.ts";
@@ -141,11 +142,7 @@ export const read = (document: Xml.XmlDocument, path: string, publication?: Publ
 const isContentDocument = (mediaType: string | undefined) =>
   mediaType === "application/xhtml+xml" || mediaType === "image/svg+xml";
 
-export interface PublicationContext {
-  readonly items: ReadonlyMap<string, ManifestItem>;
-  // IDs of each content document, in document order.
-  readonly ids: ReadonlyMap<string, ReadonlyMap<string, number>>;
-  readonly spine: ReadonlyArray<string>;
+export interface PublicationContext extends ReadingOrder.Context {
   readonly packagePath: string;
   readonly narrators: ReadonlyMap<string, string>;
   // Every manifest item, remote ones included, in manifest order.
@@ -159,11 +156,7 @@ export const publicationFindings = (
   context: PublicationContext,
 ) => {
   const findings: Array<Finding> = [];
-  // ID positions count from 1; a link without a fragment is at 0, an unknown ID at -1.
-  const anchorOf = (document: string, id: string) =>
-    id === "" ? 0 : (context.ids.get(document)?.get(id) ?? -2) + 1;
-  let lastSpine = -1;
-  let lastAnchor = -1;
+  const order = ReadingOrder.sequence(context);
   for (const { path, overlay } of overlays) {
     for (const link of overlay.links) {
       const { target, fragment } = link.resolved;
@@ -171,7 +164,6 @@ export const publicationFindings = (
       const item = context.items.get(target.path);
       if (item === undefined) continue;
       const parsed = UrlFragment.parse(fragment ?? "", item.mediaType);
-      const name = Url.nameOf(target) + (fragment === undefined ? "" : `#${fragment}`);
       // References to other resources are reported elsewhere (RSC-010) and checked no further.
       if (isContentDocument(item.mediaType) && fragment !== undefined && fragment !== "") {
         if (item.mediaType === "application/xhtml+xml" && parsed.id === "") {
@@ -183,22 +175,13 @@ export const publicationFindings = (
           findings.push(finding(path, link, "RSC-012"));
         }
       }
-      const spine = context.spine.indexOf(target.path);
-      if (spine < 0) continue;
-      if (spine < lastSpine) {
-        findings.push(finding(path, link, "MED-015", name, "spine"));
-        lastSpine = spine;
-        lastAnchor = -1;
-        continue;
+      const broken = order(link.resolved);
+      if (broken !== undefined) {
+        const name = Url.referenceName(link.resolved);
+        findings.push(
+          finding(path, link, "MED-015", name, ReadingOrder.orderName(broken, context.locale)),
+        );
       }
-      if (spine > lastSpine) {
-        lastSpine = spine;
-        lastAnchor = -1;
-      }
-      const anchor = anchorOf(target.path, parsed.id);
-      if (anchor < 0) continue;
-      if (anchor < lastAnchor) findings.push(finding(path, link, "MED-015", name, "document"));
-      lastAnchor = anchor;
     }
   }
   // Upstream checks each content document's media-overlay attribute against its narrator.
