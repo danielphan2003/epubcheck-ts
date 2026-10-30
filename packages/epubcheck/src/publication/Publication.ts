@@ -204,15 +204,16 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   }
   const itemLocation = (item: ManifestItem) =>
     Report.location(opf.path, item.element.line, item.element.column);
-  // Non-linear spine items must be reachable by a hyperlink, or perhaps by a script.
+  // EPUB 3 non-linear spine items must be reachable by a hyperlink, or perhaps by a script.
+  // Upstream checks each item once, in manifest order; one non-linear itemref makes it non-linear.
   const hyperlinked = new Set(
     references.flatMap(({ type, target }) =>
       type === "hyperlink" && target.kind === "local" ? [target.path] : [],
     ),
   );
-  for (const itemref of opf.spineItems) {
-    const item = byId.get(itemref.idref);
-    if (itemref.linear || item?.path === undefined) continue;
+  const nonLinear = new Set(opf.spineItems.flatMap(({ idref, linear }) => (linear ? [] : [idref])));
+  for (const item of opf.version === "3" ? byId.values() : []) {
+    if (!nonLinear.has(item.id) || item.path === undefined) continue;
     if (!hyperlinked.has(nfc(item.path))) {
       yield* report.message(scripts ? "OPF-096b" : "OPF-096", itemLocation(item), item.path);
     }

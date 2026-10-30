@@ -9,9 +9,10 @@ import * as Schema from "effect/Schema";
 import { isMessageId, type Severity } from "./messages/MessageCatalog.ts";
 import * as OcfChecker from "./ocf/OcfChecker.ts";
 import * as OpfChecker from "./opf/OpfChecker.ts";
-import type * as PackageDocument from "./opf/PackageDocument.ts";
+import * as PackageDocument from "./opf/PackageDocument.ts";
 import * as Profiles from "./profiles/Profiles.ts";
 import * as Publication from "./publication/Publication.ts";
+import * as Url from "./references/Url.ts";
 import * as Report from "./report/Report.ts";
 
 // Upstream checker modes: a full publication (packaged or expanded) or a single document.
@@ -117,7 +118,9 @@ const make = Effect.gen(function* () {
     const { created } = ocf.value.container;
     const { formatName } = ocf.value;
     let metadata: PackageDocument.Metadata | undefined;
-    const declared = new Set<string>(ocf.value.packageDocuments.map((document) => document.path));
+    // Upstream counts files container.xml declares, manifest items with an ID (the last of each
+    // ID) and no fragment, and the files EPUB 3 package metadata links to.
+    const declared = new Set(ocf.value.declared.map((file) => file.normalize("NFC")));
     for (const packageDocument of ocf.value.packageDocuments) {
       const bytes = yield* OcfChecker.readResource(ocf.value.container, packageDocument.path);
       if (Option.isNone(bytes)) continue;
@@ -130,8 +133,15 @@ const make = Effect.gen(function* () {
       );
       if (Option.isNone(opfResult)) continue;
       metadata ??= opfResult.value.metadata;
-      for (const item of opfResult.value.items) {
-        if (item.path !== undefined) declared.add(item.path.normalize("NFC"));
+      for (const item of PackageDocument.registered(opfResult.value)) {
+        if (item.path !== undefined && !item.href.includes("#")) {
+          declared.add(item.path.normalize("NFC"));
+        }
+      }
+      if (opfResult.value.version === "3") {
+        for (const link of opfResult.value.links) {
+          if (link.path !== undefined) declared.add(link.path.normalize("NFC"));
+        }
       }
       yield* Publication.checkResources(
         ocf.value.container,
@@ -148,7 +158,11 @@ const make = Effect.gen(function* () {
       ) {
         continue;
       }
-      yield* report.message("OPF-003", Report.location(path.basename(target)), encodeURI(file));
+      yield* report.message(
+        "OPF-003",
+        Report.location(path.basename(target)),
+        Url.encodePath(file.normalize("NFC")),
+      );
     }
     const first = ocf.value.packageDocuments[0];
     const publication =

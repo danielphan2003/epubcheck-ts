@@ -12,6 +12,7 @@ import {
   type Collection,
   type ManifestItem,
   type PackageDocument,
+  registered,
   resolve,
 } from "./PackageDocument.ts";
 import * as JavaDigits from "./JavaDigits.ts";
@@ -97,52 +98,27 @@ const metadataElements = (root: Xml.XmlElement) => [
     .flatMap((collection) => opfChildren(collection, "metadata").slice(0, 1)),
 ];
 
-// Data URLs (EPUB 3) and file URLs are not allowed as package document hrefs.
-const urlSchemeFindings = (element: Xml.XmlElement, href: string, version: "2" | "3") => {
-  const scheme = /^([a-zA-Z][a-zA-Z0-9+.-]*):/.exec(href)?.[1]?.toLowerCase();
-  if (scheme === "data" && version === "3") return [at(element, "RSC-029")];
-  if (scheme === "file") return [at(element, "RSC-030", href)];
-  return [];
-};
+// Data URLs are not allowed as EPUB 3 package document hrefs.
+const urlSchemeFindings = (element: Xml.XmlElement, href: string, version: "2" | "3") =>
+  version === "3" && /^data:/i.test(href) ? [at(element, "RSC-029")] : [];
 
-// Relative URLs in the package document follow the container URL rules (OCF 4.2.5): no
-// spaces, no query, and no path that is absolute or climbs out of the container.
-const relativeUrlFindings = (
-  element: Xml.XmlElement,
-  href: string,
-  opf: PackageDocument,
-  inContainer: boolean,
-) => {
-  if (href === "" || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(href)) return [];
+// Upstream checks URLs as it parses the package document, in document order: EPUB 3 links,
+// items with an ID, and guide references. Once one is absolute, the checker stops reporting
+// queries and leaks (RSC-033, RSC-026).
+const urlChecks = ({ document, opf, container }: Context) => {
+  const urls = Url.checker(opf.path, { container: container !== undefined });
   const findings: Array<Finding> = [];
-  if (/\s/.test(href)) {
-    findings.push(
-      at(element, "RSC-020", href, "Illegal character in path segment: space is not allowed"),
-    );
-  }
-  const path = href.split("#")[0] ?? href;
-  if (path.includes("?")) findings.push(at(element, "RSC-033", href));
-  if (href.startsWith("/")) findings.push(at(element, "RSC-026", href));
-  else if (inContainer) {
-    let depth = opf.path.split("/").length - 1;
-    for (const segment of path.split("?")[0]?.split("/") ?? []) {
-      if (segment === "..") depth--;
-      else if (segment !== "." && segment !== "") depth++;
-      if (depth < 0) {
-        findings.push(at(element, "RSC-026", href));
-        break;
-      }
-    }
+  for (const element of Xml.descendants(document.root)) {
+    const href = Xml.attribute(element, "href");
+    if (element.ns !== OPF_NS || href === undefined) continue;
+    const checked =
+      element.local === "reference" ||
+      (element.local === "link" && opf.version === "3") ||
+      (element.local === "item" && Xml.attribute(element, "id") !== undefined);
+    if (!checked) continue;
+    for (const { id, args } of urls.check(href).problems) findings.push(at(element, id, ...args));
   }
   return findings;
-};
-
-const decoded = (value: string) => {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
 };
 
 const opfChildren = (element: Xml.XmlElement | undefined, local: string) =>
@@ -200,6 +176,13 @@ const manifestChecks = ({ opf, container }: Context) => {
   for (const item of items) {
     const url = urlOf(item);
     if (url === undefined) continue;
+    // A package document checked alone checks its local items' file names, duplicates included;
+    // a full check reports them from the container.
+    if (container === undefined && item.path !== undefined && !isRemote(item.href)) {
+      for (const finding of FilenameChecker.checkFilename(item.path, opf.version)) {
+        findings.push(at(item.element, finding.id, ...finding.args));
+      }
+    }
     // Upstream looks every item up in the container, duplicates included.
     if (
       files !== undefined &&
@@ -225,14 +208,8 @@ const manifestChecks = ({ opf, container }: Context) => {
     // for a preferred type (OPF-090) and, locally, a fragment (OPF-091).
     const schemeFindings = urlSchemeFindings(item.element, item.href, opf.version);
     findings.push(...schemeFindings);
-    findings.push(...relativeUrlFindings(item.element, item.href, opf, container !== undefined));
-    if (item.path?.startsWith("META-INF/") === true) findings.push(at(item.element, "PKG-025"));
-    // A full check reports file names from the container; a package document alone, from hrefs.
-    if (container === undefined && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(item.href)) {
-      const name = decoded(item.href.split(/[?#]/)[0] ?? item.href);
-      for (const finding of FilenameChecker.checkFilename(name, opf.version)) {
-        findings.push(at(item.element, finding.id, ...finding.args));
-      }
+    if (opf.version === "3" && item.path?.startsWith("META-INF/") === true) {
+      findings.push(at(item.element, "PKG-025"));
     }
     if (opf.version === "3" && schemeFindings.every((finding) => finding.id !== "RSC-029")) {
       if (ITEM_MEDIA_TYPE.test(item.mediaType)) {
@@ -573,6 +550,16 @@ const vocabularyChecks = ({ document, opf, container }: Context) => {
   const collections = [...Xml.descendants(root)].filter(
     (element) => element.ns === OPF_NS && element.local === "collection",
   );
+  // Container files, and the resources upstream's registry holds.
+  const files =
+    container === undefined
+      ? undefined
+      : new Set([...container].map((file) => file.normalize("NFC")));
+  const declared = new Set(
+    [...registered(opf)].flatMap((item) =>
+      item.path === undefined ? [] : [item.path.normalize("NFC")],
+    ),
+  );
   const links = [
     ...opfChildren(opfChildren(root, "metadata")[0], "link").map((link) => ({
       link,
@@ -591,10 +578,7 @@ const vocabularyChecks = ({ document, opf, container }: Context) => {
   for (const { link, place } of links) {
     const href = Xml.attribute(link, "href");
     const url = href === undefined ? null : URL.parse(href, packageUrl);
-    if (href !== undefined) {
-      findings.push(...urlSchemeFindings(link, href, opf.version));
-      findings.push(...relativeUrlFindings(link, href, opf, container !== undefined));
-    }
+    if (href !== undefined) findings.push(...urlSchemeFindings(link, href, opf.version));
     if (url?.protocol === "data:") continue;
     if (
       href !== undefined &&
@@ -606,18 +590,20 @@ const vocabularyChecks = ({ document, opf, container }: Context) => {
       continue;
     }
     if (url !== null) {
-      // A local link target must be in the container.
+      // A local link to an undeclared resource must be in the container. Upstream looks the URL
+      // up with its fragment, so a link with one is never found.
       const trimmed = (href ?? "").trim();
       const target =
-        trimmed === "" || trimmed.startsWith("#") || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)
+        trimmed === "" || trimmed.startsWith("#") || isRemote(trimmed)
           ? undefined
-          : resolve(trimmed.split("#")[0] ?? trimmed, opf.path);
+          : resolve(trimmed.split("#")[0] ?? trimmed, opf.path)?.normalize("NFC");
       if (
         target !== undefined &&
-        container !== undefined &&
-        ![...container].some((file) => file.normalize("NFC") === target.normalize("NFC"))
+        files !== undefined &&
+        !declared.has(target) &&
+        (trimmed.includes("#") || !files.has(target))
       ) {
-        findings.push(at(link, "RSC-007w", target));
+        findings.push(at(link, "RSC-007w", Url.encodePath(target)));
       }
       const parsedRels = property(link, "rel", "link-rel", true);
       const rels = new Set(
@@ -721,6 +707,7 @@ const collectionChecks = ({ opf }: Context) => {
 };
 
 export const check = (context: Context) => [
+  ...urlChecks(context),
   ...(context.opf.version === "3" ? vocabularyChecks(context) : []),
   ...metadataChecks(context),
   ...manifestChecks(context),

@@ -67,6 +67,8 @@ export interface PackageDocument {
   readonly spine: ReadonlyArray<string>;
   readonly spineItems: ReadonlyArray<SpineItem>;
   readonly metadata: Metadata;
+  // The package metadata's links (EPUB 3).
+  readonly links: Collection["links"];
   readonly collections: ReadonlyArray<Collection>;
 }
 
@@ -83,6 +85,14 @@ export const resolve = (href: string, from: string) => {
     return undefined;
   }
 };
+
+// The items upstream registers: those with an `id`, the last item of each.
+export const registered = (opf: PackageDocument) =>
+  new Map(
+    opf.items.flatMap((item) =>
+      Xml.attribute(item.element, "id") === undefined ? [] : [[item.id, item] as const],
+    ),
+  ).values();
 
 export const read = (
   document: Xml.XmlDocument,
@@ -122,16 +132,18 @@ export const read = (
       ),
     }));
   const itemrefs = spineItems.map((itemref) => itemref.idref);
-  // Annotated, as it is recursive.
-  const readCollection = (element: Xml.XmlElement): Collection => ({
-    roles: (Xml.attribute(element, "role") ?? "").split(/\s+/).filter((role) => role !== ""),
-    links: Xml.childElements(element)
+  const linksOf = (element: Xml.XmlElement | undefined) =>
+    (element === undefined ? [] : Xml.childElements(element))
       .filter((link) => link.ns === OPF_NS && link.local === "link")
       .map((link) => {
         const href = (Xml.attribute(link, "href") ?? "").trim();
-        // Fragments name parts of a resource; the resource is what the collection includes.
+        // Fragments name parts of a resource; the resource is what the link points to.
         return { href, path: resolve(href.split("#")[0] ?? href, path) };
-      }),
+      });
+  // Annotated, as it is recursive.
+  const readCollection = (element: Xml.XmlElement): Collection => ({
+    roles: (Xml.attribute(element, "role") ?? "").split(/\s+/).filter((role) => role !== ""),
+    links: linksOf(element),
     collections: Xml.childElements(element)
       .filter((child) => child.ns === OPF_NS && child.local === "collection")
       .map(readCollection),
@@ -147,6 +159,7 @@ export const read = (
     spine: itemrefs,
     spineItems,
     metadata: readMetadata(document, children, prefixes),
+    links: linksOf(children.find((child) => child.local === "metadata")),
     collections,
   };
 };
