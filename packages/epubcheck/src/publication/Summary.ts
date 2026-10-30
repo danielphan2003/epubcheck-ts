@@ -5,7 +5,6 @@ import type * as Container from "../ocf/Container.ts";
 import * as PackageChecks from "../opf/PackageChecks.ts";
 import { type ManifestItem, type PackageDocument, registered } from "../opf/PackageDocument.ts";
 import * as Url from "../references/Url.ts";
-import { percentDecode } from "../util/UrlFragment.ts";
 import * as Xml from "../xml/Xml.ts";
 import type { Resources } from "./Publication.ts";
 
@@ -42,16 +41,6 @@ const checksum = Effect.fn("Summary.checksum")(function* (bytes: Uint8Array) {
   );
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16)).join("");
 });
-
-// How upstream names a manifest item: a remote one by its URL, a data URL cut to 30 characters,
-// and a local one by its decoded container path, in NFC, with any fragment.
-const itemName = (item: ManifestItem) => {
-  if (/^data:/i.test(item.href)) return `${item.href.replace(/[\t\n\f\r ]/g, "").slice(0, 30)}…`;
-  if (item.path === undefined) return Url.humanName(item.href);
-  const hash = item.href.indexOf("#");
-  const fragment = hash < 0 ? "" : `#${percentDecode(item.href.slice(hash + 1))}`;
-  return item.path.normalize("NFC") + fragment;
-};
 
 // A media overlay item, as the package document references it.
 const overlayName = (overlay: ManifestItem) =>
@@ -172,7 +161,7 @@ export const summarize = Effect.fn("Summary.summarize")(function* (
       properties.set(itemref.idref, merged);
     }
     for (const item of items) {
-      const target = entry(itemName(item));
+      const target = entry(PackageChecks.itemName(item));
       target.id = item.id;
       if (itemrefs.some((itemref) => itemref.idref === item.id)) {
         target.spine = true;
@@ -191,13 +180,13 @@ export const summarize = Effect.fn("Summary.summarize")(function* (
       }
     }
     for (const item of items) {
-      entry(itemName(item)).mediaType = item.mediaType;
+      entry(PackageChecks.itemName(item)).mediaType = item.mediaType;
       if (item.mediaType.startsWith("audio/")) publication.audio = true;
       else if (item.mediaType.startsWith("video/")) publication.video = true;
     }
     for (const [index, itemref] of itemrefs.entries()) {
       const item = byId.get(itemref.idref);
-      if (item !== undefined) entry(itemName(item)).spineIndex = index;
+      if (item !== undefined) entry(PackageChecks.itemName(item)).spineIndex = index;
     }
     // Documents report under their encoded paths, which may name no item.
     for (const path of resources.scripted) {
@@ -215,7 +204,7 @@ export const summarize = Effect.fn("Summary.summarize")(function* (
     // Package references: its links, guide references, and in EPUB 3 the media overlays of
     // the items upstream's checkItem sees.
     const overlays = epub3
-      ? PackageChecks.checkedItems(opf).flatMap((item) => {
+      ? PackageChecks.overlayOwners(opf).flatMap((item) => {
           const overlay = byId.get(Xml.attribute(item.element, "media-overlay") ?? "");
           if (overlay === undefined) return [];
           return [{ from: Url.encodePath(opf.path.normalize("NFC")), to: overlayName(overlay) }];

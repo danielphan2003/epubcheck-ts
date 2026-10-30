@@ -231,6 +231,43 @@ describe("Collect.fromDocument SVG references", () => {
   });
 });
 
+describe("Collect.fromDtbook", () => {
+  // The references upstream's DTBookHandler registers, by type and target.
+  it.each([
+    {
+      name: "links and images",
+      body: '<link href="s.css"/><p><a href="c2.xml#x">x</a><img src="i.png"/></p>',
+      found: [
+        ["generic", "EPUB/s.css"],
+        ["generic", "EPUB/c2.xml#x"],
+        ["image", "EPUB/i.png"],
+      ],
+    },
+    {
+      name: "remote links",
+      body: '<p><a href="https://example.org/a" external="true">x</a><a href="https://example.org/b">y</a></p>',
+      found: [["generic", "https://example.org/b"]],
+    },
+    {
+      name: "elements of other namespaces",
+      body: '<p><a xmlns="urn:x" href="c2.xml">x</a><img xmlns="http://www.w3.org/1999/xhtml" src="i.png"/></p>',
+      found: [],
+    },
+  ])("reads $name", ({ body, found }) => {
+    const parsed = Xml.parse(
+      `<dtbook xmlns="http://www.daisy.org/z3986/2005/dtbook/" version="2005-2"><book>${body}</book></dtbook>`,
+    );
+    if (Result.isFailure(parsed)) throw new Error(parsed.failure.message);
+    const read = Collect.fromDtbook(parsed.success, "EPUB/book.xml", {
+      version: "3",
+      container: true,
+    });
+    expect(
+      read.references.map((reference) => [reference.type, Url.referenceName(reference)]),
+    ).toEqual(found);
+  });
+});
+
 describe("Collect.documentIds", () => {
   // Upstream types an ID by its first element: SVG paint servers, clip paths and symbols. A
   // DTBook document registers its own elements' IDs only.

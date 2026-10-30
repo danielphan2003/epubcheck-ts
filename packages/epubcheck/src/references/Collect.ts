@@ -770,6 +770,30 @@ const DTBOOK_NS = "http://www.daisy.org/z3986/2005/dtbook/";
 // A document's IDs as upstream registers them, with their types and positions in document order.
 // The first element with an ID gives its type: an SVG paint server, clip path or symbol, or any
 // other element. A DTBook document registers its own elements' IDs only.
+// The references upstream's DTBookHandler registers: `a` and `link` hrefs as generic, except
+// remote `a` hrefs marked external, and `img` sources as images.
+export const fromDtbook = (document: Xml.XmlDocument, path: string, context: Context) => {
+  const references: Array<Reference> = [];
+  const findings: Array<Finding> = [];
+  const urls = Url.checker(path, context);
+  for (const element of [document.root, ...Xml.descendants(document.root)]) {
+    if (element.ns !== DTBOOK_NS) continue;
+    const { local } = element;
+    const name = local === "img" ? "src" : local === "a" || local === "link" ? "href" : undefined;
+    const url = name === undefined ? undefined : Xml.attribute(element, name);
+    if (url === undefined) continue;
+    const at = { path, line: element.line, column: element.column };
+    const { problems, resolved } = urls.check(url);
+    for (const problem of problems) findings.push({ ...problem, ...at });
+    if (resolved === undefined) continue;
+    const external = local === "a" && Xml.attribute(element, "external") === "true";
+    if (external && resolved.target.kind === "remote") continue;
+    const type = local === "img" ? "image" : "generic";
+    references.push({ ...resolved, type, resource: false, ...at });
+  }
+  return { references, findings };
+};
+
 export const documentIds = (document: Xml.XmlDocument, dtbook = false) => {
   const types = new Map<string, IdType>();
   const positions = new Map<string, number>();
