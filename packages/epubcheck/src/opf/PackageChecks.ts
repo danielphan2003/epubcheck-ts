@@ -255,11 +255,15 @@ const spineFallbackFinding = (item: ManifestItem, byId: ReadonlyMap<string, Mani
   return [at(item.element, "OPF-044", item.mediaType)];
 };
 
+// Upstream's RenditionVocabs.SPREAD_PROPERTIES.
+const SPREADS = /^(?:rendition:page-spread-(?:left|right|center)|page-spread-(?:left|right))$/;
+
 const spineChecks = ({ document, opf }: Context) => {
   const findings: Array<Finding> = [];
   const items = new Map(opf.items.map((item) => [item.id, item] as const));
   const spine = opfChildren(document.root, "spine")[0];
   const itemrefs = opfChildren(spine, "itemref");
+  const fixed = FixedLayout.fixedLayoutIds(opf);
   const seen = new Set<string>();
   // Upstream marks a manifest item non-linear for any `linear="no"` reference, and never back.
   const linear = new Map<string, boolean>();
@@ -282,12 +286,10 @@ const spineChecks = ({ document, opf }: Context) => {
       findings.push(...spineFallbackFinding(item, items));
       if (item.properties.includes("data-nav")) findings.push(at(item.element, "OPF-077"));
     }
-    const properties = (Xml.attribute(itemref, "properties") ?? "").split(/[ \t\n\v\f\r]+/);
-    if (opf.version === "3" && !FixedLayout.isPrePaginated(properties, opf.metadata.layout)) {
-      for (const property of properties) {
-        if (/^(?:rendition:)?page-spread-(?:left|right|center)$/.test(property)) {
-          findings.push(at(itemref, "OPF-100", property));
-        }
+    // Page spreads belong to pre-paginated content; upstream also reports them under `roll`.
+    if (opf.version === "3" && (!fixed.has(idref) || opf.metadata.layout === "roll")) {
+      for (const property of (Xml.attribute(itemref, "properties") ?? "").split(/[ \t\n\v\f\r]+/)) {
+        if (SPREADS.test(property)) findings.push(at(item.element, "OPF-100", property));
       }
     }
     seen.add(idref);

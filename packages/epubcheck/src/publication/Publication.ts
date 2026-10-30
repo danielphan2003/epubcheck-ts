@@ -5,7 +5,7 @@ import * as ContentChecker from "../content/ContentChecker.ts";
 import * as FixedLayout from "../layout/FixedLayout.ts";
 import type * as Container from "../ocf/Container.ts";
 import * as OcfChecker from "../ocf/OcfChecker.ts";
-import type { ManifestItem, PackageDocument, SpineItem } from "../opf/PackageDocument.ts";
+import type { ManifestItem, PackageDocument } from "../opf/PackageDocument.ts";
 import * as Collect from "../references/Collect.ts";
 import * as Profiles from "../profiles/Profiles.ts";
 import * as ReferenceChecker from "../references/ReferenceChecker.ts";
@@ -46,17 +46,13 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
 ) {
   const report = yield* Report.Report;
   const inIndex = Profiles.indexPaths(opf.collections);
+  const fixedIds = opf.version === "3" ? FixedLayout.fixedLayoutIds(opf) : new Set<string>();
   const fixedLayout = opf.version === "3" ? FixedLayout.fixedLayoutPaths(opf) : new Set<string>();
-  // Upstream marks an item non-linear or fixed-layout if any of its itemrefs makes it so; items
-  // outside the spine are non-linear, and the legacy `roll` layout is fixed.
-  const isFixed = (itemref: SpineItem) =>
-    opf.metadata.layout === "roll" ||
-    (opf.metadata.layout === "pre-paginated" &&
-      !itemref.properties.includes("rendition:layout-reflowable")) ||
-    itemref.properties.includes("rendition:layout-pre-paginated");
+  // Upstream marks an item non-linear if any of its itemrefs is, or if it is outside the spine.
   const itemrefsOf = Map.groupBy(opf.spineItems, (itemref) => itemref.idref);
   const isStructured = (item: ManifestItem) =>
-    itemrefsOf.get(item.id)?.every((itemref) => itemref.linear && !isFixed(itemref)) ?? false;
+    !fixedIds.has(item.id) &&
+    (itemrefsOf.get(item.id)?.every((itemref) => itemref.linear) ?? false);
   const nfc = (path: string) => path.normalize("NFC");
   const byId = new Map(opf.items.map((item) => [item.id, item] as const));
   const ids = new Map<string, ReadonlySet<string>>();
