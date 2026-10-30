@@ -8,6 +8,7 @@
     "src/main/resources/com/adobe/epubcheck/messages",
     "src/main/resources/com/adobe/epubcheck/schema",
     "src/main/resources/com/adobe/epubcheck/util",
+    "src/main/resources/org/idpf/epubcheck/util/css",
     "src/main/java/com/adobe/epubcheck/messages/DefaultSeverities.java"
   ],
   "objects": {
@@ -16,6 +17,7 @@
     "src/main/resources/com/adobe/epubcheck/messages": "45429b04047488e623a1ef4830e22fc1e3732ba9",
     "src/main/resources/com/adobe/epubcheck/schema": "1c93101481d732305ee581c6827ad5e77be17b70",
     "src/main/resources/com/adobe/epubcheck/util": "8d621c65fc22ff950eee62884b826837b8a261e9",
+    "src/main/resources/org/idpf/epubcheck/util/css": "02e2eaa545da9301812efa8cd858a461a50baf38",
     "src/main/java/com/adobe/epubcheck/messages/DefaultSeverities.java": "9013ab94ff12572cb0c80e824f5094644fef05c0"
   }
 }

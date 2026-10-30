@@ -2,6 +2,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import * as ContentChecker from "../content/ContentChecker.ts";
+import * as CssChecker from "../css/CssChecker.ts";
 import * as ContentRules from "../content/ContentRules.ts";
 import * as EpubType from "../content/EpubType.ts";
 import * as FixedLayout from "../layout/FixedLayout.ts";
@@ -20,9 +21,6 @@ import * as Xml from "../xml/Xml.ts";
 
 // Upstream's reports name the documents they check by their container paths as URLs.
 const reportPath = (path: string) => Url.encodePath(path.normalize("NFC"));
-
-const XHTML_NS = "http://www.w3.org/1999/xhtml";
-const SVG_NS = "http://www.w3.org/2000/svg";
 
 const reportFindings = Effect.fn("Publication.reportFindings")(function* (
   findings: ReadonlyArray<Collect.Finding>,
@@ -106,6 +104,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     container: true,
     mediaTypeOf,
     undeclaredClasses: MediaOverlays.undeclaredClasses(opf.metadata),
+    locale: report.locale,
   };
   const narrators = new Map<string, string>();
   const references: Array<Collect.Reference> = [];
@@ -125,7 +124,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     readonly end: { readonly line: number; readonly column: number };
   }> = [];
   // Style sheets, for the fonts the reports list.
-  const styleSheets: Array<{ readonly path: string; readonly css: string }> = [];
+  const fonts: Array<{ readonly embedded: boolean; readonly name: string }> = [];
   for (const item of opf.items) {
     // An item for the package document itself is OPF-099, not a content document.
     if (item.path === undefined || item.path === opf.path) continue;
@@ -150,12 +149,21 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       continue;
     }
     if (isCss) {
-      const text = new TextDecoder().decode(bytes.value);
-      styleSheets.push({ path: item.path, css: text });
-      const css = Collect.fromCss(text, item.path, context);
+      const { text, findings } = CssChecker.decodeFile(bytes.value, item.path);
+      yield* reportFindings(findings);
+      const css = CssChecker.check(text, {
+        path: item.path,
+        context,
+        offset: 0,
+        styleAttribute: false,
+      });
       references.push(...css.references);
+      fonts.push(...css.fonts);
       yield* reportFindings(css.findings);
-      yield* reportFindings(ReferenceChecker.styleSheetFindings(item, item.path, css.remote));
+      // Upstream checks the sheet's properties at its end, which a failed parse never reaches.
+      if (css.ended) {
+        yield* reportFindings(ReferenceChecker.styleSheetFindings(item, item.path, css.remote));
+      }
       continue;
     }
     if (kind === undefined) continue;
@@ -234,14 +242,11 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
     const collected = Collect.fromDocument(document.value, item.path, context);
     references.push(...collected.references);
+    fonts.push(...collected.fonts);
     const elements = [document.value.root, ...Xml.descendants(document.value.root)];
     let count = 0;
     for (const element of elements) {
       for (const child of element.children) if (child.kind === "text") count += child.text.length;
-      // Inline style sheets declare fonts too.
-      if ((element.ns === XHTML_NS || element.ns === SVG_NS) && element.local === "style") {
-        styleSheets.push({ path: item.path, css: Xml.textContent(element) });
-      }
     }
     characters.push({ path: reportPath(item.path), count });
     ids.set(nfc(item.path), Collect.ids(document.value));
@@ -251,6 +256,9 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     const { root } = document.value;
     const end = { line: root.endLine, column: root.endColumn };
     documents.push({ item, path: item.path, features: collected.features, end });
+    yield* reportFindings(
+      ReferenceChecker.remoteStyleFindings(item, item.path, collected.features, opf.version),
+    );
     if (opf.version === "3") {
       yield* reportFindings(
         ReferenceChecker.propertyFindings(
@@ -383,7 +391,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       })),
       ...links,
     ],
-    fonts: styleSheets.flatMap(({ path, css }) => Collect.fonts(css, path)),
+    fonts,
     characters,
   };
 });
@@ -438,6 +446,7 @@ export const checkDocumentReferences = Effect.fn("Publication.checkDocumentRefer
     container: false,
     // A document checked alone has no package to declare the styling classes in.
     undeclaredClasses: MediaOverlays.undeclaredClasses({}),
+    locale: (yield* Report.Report).locale,
   };
   yield* reportFindings(Collect.fromDocument(document.value, path, context).findings);
 });

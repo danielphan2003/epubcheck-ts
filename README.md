@@ -56,7 +56,7 @@ epubcheck-ts detects.
 
 <!-- conformance:start -->
 
-Upstream suite: EPUBCheck v5.4.0. Passing **1210 / 1251** scenarios (96.7%); scenarios that expect reported messages: **679 / 720** (94.3%).
+Upstream suite: EPUBCheck v5.4.0. Passing **1223 / 1251** scenarios (97.8%); scenarios that expect reported messages: **692 / 720** (96.1%).
 
 | Area                                    | Passing | Total |      % |
 | --------------------------------------- | ------: | ----: | -----: |
@@ -74,18 +74,18 @@ Upstream suite: EPUBCheck v5.4.0. Passing **1210 / 1251** scenarios (96.7%); sce
 | `epub3/00-minimal`                      |       5 |     5 | 100.0% |
 | `epub3/02-epub-publication-conformance` |       2 |     2 | 100.0% |
 | `epub3/03-resources`                    |     129 |   129 | 100.0% |
-| `epub3/04-ocf`                          |      98 |   100 |  98.0% |
+| `epub3/04-ocf`                          |      99 |   100 |  99.0% |
 | `epub3/05-package-document`             |     129 |   130 |  99.2% |
 | `epub3/06-layouts`                      |      20 |    20 | 100.0% |
-| `epub3/07-content-documents`            |     219 |   235 |  93.2% |
+| `epub3/07-content-documents`            |     229 |   235 |  97.4% |
 | `epub3/08-navigation-document`          |      37 |    40 |  92.5% |
 | `epub3/09-media-overlays`               |      50 |    50 | 100.0% |
 | `epub3/B-external-identifiers`          |       1 |     3 |  33.3% |
 | `epub3/C-viewport-meta-tag`             |      34 |    34 | 100.0% |
 | `epub3/D-vocabularies`                  |      79 |    79 | 100.0% |
-| `epub3/E-obsolete-features`             |      62 |    72 |  86.1% |
+| `epub3/E-obsolete-features`             |      63 |    72 |  87.5% |
 | `epub3/G-media-type-registrations`      |       1 |     1 | 100.0% |
-| `localization`                          |       5 |     7 |  71.4% |
+| `localization`                          |       6 |     7 |  85.7% |
 | `reporting`                             |      24 |    24 | 100.0% |
 | `unit-tests`                            |      42 |    42 | 100.0% |
 

@@ -1,9 +1,9 @@
 {
   "upstream": "v5.4.0",
-  "passed": 1210,
+  "passed": 1223,
   "total": 1251,
   "expectsMessages": {
-    "passed": 679,
+    "passed": 692,
     "total": 720
   },
   "areas": {
@@ -64,7 +64,7 @@
       "total": 129
     },
     "epub3/04-ocf": {
-      "passed": 98,
+      "passed": 99,
       "total": 100
     },
     "epub3/05-package-document": {
@@ -76,7 +76,7 @@
       "total": 20
     },
     "epub3/07-content-documents": {
-      "passed": 219,
+      "passed": 229,
       "total": 235
     },
     "epub3/08-navigation-document": {
@@ -100,7 +100,7 @@
       "total": 79
     },
     "epub3/E-obsolete-features": {
-      "passed": 62,
+      "passed": 63,
       "total": 72
     },
     "epub3/G-media-type-registrations": {
@@ -108,7 +108,7 @@
       "total": 1
     },
     "localization": {
-      "passed": 5,
+      "passed": 6,
       "total": 7
     },
     "reporting": {

@@ -42,7 +42,11 @@ export const severityRank = (severity: Severity) => {
 const bundleKey = (id: MessageId) => id.replace("-", "_");
 
 // ResourceBundle-style lookup: "fr-CA" falls back to "fr", then to the default bundle.
-const lookup = (key: string, locale: string | undefined) => {
+export const lookupIn = (
+  table: Readonly<Record<string, Readonly<Record<string, string>>>>,
+  key: string,
+  locale: string | undefined,
+) => {
   const candidates: Array<string> = [];
   if (locale !== undefined && locale !== "") {
     const parts = locale.split(/[-_]/);
@@ -52,11 +56,13 @@ const lookup = (key: string, locale: string | undefined) => {
   }
   candidates.push("default");
   for (const candidate of candidates) {
-    const value = bundles[candidate]?.[key];
+    const value = table[candidate]?.[key];
     if (value !== undefined) return value;
   }
   return undefined;
 };
+
+const lookup = (key: string, locale: string | undefined) => lookupIn(bundles, key, locale);
 
 // Java `String.format` subset used by the bundles: `%n$s`, `%s`, `%n`, and `%%`. Like upstream,
 // a specifier without an argument yields the raw pattern plus " !!! Format specifier '...'".
