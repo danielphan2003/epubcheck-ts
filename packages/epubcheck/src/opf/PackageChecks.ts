@@ -557,10 +557,12 @@ const vocabularyChecks = ({ document, opf }: Context) => {
   for (const item of opfChildren(opfChildren(root, "manifest")[0], "item"))
     property(item, "properties", "item", true);
   // Upstream reads an itemref's properties only when its `idref`, as written, names an item.
-  const ids = new Set(opf.items.map((item) => item.id));
+  const ids = new Set(
+    opf.items.flatMap((item) => (Xml.attribute(item.element, "id") === undefined ? [] : [item.id])),
+  );
   for (const itemref of opfChildren(opfChildren(root, "spine")[0], "itemref")) {
-    if (ids.has(Xml.attribute(itemref, "idref") ?? ""))
-      property(itemref, "properties", "itemref", true);
+    const idref = Xml.attribute(itemref, "idref");
+    if (idref !== undefined && ids.has(idref)) property(itemref, "properties", "itemref", true);
   }
   const guide = opfChildren(root, "guide")[0];
   if (guide !== undefined) findings.push(at(guide, "OBS-001", "element", 'OPF 2 "guide"'));
