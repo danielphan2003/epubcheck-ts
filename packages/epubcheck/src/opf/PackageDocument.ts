@@ -1,6 +1,7 @@
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as Xml from "../xml/Xml.ts";
 import { percentDecode } from "../util/UrlFragment.ts";
+import * as Vocabularies from "./Vocabularies.ts";
 
 // The parts of a package document that other checks need: manifest items and the spine.
 
@@ -34,8 +35,8 @@ export interface Metadata {
   readonly date: string | undefined;
   readonly modified: string | undefined;
   readonly types: ReadonlyArray<string>;
-  // The global `rendition:layout` value.
-  readonly layout: string | undefined;
+  // The global `rendition:layout` values: those of metas that refine nothing.
+  readonly layouts: ReadonlyArray<string>;
 }
 
 // A `collection` element (EPUB 3): its roles, its own links, and the collections nested in it.
@@ -48,7 +49,10 @@ export interface Collection {
 
 export interface SpineItem {
   readonly idref: string;
+  // Upstream applies an itemref's properties only when its `idref` needs no trimming.
+  readonly padded: boolean;
   readonly linear: boolean;
+  // Known properties, by their reserved prefixes.
   readonly properties: ReadonlyArray<string>;
 }
 
@@ -101,14 +105,18 @@ export const read = (
         element,
       };
     });
+  const prefixes = Vocabularies.parsePrefixes(Xml.attribute(document.root, "prefix"));
   const spineItems = (spine === undefined ? [] : Xml.childElements(spine))
     .filter((element) => element.ns === OPF_NS && element.local === "itemref")
     .map((element) => ({
       idref: (Xml.attribute(element, "idref") ?? "").trim(),
+      padded: (Xml.attribute(element, "idref") ?? "").trim() !== Xml.attribute(element, "idref"),
       linear: (Xml.attribute(element, "linear") ?? "").trim() !== "no",
-      properties: (Xml.attribute(element, "properties") ?? "")
-        .split(/\s+/)
-        .filter((token) => token !== ""),
+      properties: Vocabularies.canonicalNames(
+        Xml.attribute(element, "properties"),
+        "itemref",
+        prefixes,
+      ),
     }));
   const itemrefs = spineItems.map((itemref) => itemref.idref);
   // Annotated, as it is recursive.
@@ -135,7 +143,7 @@ export const read = (
     items,
     spine: itemrefs,
     spineItems,
-    metadata: readMetadata(document, children),
+    metadata: readMetadata(document, children, prefixes),
     collections,
   };
 };
@@ -143,6 +151,7 @@ export const read = (
 const readMetadata = (
   document: Xml.XmlDocument,
   children: ReadonlyArray<Xml.XmlElement>,
+  prefixes: Vocabularies.Prefixes,
 ): Metadata => {
   const metadata = children.find((child) => child.local === "metadata");
   // EPUB 2 allows Dublin Core inside a `dc-metadata` wrapper.
@@ -161,11 +170,19 @@ const readMetadata = (
   const identifier =
     identifiers.find((element) => Xml.attribute(element, "id")?.trim() === uniqueIdentifier) ??
     identifiers[0];
-  const layout = elements.find(
+  // Upstream resolves the property through the declared prefixes, and takes `refines="#"` as no
+  // refinement at all.
+  const layouts = elements.filter(
     (element) =>
       element.ns === OPF_NS &&
       element.local === "meta" &&
-      Xml.attribute(element, "property")?.trim() === "rendition:layout",
+      (Xml.attribute(element, "refines") ?? "#") === "#" &&
+      Vocabularies.canonicalNames(
+        Xml.attribute(element, "property"),
+        "meta",
+        prefixes,
+        false,
+      )[0] === "rendition:layout",
   );
   const modified = elements.find(
     (element) =>
@@ -185,7 +202,7 @@ const readMetadata = (
     language: values("language")[0],
     date: values("date")[0],
     types: values("type"),
-    layout: layout === undefined ? undefined : Xml.textContent(layout).trim(),
+    layouts: layouts.map((element) => Xml.textContent(element).trim()),
     modified: modified === undefined ? undefined : Xml.textContent(modified).trim(),
   };
 };

@@ -366,3 +366,20 @@ export const parseProperties = (
   }
   return { properties, problems };
 };
+
+// The properties upstream keeps, named by their vocabularies' reserved prefixes: upstream compares
+// properties by URI, so `rend:page-spread-left` is `rendition:page-spread-left` when `rend` maps
+// to the rendition vocabulary. Other vocabularies' properties are named by URI, so a reserved
+// prefix mapped elsewhere does not pass for the reserved vocabulary.
+export const canonicalNames = (
+  value: string | undefined,
+  context: PropertyContext,
+  prefixes: Prefixes,
+  isList = true,
+) =>
+  parseProperties(value, context, prefixes, isList).properties.map(({ prefix, name, token }) => {
+    if (prefix === "") return name;
+    const uri = prefixes.vocabs.get(prefix)?.uri;
+    const reserved = Object.entries(RESERVED).find(([, vocab]) => vocab.uri === uri)?.[0];
+    return reserved === undefined ? `${uri ?? token}${name}` : `${reserved}:${name}`;
+  });

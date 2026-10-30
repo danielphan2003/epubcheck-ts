@@ -3,6 +3,7 @@ import * as JavaText from "../util/JavaText.ts";
 import { parse as parseFragment, percentDecode } from "../util/UrlFragment.ts";
 import * as Xml from "../xml/Xml.ts";
 import * as Url from "../references/Url.ts";
+import * as FixedLayout from "../layout/FixedLayout.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import { checkLanguageTag } from "./LanguageTag.ts";
 import type { Collection, ManifestItem, PackageDocument } from "./PackageDocument.ts";
@@ -254,11 +255,19 @@ const spineFallbackFinding = (item: ManifestItem, byId: ReadonlyMap<string, Mani
   return [at(item.element, "OPF-044", item.mediaType)];
 };
 
+// Upstream's RenditionVocabs.SPREAD_PROPERTIES.
+const SPREADS = /^(?:rendition:page-spread-(?:left|right|center)|page-spread-(?:left|right))$/;
+
 const spineChecks = ({ document, opf }: Context) => {
   const findings: Array<Finding> = [];
   const items = new Map(opf.items.map((item) => [item.id, item] as const));
   const spine = opfChildren(document.root, "spine")[0];
   const itemrefs = opfChildren(spine, "itemref");
+  const fixed = FixedLayout.fixedLayoutIds(opf);
+  const merged = new Map<string, Set<string>>();
+  for (const { idref, padded, properties } of opf.spineItems) {
+    if (!padded) merged.set(idref, new Set([...(merged.get(idref) ?? []), ...properties]));
+  }
   const seen = new Set<string>();
   // Upstream marks a manifest item non-linear for any `linear="no"` reference, and never back.
   const linear = new Map<string, boolean>();
@@ -280,6 +289,13 @@ const spineChecks = ({ document, opf }: Context) => {
     if (opf.version === "3" && !/^data:/i.test(item.href)) {
       findings.push(...spineFallbackFinding(item, items));
       if (item.properties.includes("data-nav")) findings.push(at(item.element, "OPF-077"));
+    }
+    // Page spreads belong to pre-paginated content; upstream also reports them under `roll`, once
+    // per spine entry, from the properties of all the item's itemrefs.
+    if (opf.version === "3" && (!fixed.has(idref) || opf.metadata.layouts.includes("roll"))) {
+      for (const property of merged.get(idref) ?? []) {
+        if (SPREADS.test(property)) findings.push(at(item.element, "OPF-100", property));
+      }
     }
     seen.add(idref);
   }
@@ -540,8 +556,13 @@ const vocabularyChecks = ({ document, opf }: Context) => {
   }
   for (const item of opfChildren(opfChildren(root, "manifest")[0], "item"))
     property(item, "properties", "item", true);
+  // Upstream reads an itemref's properties only when its `idref`, as written, names an item.
+  const ids = new Set(
+    opf.items.flatMap((item) => (Xml.attribute(item.element, "id") === undefined ? [] : [item.id])),
+  );
   for (const itemref of opfChildren(opfChildren(root, "spine")[0], "itemref")) {
-    property(itemref, "properties", "itemref", true);
+    const idref = Xml.attribute(itemref, "idref");
+    if (idref !== undefined && ids.has(idref)) property(itemref, "properties", "itemref", true);
   }
   const guide = opfChildren(root, "guide")[0];
   if (guide !== undefined) findings.push(at(guide, "OBS-001", "element", 'OPF 2 "guide"'));
