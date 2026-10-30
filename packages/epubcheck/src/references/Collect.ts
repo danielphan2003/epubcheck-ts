@@ -1,5 +1,6 @@
 import * as Result from "effect/Result";
 
+import * as CssChecker from "../css/CssChecker.ts";
 import type { MessageId } from "../messages/MessageCatalog.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as Xml from "../xml/Xml.ts";
@@ -67,6 +68,8 @@ export interface Context {
   // Media Overlays styling classes the package does not declare, with their properties, which a
   // selector using them is reported for (CSS-029).
   readonly undeclaredClasses?: ReadonlyArray<readonly [string, string]> | undefined;
+  // The reporting locale, which CSS syntax errors are worded in.
+  readonly locale?: string | undefined;
 }
 
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
@@ -168,139 +171,6 @@ const isScript = (element: Xml.XmlElement) => {
   return type === undefined || SCRIPT_TYPES.has(type.toLowerCase());
 };
 
-interface CssUrl {
-  readonly url: string;
-  readonly kind: "import" | "url";
-  readonly fontFace: boolean;
-  // The declaration's start, or the URL's own for `@import`.
-  readonly line: number;
-  readonly column: number;
-}
-
-// The URLs of a style sheet or `style` attribute, outside comments and strings, with upstream's
-// positions (1-based, relative to the CSS text).
-export const cssUrls = (css: string) => {
-  const urls: Array<CssUrl> = [];
-  let index = 0;
-  let line = 1;
-  let column = 1;
-  const advance = (count = 1) => {
-    for (let step = 0; step < count && index < css.length; step++) {
-      const char = css[index];
-      index++;
-      if (char === "\n" || (char === "\r" && css[index] !== "\n")) {
-        line++;
-        column = 1;
-      } else column++;
-    }
-  };
-  // Reads a quoted string at the current position, without its quotes.
-  const string = () => {
-    const quote = css[index];
-    advance();
-    let value = "";
-    while (index < css.length && css[index] !== quote && css[index] !== "\n") {
-      if (css[index] === "\\") {
-        value += css.slice(index, index + 2);
-        advance(2);
-      } else {
-        value += css[index];
-        advance();
-      }
-    }
-    advance();
-    return value;
-  };
-  // The current statement: where it starts, and its first characters (`@import`, ...).
-  let start: { readonly line: number; readonly column: number } | undefined;
-  let prelude = "";
-  let components = 0;
-  // Upstream reads URLs only among a declaration's or rule's top-level values, not inside
-  // functions such as `image-set()` or `@supports` conditions.
-  let depth = 0;
-  const blocks: Array<boolean> = [];
-  const reset = () => {
-    start = undefined;
-    prelude = "";
-    components = 0;
-    depth = 0;
-  };
-  const statement = () => /^@[\w-]*/.exec(prelude)?.[0]?.toLowerCase() ?? "";
-  const push = (url: string, position: { readonly line: number; readonly column: number }) => {
-    const rule = statement();
-    components++;
-    if (rule === "@namespace") return;
-    // `@import` takes a URL only as its first component (not `url (...)`, say).
-    if (rule === "@import" && (components > 1 || !/^@import\s*$/i.test(prelude))) return;
-    urls.push({
-      url,
-      kind: rule === "@import" ? "import" : "url",
-      fontFace: blocks.at(-1) === true,
-      ...(rule === "@import" ? position : (start ?? position)),
-    });
-  };
-
-  while (index < css.length) {
-    const char = css[index] ?? "";
-    if (css.startsWith("/*", index)) {
-      const end = css.indexOf("*/", index + 2);
-      advance(end < 0 ? css.length - index : end + 2 - index);
-      continue;
-    }
-    if (/\s/.test(char)) {
-      if (start !== undefined && prelude.length < 16) prelude += " ";
-      advance();
-      continue;
-    }
-    const position = { line, column };
-    start ??= position;
-    if (char === '"' || char === "'") {
-      const value = string();
-      // A string is a URL only as the argument of `@import`.
-      if (statement() === "@import") push(value, position);
-      else components++;
-      continue;
-    }
-    if (/^url\(/i.test(css.slice(index, index + 4)) && !/[\w-]/.test(css[index - 1] ?? "")) {
-      advance(4);
-      while (/\s/.test(css[index] ?? "")) advance();
-      let url: string;
-      if (css[index] === '"' || css[index] === "'") {
-        url = string();
-        while (index < css.length && css[index] !== ")") advance();
-      } else {
-        const end = css.indexOf(")", index);
-        url = css.slice(index, end < 0 ? css.length : end).trim();
-        advance((end < 0 ? css.length : end) - index);
-      }
-      advance();
-      if (depth === 0) push(url, position);
-      continue;
-    }
-    if (char === "{") {
-      blocks.push(statement() === "@font-face");
-      reset();
-    } else if (char === "}") {
-      blocks.pop();
-      reset();
-    } else if (char === ";") reset();
-    else {
-      if (char === "(") depth++;
-      else if (char === ")") depth = Math.max(depth - 1, 0);
-      if (prelude.length < 16) prelude += char;
-    }
-    advance();
-  }
-  return urls;
-};
-
-// The font types `@font-face` may use (CSS-007).
-const isFontType = (mediaType: string, version: "2" | "3") =>
-  version === "3"
-    ? MediaTypes.isCoreFont(mediaType)
-    : /^(?:font\/|application\/font|application\/x-font)/.test(mediaType) ||
-      mediaType === "application/vnd.ms-opentype";
-
 const BLESSED_IMAGES = new Set([
   "image/gif",
   "image/png",
@@ -329,290 +199,6 @@ const canonical = (value: string) => {
   if (parsed === undefined) return "";
   const sorted = [...parsed.parameters].sort(([left], [right]) => (left < right ? -1 : 1));
   return JSON.stringify([parsed.essence, sorted]);
-};
-
-// The selectors of a style sheet's rules, outside comments and strings, with their positions
-// (1-based, relative to the CSS text). At-rule preludes and declarations are not selectors; the
-// rules of conditional group at-rules such as `@media` are.
-export const cssSelectors = (css: string) => {
-  const selectors: Array<{
-    readonly text: string;
-    readonly line: number;
-    readonly column: number;
-  }> = [];
-  let index = 0;
-  let line = 1;
-  let column = 1;
-  const advance = () => {
-    const char = css[index];
-    index++;
-    if (char === "\n" || (char === "\r" && css[index] !== "\n")) {
-      line++;
-      column = 1;
-    } else column++;
-  };
-  // Whether each open block holds rules (the style sheet itself, `@media`, ...) or anything else.
-  const blocks: Array<boolean> = [];
-  let prelude: Array<{ readonly char: string; readonly line: number; readonly column: number }> =
-    [];
-  const holdsRules = () => blocks.at(-1) ?? true;
-  while (index < css.length) {
-    const char = css[index] ?? "";
-    if (char === "/" && css[index + 1] === "*") {
-      const end = css.indexOf("*/", index + 2);
-      const length = (end < 0 ? css.length : end + 2) - index;
-      for (let step = 0; step < length; step++) advance();
-      prelude.push({ char: " ", line, column });
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      prelude.push({ char: '""', line, column });
-      advance();
-      while (index < css.length && css[index] !== char && css[index] !== "\n") {
-        if (css[index] === "\\") advance();
-        advance();
-      }
-      advance();
-      continue;
-    }
-    if (char === "{") {
-      const text = prelude.map((each) => each.char).join("");
-      const rules = holdsRules();
-      if (rules && !text.trimStart().startsWith("@")) {
-        // A selector list: each selector starts at its first character after a top-level comma.
-        let depth = 0;
-        let begin = 0;
-        const flush = (until: number) => {
-          const part = prelude.slice(begin, until);
-          const first = part.findIndex((each) => !/\s/.test(each.char));
-          const at = part[first];
-          if (at !== undefined) {
-            const text = part
-              .slice(first)
-              .map((each) => each.char)
-              .join("");
-            selectors.push({ text, line: at.line, column: at.column });
-          }
-        };
-        prelude.forEach((each, position) => {
-          if (each.char === "(" || each.char === "[") depth++;
-          else if (each.char === ")" || each.char === "]") depth--;
-          else if (each.char === "," && depth === 0) {
-            flush(position);
-            begin = position + 1;
-          }
-        });
-        flush(prelude.length);
-      }
-      const name = /^\s*@(-?[\w-]+)/.exec(text)?.[1]?.toLowerCase() ?? "";
-      blocks.push(
-        rules && /^(?:-\w+-)?(?:media|supports|document|layer|container|scope)$/.test(name),
-      );
-      prelude = [];
-      advance();
-      continue;
-    }
-    if (char === "}" || (char === ";" && holdsRules())) {
-      if (char === "}") blocks.pop();
-      prelude = [];
-      advance();
-      continue;
-    }
-    if (holdsRules()) prelude.push({ char, line, column });
-    advance();
-  }
-  return selectors;
-};
-
-// Upstream's findClassName: a class of the selector itself, not one inside a pseudo-class's
-// arguments or an attribute selector, compared once unescaped.
-const usesClass = (selector: string, name: string) => {
-  let depth = 0;
-  let top = "";
-  for (const char of selector) {
-    if (char === "(" || char === "[") depth++;
-    else if (char === ")" || char === "]") depth = Math.max(depth - 1, 0);
-    else if (depth === 0) top += char;
-  }
-  const classes = top.matchAll(
-    /\.((?:[\w-]|[^\x00-\x7f]|\\(?:[0-9a-fA-F]{1,6}\s?|[^\n0-9a-fA-F]))+)/g,
-  );
-  return [...classes].some(
-    ([, ident = ""]) =>
-      ident.replace(
-        /\\(?:([0-9a-fA-F]{1,6})\s?|(.))/g,
-        (_, hex: string | undefined, char: string) =>
-          hex === undefined ? char : String.fromCodePoint(Number.parseInt(hex, 16)),
-      ) === name,
-  );
-};
-
-// A style sheet, or the CSS of a `style` element or attribute (`offset` lines into its document).
-export const fromCss = (css: string, path: string, context: Context, offset = 0) => {
-  const references: Array<Reference> = [];
-  const findings: Array<Finding> = [];
-  const checker = Url.checker(path, context);
-  let remote = false;
-  for (const found of cssUrls(css)) {
-    // Fragment-only URLs would point into the document using the style sheet; upstream skips them.
-    if (found.url.trim() === "" || found.url.startsWith("#")) continue;
-    const line = offset + found.line;
-    const { problems, resolved } = checker.check(found.url);
-    for (const problem of problems) {
-      findings.push({ ...problem, path, line, column: found.column });
-    }
-    if (resolved === undefined) continue;
-    const type = found.kind === "import" ? "stylesheet" : found.fontFace ? "font" : "generic";
-    // A remote style sheet is reported anyway (RSC-006); it does not need the property.
-    if (type !== "stylesheet" && resolved.target.kind === "remote") remote = true;
-    // Upstream looks the font up with its fragment, so a font with one is never checked.
-    const mediaType =
-      type === "font" && resolved.fragment === undefined
-        ? context.mediaTypeOf?.(resolved.target)
-        : undefined;
-    if (mediaType !== undefined && !isFontType(mediaType, context.version)) {
-      findings.push({
-        id: "CSS-007",
-        args: [Url.nameOf(resolved.target), mediaType],
-        path,
-        line,
-        column: found.column,
-      });
-    }
-    references.push({ ...resolved, type, resource: false, path, line, column: found.column });
-  }
-  const undeclared = context.undeclaredClasses ?? [];
-  for (const selector of undeclared.length === 0 ? [] : cssSelectors(css)) {
-    for (const [name, property] of undeclared) {
-      if (!usesClass(selector.text, name)) continue;
-      const at = { line: offset + selector.line, column: selector.column };
-      findings.push({ id: "CSS-029", args: [name, property], path, ...at });
-    }
-  }
-  return { references, findings, remote };
-};
-
-// Where a quoted string that starts at `start` ends, past its closing quote.
-const stringEnd = (text: string, start: number) => {
-  const quote = text[start];
-  let index = start + 1;
-  while (index < text.length && text[index] !== quote && text[index] !== "\n") {
-    index += text[index] === "\\" ? 2 : 1;
-  }
-  return Math.min(index + 1, text.length);
-};
-
-// The text of the block that starts at `start`, up to its closing brace.
-const blockAt = (text: string, start: number) => {
-  let depth = 0;
-  for (let index = start; index < text.length; index++) {
-    const char = text[index];
-    if (char === '"' || char === "'") index = stringEnd(text, index) - 1;
-    else if (char === "{") depth++;
-    else if (char === "}" && depth-- === 0) return text.slice(start, index);
-  }
-  return text.slice(start);
-};
-
-// `text` split at `separator` outside strings and parentheses.
-const splitOutside = (text: string, separator: string) => {
-  const parts: Array<string> = [];
-  let depth = 0;
-  let from = 0;
-  for (let index = 0; index < text.length; index++) {
-    const char = text[index];
-    if (char === '"' || char === "'") index = stringEnd(text, index) - 1;
-    else if (char === "(") depth++;
-    else if (char === ")") depth = Math.max(0, depth - 1);
-    else if (char === separator && depth === 0) {
-      parts.push(text.slice(from, index));
-      from = index + 1;
-    }
-  }
-  parts.push(text.slice(from));
-  return parts;
-};
-
-// A value's first component, as written: a string with its quotes, or a word.
-const firstComponent = (value: string | undefined) => {
-  if (value === undefined || value === "") return undefined;
-  if (value.startsWith('"') || value.startsWith("'")) return value.slice(0, stringEnd(value, 0));
-  return /^[^\s,]+/.exec(value)?.[0];
-};
-
-// The `@font-face` rules of a style sheet, as upstream's CSS handler reads them: the first
-// component of `font-family`, `font-style` and `font-weight` as written, and the URLs of `src`.
-export const fontFaces = (css: string) => {
-  // Comments go, strings stay; positions no longer matter.
-  let text = "";
-  for (let index = 0; index < css.length;) {
-    const char = css[index] ?? "";
-    if (char === "/" && css[index + 1] === "*") {
-      const close = css.indexOf("*/", index + 2);
-      index = close < 0 ? css.length : close + 2;
-    } else if (char === '"' || char === "'") {
-      const end = stringEnd(css, index);
-      text += css.slice(index, end);
-      index = end;
-    } else {
-      text += char;
-      index++;
-    }
-  }
-  return [...text.matchAll(/@font-face\s*\{/gi)].map((match) => {
-    const body = blockAt(text, match.index + match[0].length);
-    const declarations = new Map<string, string>();
-    for (const declaration of splitOutside(body, ";")) {
-      const colon = declaration.indexOf(":");
-      if (colon < 0) continue;
-      const name = declaration.slice(0, colon).trim().toLowerCase();
-      declarations.set(
-        name,
-        declaration
-          .slice(colon + 1)
-          .replace(/!\s*important\s*$/i, "")
-          .trim(),
-      );
-    }
-    const src = declarations.get("src") ?? "";
-    return {
-      family: firstComponent(declarations.get("font-family")),
-      style: firstComponent(declarations.get("font-style")),
-      weight: firstComponent(declarations.get("font-weight")),
-      urls: [...src.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)/gi)].map(
-        (url) => url[1] ?? url[2] ?? url[3] ?? "",
-      ),
-    };
-  });
-};
-
-// The fonts a style sheet's `@font-face` rules name, embedded when the last `src` URL is not a
-// remote one. Upstream keeps the family, style, weight and URL of earlier rules in the sheet,
-// and registers no empty or fragment-only URL.
-export const fonts = (css: string, path: string) => {
-  const urls = Url.checker(path, { container: true });
-  let family: string | undefined;
-  let style: string | undefined;
-  let weight: string | undefined;
-  let source: string | undefined;
-  return fontFaces(css).flatMap((face) => {
-    if (face.family !== undefined) {
-      family = face.family.replace(/^[\t\n\f\r "']+|[\t\n\f\r "']+$/g, "");
-    }
-    style = face.style ?? style;
-    weight = face.weight ?? weight;
-    for (const url of face.urls) {
-      if (url.trim() === "" || url.trim().startsWith("#")) continue;
-      const resolved = urls.check(url).resolved;
-      if (resolved !== undefined) source = Url.referenceName(resolved);
-    }
-    if (family === undefined) return [];
-    const shown = [style, weight].filter(
-      (value) => value !== undefined && value.toLowerCase() !== "normal",
-    );
-    const embedded = source !== undefined && !source.startsWith("http");
-    return [{ embedded, name: [family, ...shown].join(",") }];
-  });
 };
 
 // The URLs an SVG element links to: `xlink:href` in EPUB 2, and `href` too in EPUB 3.
@@ -768,12 +354,15 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
       findings.push({ id: "RSC-029", args: [], path, ...start(element) });
     }
   };
-  const css = (text: string, line: number) => {
+  const fonts: Array<{ readonly embedded: boolean; readonly name: string }> = [];
+  // A `style` element or attribute, its lines counted from its element's.
+  const css = (text: string, line: number, styleAttribute: boolean) => {
     const offset = Math.max(line - 1, 0);
-    const found = fromCss(text, path, context, offset);
+    const found = CssChecker.check(text, { path, context, offset, styleAttribute });
     references.push(...found.references);
     findings.push(...found.findings);
-    if (found.remote) remoteStyles.push(offset);
+    fonts.push(...found.fonts);
+    if (found.ended && found.remote) remoteStyles.push(offset);
   };
   // The sources of an `audio` or `video` element, registered at its end tag, once each.
   const mediaSources = new Map<
@@ -838,7 +427,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
         case "style":
           // Upstream counts a `style` element as CSS only when it has text.
           if (Xml.textContent(element).length > 0) styled = true;
-          css(Xml.textContent(element), element.line);
+          css(Xml.textContent(element), element.line, false);
           break;
         default:
           break;
@@ -907,7 +496,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
         }
       }
       const style = Xml.attribute(element, "style");
-      if (style !== undefined && style !== "") css(style, element.line);
+      if (style !== undefined && style !== "") css(style, element.line, true);
     } else if (element.ns === SVG_NS) {
       switch (element.local) {
         case "svg":
@@ -941,7 +530,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
         case "style":
           // Upstream counts a `style` element as CSS only when it has text.
           if (Xml.textContent(element).length > 0) styled = true;
-          css(Xml.textContent(element), element.line);
+          css(Xml.textContent(element), element.line, false);
           break;
         default:
           break;
@@ -1043,7 +632,7 @@ export const fromDocument = (document: Xml.XmlDocument, path: string, context: C
     styled: styled || references.some((reference) => reference.type === "stylesheet"),
     remoteStyles,
   };
-  return { references, findings, features };
+  return { references, findings, features, fonts };
 };
 
 // A Search Key Map Document links search key groups and matches to dictionary content.

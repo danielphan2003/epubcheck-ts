@@ -1,393 +1,311 @@
-import { formatMessage, type MessageId } from "../messages/MessageCatalog.ts";
-import type { Finding } from "../references/Collect.ts";
-import * as Xml from "../xml/Xml.ts";
-import { bundles } from "./strings.generated.ts";
+import type * as Collect from "../references/Collect.ts";
+import * as Url from "../references/Url.ts";
+import * as MediaTypes from "../resources/MediaTypes.ts";
+import * as CssParser from "./CssParser.ts";
 
-// EPUB style sheet rules: the syntax errors upstream's CSS parser reports (CSS-008, worded from
-// its bundles), forbidden properties, `@font-face` declarations, prefixed `-epub-` properties,
-// and the encoding of style sheet files.
+// EPUB style sheet rules, as upstream's CSS handler applies them while its parser reads a sheet:
+// syntax errors (CSS-008), forbidden and obsolete properties, `@font-face` rules, the sheet's
+// URLs, and the Media Overlays classes its selectors use.
 
-interface Token {
-  readonly kind:
-    | "ident"
-    | "at"
-    | "string"
-    | "url"
-    | "function"
-    | "delim"
-    | "space"
-    | "{"
-    | "}"
-    | "("
-    | ")"
-    | "["
-    | "]"
-    | ":"
-    | ";"
-    | ",";
-  readonly text: string;
-  readonly line: number;
-  readonly column: number;
-  readonly endLine: number;
-  readonly endColumn: number;
-}
+// The font types `@font-face` may use (CSS-007).
+const isFontType = (mediaType: string, version: "2" | "3") =>
+  version === "3"
+    ? MediaTypes.isCoreFont(mediaType)
+    : /^(?:font\/|application\/font|application\/x-font)/.test(mediaType) ||
+      mediaType === "application/vnd.ms-opentype";
 
-const NAME_CHAR = /[\w\u00a0-\uffff-]/;
-const NAME_START = /[a-zA-Z_\u00a0-\uffff]/;
+// Java's String.trim: every character up to U+0020.
+const isBlank = (value: string) => /^[\x00-\x20]*$/.test(value);
 
-const PUNCTUATION: Readonly<Record<string, Token["kind"]>> = {
-  "{": "{",
-  "}": "}",
-  "(": "(",
-  ")": ")",
-  "[": "[",
-  "]": "]",
-  ":": ":",
-  ";": ";",
-  ",": ",",
-};
+const usesClass = (construct: CssParser.Construct, name: string): boolean =>
+  construct.type === "class"
+    ? construct.value === name
+    : "components" in construct && construct.components.some((each) => usesClass(each, name));
 
-const tokenize = (css: string) => {
-  const tokens: Array<Token> = [];
-  let index = 0;
-  let line = 1;
-  let column = 1;
-  const advance = (count: number) => {
-    for (let step = 0; step < count && index < css.length; step++) {
-      if (css[index] === "\n") {
-        line++;
-        column = 1;
-      } else column++;
-      index++;
-    }
-  };
-  const readName = (from: number) => {
-    let end = from;
-    while (end < css.length) {
-      if (css[end] === "\\") end += 2;
-      else if (NAME_CHAR.test(css[end] ?? "")) end++;
-      else break;
-    }
-    return end;
-  };
-  const isNameStart = (at: number) =>
-    NAME_START.test(css[at] ?? "") ||
-    css[at] === "\\" ||
-    (css[at] === "-" && (NAME_START.test(css[at + 1] ?? "") || css[at + 1] === "-"));
-  while (index < css.length) {
-    const start = { line, column };
-    const char = css[index] ?? "";
-    let end = index + 1;
-    let kind: Token["kind"] = "delim";
-    if (css.startsWith("/*", index)) {
-      const close = css.indexOf("*/", index + 2);
-      advance((close < 0 ? css.length : close + 2) - index);
-      continue;
-    }
-    if (/\s/.test(char)) {
-      while (end < css.length && /\s/.test(css[end] ?? "")) end++;
-      kind = "space";
-    } else if (char === '"' || char === "'") {
-      while (end < css.length && css[end] !== char && css[end] !== "\n")
-        end += css[end] === "\\" ? 2 : 1;
-      end = Math.min(end + 1, css.length);
-      kind = "string";
-    } else if (char === "@" && isNameStart(index + 1)) {
-      end = readName(index + 1);
-      kind = "at";
-    } else if (
-      (char === "." || char === "#") &&
-      (isNameStart(index + 1) || NAME_CHAR.test(css[index + 1] ?? ""))
-    ) {
-      // Upstream's scanner reads class names and hashes as single tokens.
-      end = readName(index + 1);
-      kind = "delim";
-    } else if (isNameStart(index)) {
-      end = readName(index);
-      kind = "ident";
-      if (css[end] === "(") {
-        if (/^url$/i.test(css.slice(index, end))) {
-          let close = end + 1;
-          let quote: string | undefined;
-          while (close < css.length && (quote !== undefined || css[close] !== ")")) {
-            const current = css[close] ?? "";
-            if (quote === undefined && (current === '"' || current === "'")) quote = current;
-            else if (current === quote) quote = undefined;
-            close += current === "\\" ? 2 : 1;
-          }
-          end = Math.min(close + 1, css.length);
-          kind = "url";
-        } else {
-          end++;
-          kind = "function";
-        }
-      }
-    } else kind = PUNCTUATION[char] ?? "delim";
-    const text = css.slice(index, end);
-    advance(end - index);
-    tokens.push({
-      kind,
-      text,
-      line: start.line,
-      column: start.column,
-      endLine: line,
-      endColumn: column,
-    });
-  }
-  return tokens;
-};
-
-// Java's MessageFormat: `{n}` arguments, and quotes that make text literal (`''` is a quote).
-const messageFormat = (pattern: string, args: ReadonlyArray<string>) => {
-  let result = "";
-  let quoted = false;
-  for (let index = 0; index < pattern.length; index++) {
-    const char = pattern[index] ?? "";
-    if (char === "'") {
-      if (pattern[index + 1] === "'") {
-        result += "'";
-        index++;
-      } else quoted = !quoted;
-    } else if (char === "{" && !quoted) {
-      const close = pattern.indexOf("}", index);
-      const argument = args[Number(pattern.slice(index + 1, close))];
-      result += argument ?? pattern.slice(index, close + 1);
-      index = close;
-    } else result += char;
-  }
-  return result;
-};
-
-const text = (locale: string | undefined, key: string, ...args: ReadonlyArray<string>) => {
-  const candidates = [locale, locale?.split(/[-_]/)[0], "default"].filter(
-    (candidate): candidate is string => candidate !== undefined,
-  );
-  for (const candidate of candidates) {
-    const pattern = bundles[candidate]?.[key];
-    if (pattern !== undefined) return messageFormat(pattern, args);
-  }
-  return key;
-};
-
-export interface Origin {
+export interface Source {
   readonly path: string;
-  // Where the style sheet text starts in its document; style sheet files start at 1:1.
-  readonly line: number;
-  readonly column: number;
+  readonly context: Collect.Context;
+  // The line of the document the CSS text is on, which its lines count from; 0 for a file.
+  readonly offset: number;
+  readonly styleAttribute: boolean;
 }
 
-const FORBIDDEN = new Set(["direction", "unicode-bidi"]);
-const NESTED_RULES = new Set([
-  "media",
-  "supports",
-  "document",
-  "-moz-document",
-  "layer",
-  "container",
-  "scope",
-]);
-const DECLARATION_RULES = new Set([
-  "font-face",
-  "page",
-  "viewport",
-  "-ms-viewport",
-  "counter-style",
-]);
+export const check = (css: string, { path, context, offset, styleAttribute }: Source) => {
+  const findings: Array<Collect.Finding> = [];
+  const references: Array<Collect.Reference> = [];
+  const fonts: Array<{ readonly embedded: boolean; readonly name: string }> = [];
+  // Upstream corrects the line of a position in a document, never the column.
+  const at = (line: number, column: number) => ({ path, line: offset + line, column });
+  const urls = Url.checker(path, context);
+  const parsed = new Map<string, Url.Resolved | undefined>();
+  let remote = false;
+  let ended = false;
 
-// `inline` parses a `style` attribute: a declaration list without braces.
-const parse = (css: string, origin: Origin, locale: string | undefined, inline: boolean) => {
-  const findings: Array<Finding> = [];
-  const position = (line: number, column: number) =>
-    line === 1
-      ? { line: origin.line, column: origin.column + column - 1 }
-      : { line: origin.line + line - 1, column };
-  const report = (
-    at: { readonly line: number; readonly column: number },
-    id: MessageId,
-    ...args: ReadonlyArray<string>
-  ) => findings.push({ id, args, path: origin.path, ...position(at.line, at.column) });
-  const syntaxError = (at: { readonly line: number; readonly column: number }, detail: string) =>
-    report(at, "CSS-008", formatMessage("CSS-008", [detail], locale));
-
-  const tokens = tokenize(css).filter((token) => token.kind !== "space");
-  let index = 0;
-  const peek = () => tokens[index];
-  const last = () => tokens[index - 1];
-  const endOfInput = () => {
-    const previous = last();
-    return previous === undefined
-      ? { line: 1, column: 1 }
-      : { line: previous.endLine, column: previous.endColumn };
+  const register = (url: string, line: number, column: number, type: Collect.ReferenceType) => {
+    if (isBlank(url)) {
+      findings.push({ id: "CSS-002", args: [], ...at(line, column) });
+      return;
+    }
+    // A fragment-only URL would point into the document using the sheet; upstream skips it.
+    if (url.startsWith("#")) return;
+    const { problems, resolved } = urls.check(url);
+    for (const problem of problems) findings.push({ ...problem, ...at(line, column) });
+    parsed.set(url, resolved);
+    if (resolved === undefined) return;
+    // A remote style sheet is reported anyway (RSC-006); it does not need the property.
+    if (type !== "stylesheet" && resolved.target.kind === "remote") remote = true;
+    references.push({ ...resolved, type, resource: false, ...at(line, column) });
   };
-  // Upstream recovers from an error in a block by skipping to the next `}`, nesting aside.
-  const skipToBlockEnd = () => {
-    while (index < tokens.length && peek()?.kind !== "}") index++;
-    index++;
-  };
-  const or = text(locale, "or");
 
-  const declarations = (inFontFace: boolean, rule: Token | undefined) => {
-    let count = 0;
-    for (;;) {
-      const token = peek();
-      if (token === undefined) {
-        if (!inline) {
-          syntaxError(endOfInput(), text(locale, "css.grammar.prematureEOF", `';' ${or} '}'`));
+  // The handler's state, which upstream keeps for the whole sheet: a family, style, weight and
+  // source carry over to later `@font-face` rules that do not set their own.
+  let rule: CssParser.AtRule | undefined;
+  let inFontFace = false;
+  let declared = false;
+  let family: string | undefined;
+  let style: string | undefined;
+  let weight: string | undefined;
+  let source: string | undefined;
+
+  const failed = (message: string) => {
+    findings.push({ id: "PKG-008", args: [message], path, line: -1, column: -1 });
+  };
+  const result = () => ({ findings, references, fonts, remote, ended });
+
+  for (const event of CssParser.parse(css, styleAttribute, context.locale)) {
+    switch (event.kind) {
+      case "error":
+        findings.push({ id: "CSS-008", args: [event.message], ...at(event.line, event.column) });
+        break;
+      // Upstream reports the exceptions its parser and handler throw.
+      case "failure":
+        failed("null");
+        return result();
+      case "at-rule": {
+        rule = event.rule;
+        if (rule.name === "@import") {
+          const first = rule.components[0];
+          if (first === undefined) {
+            failed("Index 0 out of bounds for length 0");
+            return result();
+          }
+          const url =
+            first.type === "uri"
+              ? CssParser.uriText(first.value)
+              : first.type === "string"
+                ? CssParser.cssText(first).replace(/^["']+|["']+$/g, "")
+                : undefined;
+          if (url !== undefined) register(url, first.line, first.column, "stylesheet");
+        } else if (rule.name !== "@namespace") {
+          for (const component of rule.components) {
+            if (component.type !== "uri") continue;
+            const url = CssParser.uriText(component.value);
+            register(url, rule.line, rule.column, inFontFace ? "font" : "generic");
+          }
         }
-        return;
+        if (rule.name === "@font-face") inFontFace = true;
+        break;
       }
-      index++;
-      if (token.kind === "}") break;
-      if (token.kind === ";") continue;
-      if (token.kind !== "ident") {
-        syntaxError(
-          token,
-          text(locale, "css.grammar.token.expecting", token.text, text(locale, "a_property_name")),
-        );
-        skipToBlockEnd();
-        return;
+      case "end-at-rule":
+        if (inFontFace) {
+          inFontFace = false;
+          if (family !== undefined) {
+            const shown = [style, weight].filter(
+              (value) => value !== undefined && value.toLowerCase() !== "normal",
+            );
+            const embedded = source !== undefined && !source.startsWith("http");
+            fonts.push({ embedded, name: [family, ...shown].join(",") });
+          }
+          // Upstream reports this at the rule's own position, uncorrected.
+          if (!declared) {
+            findings.push({
+              id: "CSS-019",
+              args: [],
+              path,
+              line: rule?.line ?? -1,
+              column: rule?.column ?? -1,
+            });
+          }
+          declared = false;
+        }
+        rule = undefined;
+        break;
+      case "selectors":
+        for (const selector of event.selectors) {
+          for (const [name, property] of context.undeclaredClasses ?? []) {
+            if (!usesClass(selector, `.${name}`)) continue;
+            findings.push({
+              id: "CSS-029",
+              args: [name, property],
+              ...at(selector.line, selector.column),
+            });
+          }
+        }
+        break;
+      case "declaration": {
+        const { name, components, line, column } = event.declaration;
+        for (const component of components) {
+          if (component.type !== "uri") continue;
+          register(
+            CssParser.uriText(component.value),
+            line,
+            column,
+            inFontFace ? "font" : "generic",
+          );
+        }
+        const first = components[0];
+        if (name.startsWith("-epub-")) {
+          findings.push({
+            id: "OBS-001",
+            args: ["css-prefixed-property", name],
+            ...at(line, column),
+          });
+        } else if (
+          name === "text-transform" &&
+          components.some((component) => CssParser.cssText(component) === "-epub-fullwidth")
+        ) {
+          findings.push({
+            id: "OBS-001",
+            args: ["css-prefixed-value", "-epub-fullwidth"],
+            ...at(line, column),
+          });
+        }
+        if (name === "position" && first !== undefined) {
+          if (CssParser.cssText(first).toLowerCase() === "fixed") {
+            findings.push({ id: "CSS-006", args: [], ...at(line, column) });
+          }
+        }
+        if (context.version === "3" && (name === "direction" || name === "unicode-bidi")) {
+          findings.push({ id: "CSS-001", args: [name], ...at(line, column) });
+        }
+        if (!inFontFace) break;
+        declared = true;
+        const value = first === undefined ? undefined : CssParser.cssText(first);
+        if (name === "font-family") family = value?.replace(/^[\t\n\f\r "']+|[\t\n\f\r "']+$/g, "");
+        else if (name === "font-style") style = value;
+        else if (name === "font-weight") weight = value;
+        else if (name === "src") {
+          for (const component of components) {
+            if (component.type !== "uri") continue;
+            const resolved = parsed.get(CssParser.uriText(component.value));
+            if (resolved === undefined || !context.container) continue;
+            source = Url.referenceName(resolved);
+            // Upstream looks the font up with its fragment, so a font with one is never checked.
+            const mediaType =
+              resolved.fragment === undefined ? context.mediaTypeOf?.(resolved.target) : undefined;
+            if (mediaType !== undefined && !isFontType(mediaType, context.version)) {
+              findings.push({
+                id: "CSS-007",
+                args: [Url.nameOf(resolved.target), mediaType],
+                ...at(line, column),
+              });
+            }
+          }
+        }
+        findings.push({ id: "CSS-028", args: [], ...at(line, column) });
+        break;
       }
-      const colon = peek();
-      if (colon === undefined) {
-        syntaxError(token, text(locale, "css.grammar.prematureEOF", ":"));
-        return;
-      }
-      if (colon.kind !== ":") {
-        syntaxError(token, text(locale, "css.grammar.token.expecting", colon.text, ":"));
-        skipToBlockEnd();
-        return;
-      }
-      index++;
-      const value: Array<Token> = [];
-      let depth = 0;
-      while (peek() !== undefined) {
-        const next = peek();
-        if (next === undefined) break;
-        if (depth === 0 && (next.kind === ";" || next.kind === "}")) break;
-        if (next.kind === "(" || next.kind === "function" || next.kind === "[") depth++;
-        if (next.kind === ")" || next.kind === "]") depth = Math.max(0, depth - 1);
-        value.push(next);
-        index++;
-      }
-      count++;
-      declaration(token, value, inFontFace);
+      case "end":
+        ended = true;
+        break;
     }
-    if (inFontFace && count === 0 && rule !== undefined) report(rule, "CSS-019");
-  };
-
-  const declaration = (name: Token, value: ReadonlyArray<Token>, inFontFace: boolean) => {
-    const property = name.text.toLowerCase();
-    if (FORBIDDEN.has(property)) report(name, "CSS-001", name.text);
-    if (property.startsWith("-epub-")) report(name, "OBS-001", "css-prefixed-property", name.text);
-    for (const token of value) {
-      if (token.kind === "ident" && token.text.toLowerCase().startsWith("-epub-")) {
-        report(name, "OBS-001", "css-prefixed-value", token.text);
-      }
-    }
-    if (inFontFace) {
-      report(name, "CSS-028");
-      const empty = value.some(
-        (token) => token.kind === "url" && /^url\(\s*(?:""|''|)\s*\)$/i.test(token.text),
-      );
-      if (property === "src" && empty) report(name, "CSS-002");
-    }
-  };
-
-  const rules = (nested: boolean) => {
-    while (index < tokens.length) {
-      const token = peek();
-      if (token === undefined) return;
-      if (token.kind === "}" && nested) {
-        index++;
-        return;
-      }
-      if (token.kind === "at") {
-        index++;
-        const name = token.text.slice(1).toLowerCase();
-        while (peek() !== undefined && peek()?.kind !== ";" && peek()?.kind !== "{") index++;
-        const end = peek();
-        if (end === undefined) return;
-        index++;
-        if (end.kind === ";") continue;
-        if (NESTED_RULES.has(name)) rules(true);
-        else if (DECLARATION_RULES.has(name)) declarations(name === "font-face", token);
-        else skipBalanced();
-        continue;
-      }
-      // A qualified rule: a selector, then a declaration block.
-      while (peek() !== undefined && peek()?.kind !== "{") index++;
-      if (peek() === undefined) return;
-      index++;
-      declarations(false, undefined);
-    }
-  };
-  const skipBalanced = () => {
-    let depth = 1;
-    while (index < tokens.length && depth > 0) {
-      const token = peek();
-      if (token?.kind === "{") depth++;
-      if (token?.kind === "}") depth--;
-      index++;
-    }
-  };
-  if (inline) declarations(false, undefined);
-  else rules(false);
-  return findings;
-};
-
-export const check = (css: string, origin: Origin, locale: string | undefined) =>
-  parse(css, origin, locale, false);
-
-export const checkStyleAttribute = (css: string, origin: Origin, locale: string | undefined) =>
-  parse(css, origin, locale, true);
-
-// A style sheet file's encoding: UTF-8 is expected, UTF-16 tolerated (CSS-003, CSS-004).
-export const encodingFindings = (bytes: Uint8Array, path: string) => {
-  const [b0, b1] = bytes;
-  const at = { path, line: -1, column: -1 };
-  if ((b0 === 0xfe && b1 === 0xff) || (b0 === 0xff && b1 === 0xfe)) {
-    return [{ id: "CSS-003" as const, args: [], ...at }];
   }
-  const charset = /^@charset\s+"([^"]*)"/i.exec(
-    new TextDecoder("latin1").decode(bytes.subarray(0, 100)),
-  )?.[1];
-  const declared = charset?.toLowerCase();
-  if (declared === undefined || declared === "utf-8") return [];
-  if (declared.startsWith("utf-16")) return [{ id: "CSS-003" as const, args: [], ...at }];
-  return [{ id: "CSS-004" as const, args: [declared], ...at }];
+  return result();
 };
 
-// A style sheet file's text, decoded by its byte order mark.
-export const decode = (bytes: Uint8Array) => {
-  const [b0, b1] = bytes;
-  if (b0 === 0xfe && b1 === 0xff) return new TextDecoder("utf-16be").decode(bytes.subarray(2));
-  if (b0 === 0xff && b1 === 0xfe) return new TextDecoder("utf-16le").decode(bytes.subarray(2));
-  return new TextDecoder().decode(bytes);
+// Upstream's byte order marks, in the order it tries them; its UTF-32LE mark is FE FF 00 00.
+const MARKS = [
+  ["UTF-32BE", [0x00, 0x00, 0xfe, 0xff]],
+  ["UTF-32LE", [0xfe, 0xff, 0x00, 0x00]],
+  ["UTF-8", [0xef, 0xbb, 0xbf]],
+  ["UTF-16BE", [0xfe, 0xff]],
+  ["UTF-16LE", [0xff, 0xfe]],
+] as const;
+
+const decodeUtf32 = (bytes: Uint8Array, little: boolean) => {
+  let text = "";
+  for (let index = 0; index < bytes.length; index += 4) {
+    const [a = 0, b = 0, c = 0, d = 0] = bytes.subarray(index, index + 4);
+    const code = little
+      ? (d << 24) | (c << 16) | (b << 8) | a
+      : (a << 24) | (b << 16) | (c << 8) | d;
+    const valid =
+      index + 4 <= bytes.length &&
+      code >= 0 &&
+      code <= 0x10ffff &&
+      (code < 0xd800 || code > 0xdfff);
+    text += valid ? String.fromCodePoint(code) : "�";
+  }
+  return text;
 };
 
-const XHTML_NS = "http://www.w3.org/1999/xhtml";
-const SVG_NS = "http://www.w3.org/2000/svg";
+const decodeAs = (bytes: Uint8Array, encoding: string) => {
+  const name = encoding.toLowerCase();
+  if (name.startsWith("utf-32")) return decodeUtf32(bytes, name.endsWith("le"));
+  // Java decodes BOM-less UTF-16 as big-endian, and keeps any byte order mark as a character.
+  const label = name === "utf-16" ? "utf-16be" : name;
+  try {
+    return new TextDecoder(label, { ignoreBOM: true }).decode(bytes);
+  } catch {
+    // Java falls back to its default encoding for a name it does not know.
+    return new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes);
+  }
+};
 
-// The style sheets of an XHTML or SVG document: `style` elements and `style` attributes.
-export const checkDocument = (
-  document: Xml.XmlDocument,
-  path: string,
-  locale: string | undefined,
-) =>
-  [document.root, ...Xml.descendants(document.root)].flatMap((element) => {
-    const findings: Array<Finding> = [];
-    if ((element.ns === XHTML_NS || element.ns === SVG_NS) && element.local === "style") {
-      findings.push(
-        ...check(
-          Xml.textContent(element),
-          { path, line: element.line, column: element.column },
-          locale,
-        ),
-      );
+// A style sheet file as upstream reads it: by its byte order mark, else its `@charset`, else as
+// UTF-8. UTF-16 is tolerated (CSS-003), any other encoding is an error (CSS-004).
+export const decodeFile = (bytes: Uint8Array, path: string) => {
+  const read = Math.min(4, bytes.length);
+  const head = [0, 1, 2, 3].map((index) => (index < read ? (bytes[index] ?? 0) : 0));
+  const mark = MARKS.find(([, marker]) => marker.every((byte, index) => head[index] === byte));
+  // Upstream pushes back what its four-byte read took past the mark, which is wrong for a file
+  // shorter than that.
+  const back = mark === undefined ? read : 4 - mark[1].length;
+  const stream = new Uint8Array([
+    ...bytes.subarray(Math.max(0, read - back), read),
+    ...bytes.subarray(read),
+  ]);
+
+  // Its `@charset` sniffing reads a character per code unit, from at most 256 bytes.
+  const encoding = mark?.[0] ?? "UTF-8";
+  const width = encoding.startsWith("UTF-16") ? 2 : encoding.startsWith("UTF-32") ? 4 : 1;
+  const little = width === 1 || encoding.endsWith("LE");
+  let charset: string | undefined;
+  let seen = "";
+  let open = 0;
+  let openAt = -1;
+  for (let consumed = 0; ;) {
+    const unit = stream.subarray(consumed, consumed + width);
+    consumed += unit.length;
+    if (consumed === 256) break;
+    const byte = (little ? unit[0] : unit[width - 1]) ?? 0;
+    // A Java byte is signed, and casts to a character as such.
+    const c = byte >= 0x80 ? byte + 0xff00 : byte;
+    seen += String.fromCharCode(c);
+    if (
+      (seen.length === 1 && c !== 0x40) ||
+      c === 0x3b ||
+      c === 0x7b ||
+      c === 0x7d ||
+      (seen.length === 8 && seen !== "@charset")
+    ) {
+      break;
     }
-    const style = Xml.attribute(element, "style");
-    if (style !== undefined) {
-      findings.push(...checkStyleAttribute(style, { path, line: element.line, column: 1 }, locale));
-    }
-    return findings;
-  });
+    if (open === 0 && (c === 0x22 || c === 0x27)) {
+      open = c;
+      openAt = seen.length;
+    } else if (open === c) {
+      // An empty name counts as none.
+      if (c !== 0 && openAt < seen.length - 1) charset = seen.slice(openAt, -1);
+      break;
+    } else if (unit.length === 0) break;
+  }
+
+  const findings: Array<Collect.Finding> = [];
+  const named = (mark?.[0] ?? charset)?.toLowerCase();
+  if (named !== undefined && named !== "utf-8") {
+    const id = named.startsWith("utf-16") ? "CSS-003" : "CSS-004";
+    findings.push({ id, args: [named], path, line: -1, column: -1 });
+  }
+  return { text: decodeAs(stream, mark?.[0] ?? charset ?? "utf-8"), findings };
+};
