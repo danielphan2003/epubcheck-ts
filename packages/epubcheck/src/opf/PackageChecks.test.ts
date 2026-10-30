@@ -115,3 +115,53 @@ describe("PackageChecks URLs", () => {
     expect(findings.map((finding) => finding.id).filter((id) => ids.has(id))).toEqual(row.ids);
   });
 });
+
+describe("PackageChecks guide", () => {
+  const pkg = (guide: string, version: string) =>
+    `<package xmlns="http://www.idpf.org/2007/opf" version="${version}.0" unique-identifier="id"><metadata/><manifest><item id="c" href="c.xhtml" media-type="application/xhtml+xml"/><item id="css" href="s.css" media-type="text/css"/><item id="svg" href="s.svg" media-type="image/svg+xml"/><item id="r" href="https://example.org/r.mp3" media-type="audio/mpeg"/></manifest><spine><itemref idref="c"/></spine><guide>${guide}</guide></package>`;
+  const reference = (href: string) => `<reference type="text" title="t" href="${href}"/>`;
+  const files = new Set(["EPUB/package.opf", "EPUB/c.xhtml", "EPUB/s.css", "EPUB/s.svg"]);
+  // Each row was checked against EPUBCheck 5.4.0 on a packaged EPUB, or alone with `--mode opf`.
+  it.each([
+    {
+      name: "a missing file",
+      guide: reference("missing.xhtml#x"),
+      found: ["OPF-031 EPUB/missing.xhtml#x"],
+    },
+    { name: "a style sheet", guide: reference("s.css#y"), found: ["OPF-032 EPUB/s.css#y"] },
+    {
+      name: "an SVG document in EPUB 2",
+      guide: reference("s.svg"),
+      version: "2",
+      found: ["OPF-032 EPUB/s.svg"],
+    },
+    { name: "an SVG document in EPUB 3", guide: reference("s.svg"), found: [] },
+    { name: "the package document", guide: reference(""), found: ["OPF-031 EPUB/package.opf"] },
+    { name: "a query", guide: reference("c.xhtml?q"), found: [] },
+    {
+      name: "a query after an absolute URL",
+      guide: reference("https://example.org/x.xhtml") + reference("c.xhtml?q"),
+      found: ["OPF-031 https://example.org/x.xhtml", "OPF-031 EPUB/c.xhtml?q"],
+    },
+    {
+      name: "a missing file, checked alone",
+      guide: reference("missing.xhtml"),
+      alone: true,
+      found: [],
+    },
+  ] as const)("reports $name", ({ guide, found, ...row }) => {
+    const version = "version" in row ? row.version : "3";
+    const document = Xml.parse(pkg(guide, version));
+    if (Result.isFailure(document)) throw new Error(document.failure.message);
+    const findings = PackageChecks.check({
+      document: document.success,
+      opf: PackageDocument.read(document.success, "EPUB/package.opf", version),
+      container: "alone" in row ? undefined : files,
+    });
+    expect(
+      findings
+        .filter((finding) => finding.id === "OPF-031" || finding.id === "OPF-032")
+        .map((finding) => `${finding.id} ${finding.args.join(" ")}`),
+    ).toEqual(found);
+  });
+});

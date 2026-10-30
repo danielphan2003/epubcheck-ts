@@ -132,7 +132,11 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
       } else resourceFindings(reference, mediaType);
       continue;
     }
-    if (target.kind === "local" && target.path === publication.packagePath) continue;
+    if (target.kind === "local" && target.path === publication.packagePath) {
+      // A guide reference to the package document is to a foreign resource upstream registers.
+      if (type === "generic") resourceFindings(reference, "application/oebps-package+xml");
+      continue;
+    }
     const item = itemOf(reference, publication);
     if (target.kind === "remote") {
       const url = target.url + (reference.fragment === undefined ? "" : `#${reference.fragment}`);

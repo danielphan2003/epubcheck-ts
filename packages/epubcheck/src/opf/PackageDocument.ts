@@ -70,6 +70,8 @@ export interface PackageDocument {
   readonly spineItems: ReadonlyArray<SpineItem>;
   // The NCX item the spine names (`toc`).
   readonly toc: string | undefined;
+  // The guide's `reference` elements.
+  readonly guide: ReadonlyArray<Xml.XmlElement>;
   readonly metadata: Metadata;
   // The package metadata's links (EPUB 3).
   readonly links: Collection["links"];
@@ -171,6 +173,9 @@ export const read = (
     spine: itemrefs,
     spineItems,
     toc: spine === undefined ? undefined : Xml.attribute(spine, "toc")?.trim(),
+    guide: Xml.childElements(
+      children.find((child) => child.local === "guide") ?? document.root,
+    ).filter((element) => element.ns === ns && element.local === "reference"),
     metadata: readMetadata(document, children, prefixes),
     links: linksOf(children.find((child) => child.local === "metadata")),
     collections,

@@ -1,16 +1,16 @@
 import * as Xml from "../xml/Xml.ts";
 import { MARC_RELATORS } from "./MarcRelators.ts";
 import { type Context, type Finding, at, nowhere, opfChildren } from "./PackageChecks.ts";
-import { type ManifestItem, OEB_PACKAGE_NS, resolve } from "./PackageDocument.ts";
+import { type ManifestItem, OEB_PACKAGE_NS } from "./PackageDocument.ts";
 
-// EPUB 2 package document rules: the DOCTYPE, Dublin Core roles, OPS media types,
-// the spine's `toc` and Adobe `page-map` attributes, and guide references.
+// EPUB 2 package document rules: the DOCTYPE, Dublin Core roles, OPS media types, and the
+// spine's `toc` and Adobe `page-map` attributes.
 
 const DC_NS = "http://purl.org/dc/elements/1.1/";
 const OPF_NS = "http://www.idpf.org/2007/opf";
 const OEB_PACKAGE_DOCTYPE = "+//ISBN 0-9673008-1-9//DTD OEB 1.2 Package//EN";
 
-// Media types of OPS Content Documents, which spine items and guide references must be.
+// Media types of OPS Content Documents, which spine items must be.
 const OPS_TYPES = new Set([
   "application/xhtml+xml",
   "application/x-dtbook+xml",
@@ -20,7 +20,7 @@ const OPS_TYPES = new Set([
 
 const DEPRECATED_TYPES = new Set(["text/x-oeb1-css", "text/x-oeb1-document"]);
 
-export const check = ({ document, opf, container }: Context) => {
+export const check = ({ document, opf }: Context) => {
   const findings: Array<Finding> = [];
   const root = document.root;
   const legacy = root.ns === OEB_PACKAGE_NS;
@@ -73,24 +73,6 @@ export const check = ({ document, opf, container }: Context) => {
     if (pageMap !== undefined) {
       findings.push(at(spine, "OPF-062"));
       if (!byId.has(pageMap.trim())) findings.push(at(spine, "OPF-063", pageMap.trim()));
-    }
-  }
-
-  const byPath = new Map(
-    opf.items.flatMap((item) => (item.path === undefined ? [] : [[item.path, item] as const])),
-  );
-  for (const reference of opfChildren(opfChildren(root, "guide")[0], "reference")) {
-    const href = (Xml.attribute(reference, "href") ?? "").trim();
-    const path = href === "" ? undefined : resolve(href.split("#")[0] ?? href, opf.path);
-    if (path === undefined) continue;
-    const item = byPath.get(path);
-    if (item === undefined) {
-      findings.push(at(reference, "OPF-031", path));
-      if (container !== undefined && ![...container].includes(path)) {
-        findings.push(at(reference, "RSC-007", path));
-      }
-    } else if (!OPS_TYPES.has(essence(item))) {
-      findings.push(at(reference, "OPF-032", path));
     }
   }
   return findings;

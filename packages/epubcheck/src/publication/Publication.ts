@@ -16,6 +16,7 @@ import * as ReferenceChecker from "../references/ReferenceChecker.ts";
 import * as Url from "../references/Url.ts";
 import * as Report from "../report/Report.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
+import * as Xml from "../xml/Xml.ts";
 
 const reportFindings = Effect.fn("Publication.reportFindings")(function* (
   findings: ReadonlyArray<Collect.Finding>,
@@ -268,6 +269,15 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
         yield* report.message(scripts ? "RSC-006b" : "RSC-006", itemLocation(item), name);
       }
     }
+  }
+  // Upstream checks guide references like any other reference to a resource (RSC-007, RSC-012).
+  const guideUrls = Url.checker(opf.path, { container: true });
+  for (const reference of opf.guide) {
+    const href = Xml.attribute(reference, "href");
+    const resolved = href === undefined ? undefined : guideUrls.check(href).resolved;
+    if (resolved === undefined) continue;
+    const at = { path: opf.path, line: reference.line, column: reference.column };
+    references.push({ ...resolved, type: "generic", resource: false, ...at });
   }
   yield* reportFindings(ReferenceChecker.check(references, publication));
   if (opf.version === "3") {

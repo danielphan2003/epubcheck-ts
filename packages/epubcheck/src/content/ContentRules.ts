@@ -108,7 +108,7 @@ const REGISTERED_SCHEMES = new Set([
 
 const at = (
   path: string,
-  element: Xml.XmlElement,
+  element: { readonly line: number; readonly column: number },
   id: MessageId,
   ...args: ReadonlyArray<string>
 ) => ({
@@ -293,18 +293,17 @@ const XHTML11_PUBLIC_ID = "-//W3C//DTD XHTML 1.1//EN";
 const XHTML11_SYSTEM_ID = "http://www.w3.org/TR/xhtml11/DTD/xhtml11.dtd";
 
 // EPUB 2 XHTML documents may only use the XHTML 1.1 DOCTYPE, if any (HTM-004).
-export const epub2Doctype = (document: Xml.XmlDocument, path: string): ReadonlyArray<Finding> => {
+export const epub2Doctype = (document: Xml.XmlDocument, path: string) => {
   const doctype = document.doctype;
-  if (doctype === undefined) return [];
   const found =
-    doctype.publicId !== XHTML11_PUBLIC_ID
-      ? (doctype.publicId ?? "")
-      : doctype.systemId !== XHTML11_SYSTEM_ID
-        ? (doctype.systemId ?? "")
-        : undefined;
-  if (found === undefined) return [];
+    doctype === undefined
+      ? undefined
+      : doctype.publicId !== XHTML11_PUBLIC_ID
+        ? (doctype.publicId ?? "")
+        : doctype.systemId !== XHTML11_SYSTEM_ID
+          ? (doctype.systemId ?? "")
+          : undefined;
+  if (doctype === undefined || found === undefined) return [];
   const expected = `<!DOCTYPE html PUBLIC "${XHTML11_PUBLIC_ID}" \n"${XHTML11_SYSTEM_ID}">`;
-  return [
-    { id: "HTM-004", args: [found, expected], path, line: doctype.line, column: doctype.column },
-  ];
+  return [at(path, doctype, "HTM-004", found, expected)];
 };

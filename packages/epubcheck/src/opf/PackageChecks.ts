@@ -716,6 +716,46 @@ const collectionChecks = ({ opf }: Context) => {
   return findings;
 };
 
+// Upstream's checkGuide, in both versions of a full check: a reference names a manifest item
+// (OPF-031) of an OPS content document type (OPF-032), quoted with its fragment. A query the URL
+// checker keeps (after an absolute URL, with no RSC-033) makes it name no item.
+const GUIDE_TYPES = {
+  "2": new Set(["application/xhtml+xml", "application/x-dtbook+xml"]),
+  "3": new Set(["application/xhtml+xml", "image/svg+xml"]),
+};
+const LEGACY_GUIDE_TYPES = new Set(["text/x-oeb1-document", "text/html"]);
+
+const guideChecks = ({ opf, container }: Context) => {
+  const findings: Array<Finding> = [];
+  if (container === undefined) return findings;
+  const urls = Url.checker(opf.path, { container: true });
+  const byPath = new Map(
+    [...registered(opf)].flatMap((item) =>
+      item.path === undefined ? [] : [[item.path.normalize("NFC"), item] as const],
+    ),
+  );
+  for (const reference of opf.guide) {
+    const href = Xml.attribute(reference, "href");
+    const checked = href === undefined ? undefined : urls.check(href);
+    const resolved = checked?.resolved;
+    if (resolved === undefined) continue;
+    const { target, fragment } = resolved;
+    const stripped = checked?.problems.some((problem) => problem.id === "RSC-033") === true;
+    const query =
+      target.kind === "local" && !stripped ? (/\?[^#]*/.exec(href ?? "")?.[0] ?? "") : "";
+    const name = Url.nameOf(target) + query + (fragment === undefined ? "" : `#${fragment}`);
+    const item = target.kind === "local" && query === "" ? byPath.get(target.path) : undefined;
+    if (item === undefined) findings.push(at(reference, "OPF-031", name));
+    else if (
+      !GUIDE_TYPES[opf.version].has(item.mediaType) &&
+      !LEGACY_GUIDE_TYPES.has(item.mediaType)
+    ) {
+      findings.push(at(reference, "OPF-032", name));
+    }
+  }
+  return findings;
+};
+
 export const check = (context: Context) => {
   const checks = { ...context, ...shared(context) };
   return [
@@ -723,6 +763,7 @@ export const check = (context: Context) => {
     ...metadataChecks(checks),
     ...manifestChecks(checks),
     ...spineChecks(checks),
+    ...guideChecks(checks),
     ...(context.opf.version === "3" ? collectionChecks(checks) : []),
   ];
 };
