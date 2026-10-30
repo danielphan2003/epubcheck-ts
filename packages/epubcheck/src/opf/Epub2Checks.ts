@@ -46,7 +46,7 @@ export const check = ({ document, opf }: Context) => {
   // Each itemref is checked, duplicates included: style sheets and images may not be in the
   // spine, and other types need a fallback chain to a content document.
   const byId = new Map([...registered(opf)].map((item) => [item.id, item] as const));
-  const contentFallback = Fallbacks.contentDocumentFallback(byId, "2");
+  const contentFallback = Fallbacks.resolveFallbacks(byId, "2").content;
   for (const idref of opf.spine) {
     const item = byId.get(idref);
     if (item === undefined) continue;

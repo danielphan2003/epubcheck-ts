@@ -15,6 +15,7 @@ import {
   type ManifestItem,
   OEB_PACKAGE_NS,
   OPF_NS,
+  PACKAGE_NAMESPACES,
   type PackageDocument,
   declaredPaths,
   registered,
@@ -145,8 +146,6 @@ const shared = (context: Context) => ({
 
 type Checks = Context & ReturnType<typeof shared>;
 
-// Package elements are in the OPF namespace, or an OEBPS 1.2 package's, or none.
-const PACKAGE_NAMESPACES = new Set([OPF_NS, OEB_PACKAGE_NS, ""]);
 const opfChildren = (element: Xml.XmlElement | undefined, local: string) =>
   element === undefined
     ? []
@@ -211,6 +210,8 @@ const manifestChecks = ({ opf, container, urls, files }: Checks) => {
   const findings: Array<Finding> = [...problemsOf(urls, "item")];
   const byId = new Map(opf.items.map((item) => [item.id, item] as const));
   const { items, urlOf, kept, packageKey } = itemUrls(opf);
+  const toc = items.find((item) => item.id === opf.toc);
+  const unreadableToc = toc?.mediaType === "application/x-dtbncx+xml" ? undefined : toc;
   for (const item of items) {
     const url = urlOf(item);
     if (url === undefined) continue;
@@ -221,9 +222,11 @@ const manifestChecks = ({ opf, container, urls, files }: Checks) => {
         findings.push(at(item.element, finding.id, ...finding.args));
       }
     }
-    // Upstream looks every item up in the container, duplicates included.
+    // Upstream looks every item up in the container, duplicates included, but for one it fails
+    // to read as the NCX (CHK-008).
     if (
       files !== undefined &&
+      item !== unreadableToc &&
       item.path !== undefined &&
       !isRemote(item.href) &&
       !files.has(item.path.normalize("NFC"))
@@ -327,11 +330,9 @@ const SPREADS = /^(?:rendition:page-spread-(?:left|right|center)|page-spread-(?:
 
 const spineChecks = ({ document, opf, urls }: Checks) => {
   const findings: Array<Finding> = [];
-  const items = new Map(opf.items.map((item) => [item.id, item] as const));
-  const contentFallback = Fallbacks.contentDocumentFallback(
-    new Map([...registered(opf)].map((item) => [item.id, item] as const)),
-    "3",
-  );
+  // Upstream looks itemrefs up among the items it registers.
+  const items = new Map([...registered(opf)].map((item) => [item.id, item] as const));
+  const contentFallback = Fallbacks.resolveFallbacks(items, "3").content;
   const spine = opfChildren(document.root, "spine")[0];
   const itemrefs = opfChildren(spine, "itemref");
   const fixed = FixedLayout.fixedLayoutIds(opf);
@@ -787,8 +788,14 @@ const handlerChecks = ({ document, opf }: Context) => {
   const findings: Array<Finding> = [];
   const root = document.root;
   const read = root.ns === OPF_NS || root.ns === OEB_PACKAGE_NS || root.ns === "";
-  if (read && root.ns !== OPF_NS) findings.push(at(root, "OPF-047"));
+  const legacy = read && root.ns !== OPF_NS;
+  if (legacy) findings.push(at(root, "OPF-047"));
   for (const element of Xml.descendants(root)) {
+    // Outside an OEBPS 1.2 package, upstream reports these wrappers as unknown IDs, by name.
+    const wrapper = element.local === "dc-metadata" || element.local === "x-metadata";
+    if (!legacy && wrapper && PACKAGE_NAMESPACES.has(element.ns)) {
+      findings.push(at(element, "OPF-049", element.local));
+    }
     if (element.ns !== DC_NS || element.local !== "creator") continue;
     // Upstream compares the role as written, and accepts any `oth.` role.
     const role = Xml.attribute(element, "role", OPF_NS);
@@ -796,21 +803,30 @@ const handlerChecks = ({ document, opf }: Context) => {
       findings.push(at(element, "OPF-052", role));
     }
   }
-  const spine = Xml.childElements(root).find(
-    (child) => child.ns === root.ns && child.local === "spine",
-  );
-  if (!read || spine === undefined) return findings;
+  // Every spine counts; the last page map is looked up, by its ID as written, at the end.
   const byId = new Map([...registered(opf)].map((item) => [item.id, item] as const));
-  const pageMap = Xml.attribute(spine, "page-map");
-  if (pageMap !== undefined) findings.push(at(spine, "OPF-062"));
-  const toc = Xml.attribute(spine, "toc");
-  const ncx = toc === undefined ? undefined : byId.get(toc.trim());
-  if (toc !== undefined && ncx === undefined) findings.push(at(spine, "OPF-049", toc));
-  if (ncx !== undefined && ncx.mediaType !== "application/x-dtbncx+xml") {
-    findings.push(at(ncx.element, "OPF-050"));
+  const ncx = new Set<ManifestItem>();
+  let pageMap: { readonly spine: Xml.XmlElement; readonly id: string } | undefined;
+  for (const spine of Xml.childElements(root)) {
+    if (!PACKAGE_NAMESPACES.has(spine.ns) || spine.local !== "spine") continue;
+    const id = Xml.attribute(spine, "page-map");
+    if (id !== undefined) {
+      findings.push(at(spine, "OPF-062"));
+      pageMap = { spine, id };
+    }
+    const toc = Xml.attribute(spine, "toc");
+    const item = toc === undefined ? undefined : byId.get(toc.trim());
+    if (toc !== undefined && item === undefined) findings.push(at(spine, "OPF-049", toc));
+    if (item !== undefined) ncx.add(item);
   }
-  // Upstream looks the page map up by its ID as written.
-  if (pageMap !== undefined && !byId.has(pageMap)) findings.push(at(spine, "OPF-063", pageMap));
+  for (const item of byId.values()) {
+    if (ncx.has(item) && item.mediaType !== "application/x-dtbncx+xml") {
+      findings.push(at(item.element, "OPF-050"));
+    }
+  }
+  if (pageMap !== undefined && !byId.has(pageMap.id)) {
+    findings.push(at(pageMap.spine, "OPF-063", pageMap.id));
+  }
   return findings;
 };
 

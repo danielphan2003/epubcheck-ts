@@ -9,6 +9,8 @@ import * as Vocabularies from "./Vocabularies.ts";
 export const OPF_NS = "http://www.idpf.org/2007/opf";
 // Legacy OEBPS 1.2 package documents use their own namespace, or none.
 export const OEB_PACKAGE_NS = "http://openebook.org/namespaces/oeb-package/1.0/";
+// Upstream reads package elements in any of these namespaces, whatever the root's.
+export const PACKAGE_NAMESPACES = new Set([OPF_NS, OEB_PACKAGE_NS, ""]);
 const DC_NS = "http://purl.org/dc/elements/1.1/";
 
 export interface ManifestItem {
@@ -96,11 +98,14 @@ export const resolve = (href: string, from: string) => {
   }
 };
 
-// The items upstream registers: those with an `id`, the last item of each.
+// The items upstream registers: those with an `id` and an `href`, the last item of each ID.
 export const registered = (opf: PackageDocument) =>
   new Map(
     opf.items.flatMap((item) =>
-      Xml.attribute(item.element, "id") === undefined ? [] : [[item.id, item] as const],
+      Xml.attribute(item.element, "id") === undefined ||
+      Xml.attribute(item.element, "href") === undefined
+        ? []
+        : [[item.id, item] as const],
     ),
   ).values();
 
@@ -116,13 +121,13 @@ export const read = (
   path: string,
   version: "2" | "3",
 ): PackageDocument => {
-  const ns =
-    document.root.ns === OEB_PACKAGE_NS || document.root.ns === "" ? document.root.ns : OPF_NS;
-  const children = Xml.childElements(document.root).filter((child) => child.ns === ns);
+  const children = Xml.childElements(document.root).filter((child) =>
+    PACKAGE_NAMESPACES.has(child.ns),
+  );
   const manifest = children.find((child) => child.local === "manifest");
   const spine = children.find((child) => child.local === "spine");
   const items = (manifest === undefined ? [] : Xml.childElements(manifest))
-    .filter((element) => element.ns === ns && element.local === "item")
+    .filter((element) => PACKAGE_NAMESPACES.has(element.ns) && element.local === "item")
     .map((element) => {
       const href = (Xml.attribute(element, "href") ?? "").trim();
       return {
@@ -139,7 +144,7 @@ export const read = (
     });
   const prefixes = Vocabularies.parsePrefixes(Xml.attribute(document.root, "prefix"));
   const spineItems = (spine === undefined ? [] : Xml.childElements(spine))
-    .filter((element) => element.ns === ns && element.local === "itemref")
+    .filter((element) => PACKAGE_NAMESPACES.has(element.ns) && element.local === "itemref")
     .map((element) => ({
       idref: (Xml.attribute(element, "idref") ?? "").trim(),
       padded: (Xml.attribute(element, "idref") ?? "").trim() !== Xml.attribute(element, "idref"),
@@ -180,7 +185,7 @@ export const read = (
     spineItems,
     toc: spine === undefined ? undefined : Xml.attribute(spine, "toc")?.trim(),
     guide: (guide === undefined ? [] : Xml.childElements(guide)).filter(
-      (element) => element.ns === ns && element.local === "reference",
+      (element) => PACKAGE_NAMESPACES.has(element.ns) && element.local === "reference",
     ),
     metadata: readMetadata(document, children, prefixes),
     links: linksOf(children.find((child) => child.local === "metadata")),

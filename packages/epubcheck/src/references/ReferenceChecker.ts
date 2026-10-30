@@ -80,19 +80,7 @@ export const loadsSvg = (references: ReadonlyArray<Reference>, publication: Publ
 export const check = (references: ReadonlyArray<Reference>, publication: Publication) => {
   const findings: Array<Finding> = [];
   const epub3 = publication.version === "3";
-  // Whether an item's manifest fallback chain reaches a resource of some type.
-  const hasFallback = (item: ManifestItem | undefined, accepts: (mediaType: string) => boolean) => {
-    const seen = new Set<string>();
-    let current = item;
-    while (current?.fallback !== undefined && !seen.has(current.id)) {
-      seen.add(current.id);
-      current = publication.byId.get(current.fallback);
-      if (current !== undefined && accepts(current.mediaType)) return true;
-    }
-    return false;
-  };
-  const hasCoreFallback = (item: ManifestItem | undefined) => hasFallback(item, MediaTypes.isCore);
-  const contentFallback = Fallbacks.contentDocumentFallback(publication.byId, publication.version);
+  const fallbacks = Fallbacks.resolveFallbacks(publication.byId, publication.version);
   // A foreign resource needs a fallback (RSC-032), and a script must be JavaScript.
   const resourceFindings = (reference: Reference, mediaType: string, item?: ManifestItem) => {
     const name = Url.nameOf(reference.target);
@@ -100,7 +88,7 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
       NEEDS_FALLBACK.has(reference.type) &&
       reference.intrinsicFallback !== true &&
       !MediaTypes.isCore(mediaType) &&
-      !hasCoreFallback(item)
+      !fallbacks.core(item)
     ) {
       findings.push(finding(reference, "RSC-032", name, mediaType));
     }
@@ -129,11 +117,19 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
       } else resourceFindings(reference, mediaType);
       continue;
     }
-    // Upstream registers the package document as a resource, which is no content document.
+    // Upstream registers the package document as a resource outside the spine, of a type that
+    // is neither core nor a content document, with no fallback and no IDs it checks.
     if (target.kind === "local" && target.path === publication.packagePath) {
-      const cfi = UrlFragment.parse(reference.fragment ?? "", PACKAGE_TYPE).scheme === "epubcfi";
-      if (type === "hyperlink" && !cfi) findings.push(finding(reference, "RSC-010"));
-      else if (type !== "hyperlink") resourceFindings(reference, PACKAGE_TYPE);
+      if (!resourceFindings(reference, PACKAGE_TYPE)) continue;
+      const { fragment } = reference;
+      const cfi = UrlFragment.parse(fragment ?? "", PACKAGE_TYPE).scheme === "epubcfi";
+      if (type === "image" && fragment !== undefined && !cfi) {
+        findings.push(finding(reference, "RSC-009"));
+      } else if (type === "stylesheet" && fragment !== undefined) {
+        findings.push(finding(reference, "RSC-013"));
+      } else if (type === "search-key" && !cfi) {
+        findings.push(finding(reference, "RSC-021", Url.nameOf(target)));
+      } else if (type === "hyperlink" && !cfi) findings.push(finding(reference, "RSC-010"));
       continue;
     }
     const item = itemOf(reference, publication);
@@ -193,7 +189,7 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
     }
     // Upstream does not check where EPUB CFIs lead.
     if (type === "hyperlink" && parsed.scheme !== "epubcfi") {
-      if (!isLinkable(item.mediaType, publication.version) && !contentFallback(item)) {
+      if (!isLinkable(item.mediaType, publication.version) && !fallbacks.content(item)) {
         findings.push(finding(reference, "RSC-010"));
         continue;
       }

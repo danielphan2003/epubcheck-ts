@@ -171,3 +171,53 @@ describe("PackageChecks guide", () => {
     ).toEqual(found);
   });
 });
+
+describe("PackageChecks handler", () => {
+  const pkg = (
+    parts: { metadata?: string; manifest?: string; spine?: string; itemrefs?: string },
+    version: string,
+  ) =>
+    `<package xmlns="http://www.idpf.org/2007/opf" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf" version="${version}.0" unique-identifier="id"><metadata><dc:identifier id="id">x</dc:identifier>${parts.metadata ?? ""}</metadata><manifest><item id="c" href="c.xhtml" media-type="application/xhtml+xml"/>${parts.manifest ?? ""}</manifest><spine${parts.spine ?? ""}><itemref idref="c"/>${parts.itemrefs ?? ""}</spine></package>`;
+  const item = (id: string, type: string, extra = "") =>
+    `<item id="${id}" href="${id}.x" media-type="${type}"${extra}/>`;
+  const ids = new Set(["OPF-049", "OPF-050", "OPF-052", "OPF-062", "OPF-063"]);
+  // Each row was checked against EPUBCheck 5.4.0.
+  it.each([
+    {
+      name: "creator roles",
+      parts: {
+        metadata:
+          '<dc:creator opf:role="oth.custom">a</dc:creator><dc:creator opf:role="">b</dc:creator><dc:creator opf:role=" aut ">c</dc:creator><dc:contributor opf:role="xyz">d</dc:contributor>',
+      },
+      found: ["OPF-052"],
+    },
+    {
+      name: "a creator role in EPUB 3",
+      parts: { metadata: '<dc:creator opf:role="xyz">a</dc:creator>' },
+      version: "3",
+      found: ["OPF-052"],
+    },
+    {
+      name: "a page map named with spaces",
+      parts: { manifest: item("pm", "application/oebps-page-map+xml"), spine: ' page-map=" pm "' },
+      found: ["OPF-062", "OPF-063"],
+    },
+    { name: "a toc naming no item", parts: { spine: ' toc="ncx"' }, found: ["OPF-049"] },
+    { name: "a toc naming a content document", parts: { spine: ' toc="c"' }, found: ["OPF-050"] },
+    {
+      name: "metadata wrappers outside OEBPS 1.2",
+      parts: { metadata: "<dc-metadata/><x-metadata/>" },
+      found: ["OPF-049", "OPF-049"],
+    },
+  ] as const)("reports $name", ({ parts, found, ...row }) => {
+    const version = "version" in row ? row.version : "2";
+    const document = Xml.parse(pkg(parts, version));
+    if (Result.isFailure(document)) throw new Error(document.failure.message);
+    const findings = PackageChecks.check({
+      document: document.success,
+      opf: PackageDocument.read(document.success, "EPUB/package.opf", version),
+      container: undefined,
+    });
+    expect(findings.map((finding) => finding.id).filter((id) => ids.has(id))).toEqual(found);
+  });
+});

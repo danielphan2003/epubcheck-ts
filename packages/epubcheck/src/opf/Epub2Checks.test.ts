@@ -14,18 +14,7 @@ const pkg = (
 const item = (id: string, type: string, extra = "") =>
   `<item id="${id}" href="${id}.x" media-type="${type}"${extra}/>`;
 const itemref = (idref: string) => `<itemref idref="${idref}"/>`;
-const ids = new Set([
-  "OPF-035",
-  "OPF-037",
-  "OPF-042",
-  "OPF-043",
-  "OPF-044",
-  "OPF-049",
-  "OPF-050",
-  "OPF-052",
-  "OPF-062",
-  "OPF-063",
-]);
+const ids = new Set(["OPF-035", "OPF-037", "OPF-042", "OPF-043", "OPF-044"]);
 
 describe("Epub2Checks", () => {
   // Each row was checked against EPUBCheck 5.4.0.
@@ -87,29 +76,8 @@ describe("Epub2Checks", () => {
       parts: { manifest: item("h", "text/html; charset=utf-8") },
       found: [],
     },
-    {
-      name: "creator roles",
-      parts: {
-        metadata:
-          '<dc:creator opf:role="oth.custom">a</dc:creator><dc:creator opf:role="">b</dc:creator><dc:creator opf:role=" aut ">c</dc:creator><dc:contributor opf:role="xyz">d</dc:contributor>',
-      },
-      found: ["OPF-052"],
-    },
-    {
-      name: "a creator role in EPUB 3",
-      parts: { metadata: '<dc:creator opf:role="xyz">a</dc:creator>' },
-      version: "3",
-      found: ["OPF-052"],
-    },
-    {
-      name: "a page map named with spaces",
-      parts: { manifest: item("pm", "application/oebps-page-map+xml"), spine: ' page-map=" pm "' },
-      found: ["OPF-062", "OPF-063"],
-    },
-    { name: "a toc naming no item", parts: { spine: ' toc="ncx"' }, found: ["OPF-049"] },
-    { name: "a toc naming a content document", parts: { spine: ' toc="c"' }, found: ["OPF-050"] },
-  ] as const)("reports $name", ({ parts, found, ...row }) => {
-    const version = "version" in row ? row.version : "2";
+  ] as const)("reports $name", ({ parts, found }) => {
+    const version = "2";
     const document = Xml.parse(pkg(parts, version));
     if (Result.isFailure(document)) throw new Error(document.failure.message);
     const context = {
@@ -117,10 +85,7 @@ describe("Epub2Checks", () => {
       opf: PackageDocument.read(document.success, "EPUB/package.opf", version),
       container: undefined,
     };
-    const findings = [
-      ...PackageChecks.check(context),
-      ...(version === "2" ? Epub2Checks.check(context) : []),
-    ];
+    const findings = [...PackageChecks.check(context), ...Epub2Checks.check(context)];
     expect(findings.map((finding) => finding.id).filter((id) => ids.has(id))).toEqual(found);
   });
 });

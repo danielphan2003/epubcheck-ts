@@ -120,9 +120,11 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     // An item for the package document itself is OPF-099, not a content document.
     if (item.path === undefined || item.path === opf.path) continue;
     const kind = ContentChecker.kindOf(item.mediaType, item.properties, opf.version);
-    // Upstream checks an NCX only as the spine's `toc`, and cannot read anything else as one.
-    if (kind === "ncx" && item.id !== opf.toc) continue;
-    if (item.id === opf.toc && item.mediaType !== "application/x-dtbncx+xml") {
+    // Upstream checks an NCX only as the spine's `toc`, the last item with its ID, and cannot
+    // read anything else as one.
+    const isToc = opf.toc !== undefined && byId.get(opf.toc) === item;
+    if (kind === "ncx" && !isToc) continue;
+    if (isToc && item.mediaType !== "application/x-dtbncx+xml") {
       yield* report.message("CHK-008", Report.location(opf.path), item.path);
       continue;
     }
@@ -179,16 +181,19 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     if (Option.isSome(document) && typedAs !== undefined) {
       yield* reportFindings(EpubType.check(document.value, item.path, typedAs));
     }
+    // Upstream fails comparing an empty publication identifier with the NCX's (CHK-008), even
+    // after a fatal error.
+    const uid = opf.metadata.uid;
     if (Option.isSome(document) && kind === "ncx") {
-      // Upstream fails comparing an empty publication identifier with the NCX's (CHK-008).
-      const uid = opf.metadata.uid;
       yield* reportFindings(
         Ncx.check(document.value, item.path, uid === "" ? undefined : uid, opf.version),
       );
-      if (uid === "") yield* report.message("CHK-008", Report.location(opf.path), item.path);
       const links = Ncx.references(document.value, item.path, context);
       references.push(...links.references);
       yield* reportFindings(links.findings);
+    }
+    if (kind === "ncx" && uid === "") {
+      yield* report.message("CHK-008", Report.location(opf.path), item.path);
     }
     if (Option.isSome(document) && kind === "mo") {
       const read = MediaOverlays.read(document.value, item.path, {
