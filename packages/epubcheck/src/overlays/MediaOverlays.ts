@@ -177,10 +177,10 @@ export const publicationFindings = (
           links.push(finding(path, link, "MED-018", Url.normalizeFragment(fragment)));
         }
         // A text link may name any element but an SVG paint server, clip path or symbol.
-        const idType = parsed.id === "" ? "" : context.idTypes.get(target.path)?.get(parsed.id);
-        if (idType === undefined) links.push(finding(path, link, "RSC-012"));
-        else if (idType !== "" && idType !== "generic") {
-          links.push(finding(path, link, "RSC-014"));
+        if (parsed.id !== "") {
+          const idType = context.idTypes.get(target.path)?.get(parsed.id);
+          if (idType === undefined) links.push(finding(path, link, "RSC-012"));
+          else if (idType !== "generic") links.push(finding(path, link, "RSC-014"));
         }
       }
       const broken = next(link.resolved);

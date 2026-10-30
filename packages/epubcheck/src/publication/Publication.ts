@@ -163,7 +163,9 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       const decoded = Option.isSome(bytes) ? Xml.decodeDocument(bytes.value).text : undefined;
       const parsed = decoded === undefined ? undefined : Xml.parse(decoded);
       if (parsed !== undefined && Result.isSuccess(parsed)) {
-        ids.set(nfc(item.path), Collect.documentIds(parsed.success, dtbook).types);
+        const found = Collect.documentIds(parsed.success, dtbook);
+        ids.set(nfc(item.path), found.types);
+        positions.set(nfc(item.path), found.positions);
       } else unparsed.add(nfc(item.path));
       continue;
     }
