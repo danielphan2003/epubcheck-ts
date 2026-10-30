@@ -1,6 +1,6 @@
 {
   "upstream": "v5.4.0",
-  "passed": 1196,
+  "passed": 1210,
   "total": 1251,
   "expectsMessages": {
     "passed": 679,
@@ -112,7 +112,7 @@
       "total": 7
     },
     "reporting": {
-      "passed": 10,
+      "passed": 24,
       "total": 24
     },
     "unit-tests": {

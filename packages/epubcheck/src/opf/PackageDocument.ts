@@ -45,6 +45,10 @@ export interface Metadata {
   readonly types: ReadonlyArray<string>;
   // The global `rendition:layout` values: those of metas that refine nothing.
   readonly layouts: ReadonlyArray<string>;
+  // The first `rendition:orientation` and `rendition:spread` values, refining or not, as upstream
+  // reports them.
+  readonly orientation: string | undefined;
+  readonly spread: string | undefined;
   // Media Overlays styling class names (`media:active-class`, `media:playback-active-class`).
   readonly activeClass: string | undefined;
   readonly playbackActiveClass: string | undefined;
@@ -74,6 +78,7 @@ export interface PackageDocument {
   // Item IDs in spine order; `spineItems` has each itemref's details.
   readonly spine: ReadonlyArray<string>;
   readonly spineItems: ReadonlyArray<SpineItem>;
+  readonly hasSpine: boolean;
   // The ID the spine's `toc` names.
   readonly toc: string | undefined;
   // The guide's `reference` elements.
@@ -183,6 +188,7 @@ export const read = (
     items,
     spine: itemrefs,
     spineItems,
+    hasSpine: spine !== undefined,
     toc: spine === undefined ? undefined : Xml.attribute(spine, "toc")?.trim(),
     guide: (guide === undefined ? [] : Xml.childElements(guide)).filter(
       (element) => PACKAGE_NAMESPACES.has(element.ns) && element.local === "reference",
@@ -279,6 +285,8 @@ const readMetadata = (
     date: values("date")[0],
     types: values("type"),
     layouts: layouts.map((element) => Xml.textContent(element).trim()),
+    orientation: meta("rendition:orientation", true),
+    spread: meta("rendition:spread", true),
     // Upstream notes the styling classes whether or not their metas refine anything.
     activeClass: meta("media:active-class", true),
     playbackActiveClass: meta("media:playback-active-class", true),

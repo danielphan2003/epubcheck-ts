@@ -9,7 +9,7 @@ import * as Ncx from "../ncx/Ncx.ts";
 import * as MediaOverlays from "../overlays/MediaOverlays.ts";
 import type * as Container from "../ocf/Container.ts";
 import * as OcfChecker from "../ocf/OcfChecker.ts";
-import type { ManifestItem, PackageDocument } from "../opf/PackageDocument.ts";
+import type { Collection, ManifestItem, PackageDocument } from "../opf/PackageDocument.ts";
 import * as Collect from "../references/Collect.ts";
 import * as Profiles from "../profiles/Profiles.ts";
 import * as ReferenceChecker from "../references/ReferenceChecker.ts";
@@ -17,6 +17,12 @@ import * as Url from "../references/Url.ts";
 import * as Report from "../report/Report.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as Xml from "../xml/Xml.ts";
+
+// Upstream's reports name the documents they check by their container paths as URLs.
+const reportPath = (path: string) => Url.encodePath(path.normalize("NFC"));
+
+const XHTML_NS = "http://www.w3.org/1999/xhtml";
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 const reportFindings = Effect.fn("Publication.reportFindings")(function* (
   findings: ReadonlyArray<Collect.Finding>,
@@ -104,6 +110,8 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   const narrators = new Map<string, string>();
   const references: Array<Collect.Reference> = [];
   let scripts = false;
+  // Characters in each content document, which upstream's reports count.
+  const characters: Array<{ readonly path: string; readonly count: number }> = [];
   const positions = new Map<string, ReadonlyMap<string, number>>();
   const overlays: Array<{
     readonly item: ManifestItem;
@@ -116,6 +124,8 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     readonly features: Collect.Features;
     readonly end: { readonly line: number; readonly column: number };
   }> = [];
+  // Style sheets, for the fonts the reports list.
+  const styleSheets: Array<{ readonly path: string; readonly css: string }> = [];
   for (const item of opf.items) {
     // An item for the package document itself is OPF-099, not a content document.
     if (item.path === undefined || item.path === opf.path) continue;
@@ -141,6 +151,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
     if (isCss) {
       const text = new TextDecoder().decode(bytes.value);
+      styleSheets.push({ path: item.path, css: text });
       const css = Collect.fromCss(text, item.path, context);
       references.push(...css.references);
       yield* reportFindings(css.findings);
@@ -223,6 +234,16 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
     const collected = Collect.fromDocument(document.value, item.path, context);
     references.push(...collected.references);
+    const elements = [document.value.root, ...Xml.descendants(document.value.root)];
+    let count = 0;
+    for (const element of elements) {
+      for (const child of element.children) if (child.kind === "text") count += child.text.length;
+      // Inline style sheets declare fonts too.
+      if ((element.ns === XHTML_NS || element.ns === SVG_NS) && element.local === "style") {
+        styleSheets.push({ path: item.path, css: Xml.textContent(element) });
+      }
+    }
+    characters.push({ path: reportPath(item.path), count });
     ids.set(nfc(item.path), Collect.ids(document.value));
     yield* reportFindings(collected.findings);
     if (collected.features.scripts) scripts = true;
@@ -335,7 +356,47 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       yield* report.message("OPF-078", Report.location(opf.path));
     }
   }
+  // Every reference counts, before any check, and so do the package document's EPUB 3 links.
+  const linkUrls = Url.checker(opf.path, { container: true });
+  const allLinks = opf.version === "3" ? [...opf.links, ...collectionLinks(opf.collections)] : [];
+  const links = allLinks.flatMap(({ href }) => {
+    const resolved = linkUrls.check(href).resolved;
+    // Upstream registers no data URL, and no link to a part of the package document (OPF-098).
+    const self =
+      resolved?.target.kind === "local" &&
+      resolved.target.path === opf.path &&
+      (resolved.fragment ?? "") !== "";
+    return resolved === undefined || resolved.target.kind === "data" || self
+      ? []
+      : [{ from: reportPath(opf.path), to: Url.referenceName(resolved) }];
+  });
+  return {
+    scripted: new Set(
+      documents
+        .filter((document) => document.features.scripts)
+        .map((document) => reportPath(document.path)),
+    ),
+    references: [
+      ...references.map((reference) => ({
+        from: reportPath(reference.path),
+        to: Url.referenceName(reference),
+      })),
+      ...links,
+    ],
+    fonts: styleSheets.flatMap(({ path, css }) => Collect.fonts(css, path)),
+    characters,
+  };
 });
+
+// What the reports need from a checked publication's resources.
+export type Resources = Effect.Success<ReturnType<typeof checkResources>>;
+
+// The links of collections, nested ones included; annotated, as it is recursive.
+const collectionLinks = (collections: PackageDocument["collections"]): Collection["links"] =>
+  collections.flatMap((collection) => [
+    ...collection.links,
+    ...collectionLinks(collection.collections),
+  ]);
 
 // A single content document: references need a publication, so only its URLs are checked.
 export const checkDocumentReferences = Effect.fn("Publication.checkDocumentReferences")(function* (

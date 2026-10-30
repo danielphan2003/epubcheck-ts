@@ -1142,10 +1142,24 @@ localization/localization.feature:16 The reporting locale can be configured
 localization/localization.feature:22 The reporting locale overrides the default locale
 localization/localization.feature:43 Jing locale is properly reset (after the previous scenario)
 localization/localization.feature:50 Case-conversion is locale-dependent
+reporting/json-report.feature:101 `renditionLayout` "pre-paginated" on item
+reporting/json-report.feature:11 Basic well-formedness checks
+reporting/json-report.feature:110 `renditionLayout` "reflowable" on publication
+reporting/json-report.feature:118 `renditionLayout` "reflowable" on item
+reporting/json-report.feature:127 `renditionOrientation` on publication
+reporting/json-report.feature:134 `renditionOrientation` on item
+reporting/json-report.feature:143 `renditionSpread` on publication
+reporting/json-report.feature:150 `renditionSpread` on item
+reporting/json-report.feature:17 Basic well-formedness checks
 reporting/json-report.feature:27 the default maximum number of each message is 25
 reporting/json-report.feature:33 the maximum number can be configured to a limit
 reporting/json-report.feature:40 the maximum number can be configured to 0
 reporting/json-report.feature:47 the maximum number can be unlimited
+reporting/json-report.feature:57 Font remote
+reporting/json-report.feature:64 Font embedded
+reporting/json-report.feature:73 cross-HTML references
+reporting/json-report.feature:81 layout field defaults
+reporting/json-report.feature:93 `renditionLayout` "pre-paginated" on publication
 reporting/xml-report.feature:16 the report is well-formed and has content
 reporting/xml-report.feature:21 the creation date is set
 reporting/xml-report.feature:30 the default maximum number of each message is 25

@@ -34,6 +34,8 @@ export interface OcfResult {
   readonly declared: ReadonlyArray<string>;
   // The `mimetype` file's content, trimmed, which upstream's reports give as the format.
   readonly formatName: string | undefined;
+  // Whether the check goes on to the package documents.
+  readonly complete: boolean;
 }
 
 interface ContainerLinks {
@@ -279,15 +281,23 @@ export const check = Effect.fn("OcfChecker.check")(function* (
 
   yield* checkStructure(container, at);
   const formatName = yield* checkMimetype(container, at);
+  // The container's own checks may stop the check before any package document.
+  const stopped = Option.some<OcfResult>({
+    container,
+    packageDocuments: [],
+    declared: [],
+    formatName,
+    complete: false,
+  });
   const hadFatal = (yield* report.messages).some((message) => message.severity === "FATAL");
   const links = yield* checkContainerFile(container, at, hadFatal);
-  if (Option.isNone(links)) return Option.none<OcfResult>();
+  if (Option.isNone(links)) return stopped;
   const rootfiles = links.value.rootfiles;
 
   const containerLocation = Report.location(CONTAINER_FILE);
   if (rootfiles.length === 0) {
     yield* report.message("RSC-003", containerLocation);
-    return Option.none<OcfResult>();
+    return stopped;
   }
   const peeked: Array<{
     readonly path: string;
@@ -297,12 +307,12 @@ export const check = Effect.fn("OcfChecker.check")(function* (
   for (const [index, rootfile] of rootfiles.entries()) {
     if (!container.files.includes(rootfile)) {
       yield* report.message("OPF-002", containerLocation, rootfile);
-      return Option.none<OcfResult>();
+      return stopped;
     }
     const peek = yield* peekVersion(container, rootfile);
     if (Result.isFailure(peek)) {
       yield* report.message("OPF-001", Report.location(rootfile), peek.failure);
-      if (index === 0) return Option.none<OcfResult>();
+      if (index === 0) return stopped;
       continue;
     }
     peeked.push({ path: rootfile, ...peek.success });
@@ -398,5 +408,6 @@ export const check = Effect.fn("OcfChecker.check")(function* (
     packageDocuments,
     declared: links.value.declared,
     formatName,
+    complete: true,
   });
 });

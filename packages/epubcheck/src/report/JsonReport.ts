@@ -31,6 +31,7 @@ export const render = (result: CheckResult, options: ReportOptions) => {
   const count = (severity: Message["severity"]) =>
     groups.filter((group) => group.first.severity === severity).length;
   const metadata = result.publication?.metadata;
+  const summary = result.summary;
   return Jackson.stringify({
     messages: groups.map((group) => ({
       ID: MessageCatalog.displayId(group.first.id),
@@ -59,7 +60,7 @@ export const render = (result: CheckResult, options: ReportOptions) => {
       nUsage: count("USAGE"),
     },
     publication:
-      result.publication === undefined
+      result.publication === undefined && summary === undefined
         ? null
         : {
             publisher: metadata?.publisher ?? null,
@@ -72,24 +73,44 @@ export const render = (result: CheckResult, options: ReportOptions) => {
             rights: metadata?.rights ?? null,
             identifier: metadata?.identifier ?? null,
             language: metadata?.language ?? null,
-            nSpines: null,
-            checkSum: null,
-            renditionLayout: null,
-            renditionOrientation: null,
-            renditionSpread: null,
-            ePubVersion: epubVersionLabel(result.publication.version),
-            isScripted: null,
-            hasFixedFormat: null,
-            isBackwardCompatible: null,
-            hasAudio: null,
-            hasVideo: null,
-            charsCount: null,
-            embeddedFonts: [],
-            refFonts: [],
-            hasEncryption: null,
-            hasSignatures: null,
+            nSpines: summary?.spineCount ?? null,
+            checkSum: 0,
+            renditionLayout: summary?.layout ?? null,
+            renditionOrientation: summary?.orientation ?? null,
+            renditionSpread: summary?.spread ?? null,
+            ePubVersion:
+              result.publication === undefined
+                ? null
+                : epubVersionLabel(result.publication.version),
+            isScripted: summary?.scripted ?? null,
+            hasFixedFormat: summary?.fixed ?? null,
+            isBackwardCompatible: summary?.backwardCompatible ?? null,
+            hasAudio: summary?.audio ?? null,
+            hasVideo: summary?.video ?? null,
+            charsCount: summary?.characters ?? null,
+            embeddedFonts: summary?.embeddedFonts ?? [],
+            refFonts: summary?.remoteFonts ?? [],
+            hasEncryption: summary?.hasEncryption ?? null,
+            hasSignatures: summary?.hasSignatures ?? null,
             contributors: metadata?.contributors ?? [],
           },
-    items: [],
+    items: (summary?.items ?? []).map((item) => ({
+      id: item.id,
+      fileName: item.fileName,
+      media_type: item.mediaType ?? null,
+      compressedSize: item.compressedSize,
+      uncompressedSize: item.uncompressedSize,
+      compressionMethod: item.compressionMethod ?? null,
+      checkSum: item.checkSum ?? null,
+      isSpineItem: item.spine,
+      spineIndex: item.spineIndex ?? null,
+      isLinear: item.linear,
+      isFixedFormat: item.fixed ?? null,
+      isScripted: item.scripted,
+      renditionLayout: item.layout ?? null,
+      renditionOrientation: item.orientation ?? null,
+      renditionSpread: item.spread ?? null,
+      referencedItems: item.referenced,
+    })),
   });
 };

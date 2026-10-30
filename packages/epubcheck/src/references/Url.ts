@@ -135,6 +135,32 @@ const normalizeRemote = (url: URL) => {
   return copy.href;
 };
 
+// A fragment as upstream's URLs hold it: controls and non-ASCII characters percent-encoded,
+// and escapes of unreserved characters decoded.
+const normalizeFragment = (fragment: string) => {
+  let encoded = "";
+  for (const char of fragment) {
+    const code = char.codePointAt(0) ?? 0;
+    if (code >= 0x20 && code < 0x7f) encoded += char;
+    else {
+      for (const byte of new TextEncoder().encode(char)) {
+        encoded += `%${byte.toString(16).toUpperCase().padStart(2, "0")}`;
+      }
+    }
+  }
+  return encoded.replace(/%([0-9A-Fa-f]{2})/g, (escape, hex: string) => {
+    const char = String.fromCharCode(Number.parseInt(hex, 16));
+    return /[A-Za-z0-9._~-]/.test(char) ? char : escape;
+  });
+};
+
+// How upstream's reports name a reference's target: its container path as a URL, or its URL,
+// with any fragment.
+export const referenceName = ({ target, fragment }: Resolved) => {
+  const name = target.kind === "local" ? encodePath(target.path) : target.url;
+  return fragment === undefined ? name : `${name}#${normalizeFragment(fragment)}`;
+};
+
 // How upstream's messages name a resource: its container path, or its URL.
 export const nameOf = (target: Target) =>
   target.kind === "local" ? encodePath(target.path) : target.url;

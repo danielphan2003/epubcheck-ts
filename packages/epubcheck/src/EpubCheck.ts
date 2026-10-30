@@ -12,6 +12,7 @@ import * as OpfChecker from "./opf/OpfChecker.ts";
 import * as PackageDocument from "./opf/PackageDocument.ts";
 import * as Profiles from "./profiles/Profiles.ts";
 import * as Publication from "./publication/Publication.ts";
+import * as Summary from "./publication/Summary.ts";
 import * as Url from "./references/Url.ts";
 import * as Report from "./report/Report.ts";
 
@@ -62,6 +63,8 @@ export interface CheckResult {
   readonly mode: CheckMode;
   // What the package document declares, when the publication's version could be read.
   readonly publication?: PublicationInfo | undefined;
+  // What upstream's reports describe of the publication and its files, once its container opens.
+  readonly summary?: Summary.PublicationSummary | undefined;
   // When the container was made, and its `mimetype`, as upstream's XML reports state them.
   readonly created?: string | undefined;
   readonly formatName?: string | undefined;
@@ -106,21 +109,30 @@ const make = Effect.gen(function* () {
     profile: Profile,
   ) {
     const report = yield* Report.Report;
+    // Upstream's reports describe a publication it cannot open with their defaults.
+    const unopened = {
+      publication: undefined,
+      created: undefined,
+      formatName: undefined,
+      summary: yield* Summary.summarize(undefined, [], false),
+    };
     const exists = yield* fs.exists(target).pipe(Effect.orElseSucceed(() => false));
     if (!exists) {
       yield* report.message("PKG-018", Report.location(path.basename(target)));
-      return { publication: undefined, created: undefined, formatName: undefined };
+      return unopened;
     }
     const ocf = yield* OcfChecker.check(target, profile);
-    if (Option.isNone(ocf)) {
-      return { publication: undefined, created: undefined, formatName: undefined };
-    }
+    if (Option.isNone(ocf)) return unopened;
     const { created } = ocf.value.container;
     const { formatName } = ocf.value;
     let metadata: PackageDocument.Metadata | undefined;
     // Upstream counts files container.xml declares, manifest items with an ID (the last of each
     // ID) and no fragment, and the files EPUB 3 package metadata links to.
     const declared = new Set(ocf.value.declared.map((file) => file.normalize("NFC")));
+    const renditions: Array<{
+      readonly opf: PackageDocument.PackageDocument;
+      readonly resources: Publication.Resources;
+    }> = [];
     for (const packageDocument of ocf.value.packageDocuments) {
       const bytes = yield* OcfChecker.readResource(ocf.value.container, packageDocument.path);
       if (Option.isNone(bytes)) continue;
@@ -139,14 +151,16 @@ const make = Effect.gen(function* () {
           if (link.path !== undefined) declared.add(link.path.normalize("NFC"));
         }
       }
-      yield* Publication.checkResources(
+      const resources = yield* Publication.checkResources(
         ocf.value.container,
         opfResult.value,
         packageDocument.profile,
       );
+      renditions.push({ opf: opfResult.value, resources });
     }
+    const summary = yield* Summary.summarize(ocf.value.container, renditions, ocf.value.complete);
     // Container files no package document declares (OCF files aside) are reported as usages.
-    for (const file of ocf.value.container.files) {
+    for (const file of ocf.value.complete ? ocf.value.container.files : []) {
       if (
         file === "mimetype" ||
         file.startsWith("META-INF/") ||
@@ -165,7 +179,7 @@ const make = Effect.gen(function* () {
       first === undefined
         ? undefined
         : ({ version: first.version, metadata } satisfies PublicationInfo);
-    return { publication, created, formatName };
+    return { publication, created, formatName, summary };
   });
 
   // Single-document modes check one file outside any publication, as upstream's `--mode`.
@@ -202,22 +216,21 @@ const make = Effect.gen(function* () {
       overrides,
     });
     const profile = request.profile ?? "default";
-    const run =
+    // A single document has no publication to describe.
+    const checked =
       mode === "epub"
-        ? checkPublication(target, profile)
-        : checkDocument(target, mode, request.version ?? "3", profile).pipe(
-            Effect.as({ publication: undefined, created: undefined, formatName: undefined }),
+        ? yield* checkPublication(target, profile).pipe(
+            Effect.provideService(Report.Report, report),
+            Effect.provide(platform),
+          )
+        : yield* checkDocument(target, mode, request.version ?? "3", profile).pipe(
+            Effect.provideService(Report.Report, report),
+            Effect.provide(platform),
           );
-    const { publication, created, formatName } = yield* run.pipe(
-      Effect.provideService(Report.Report, report),
-      Effect.provide(platform),
-    );
     return {
       path: target,
       mode,
-      publication,
-      created,
-      formatName,
+      ...(checked === undefined ? {} : checked),
       messages: yield* report.messages,
     } satisfies CheckResult;
   });
