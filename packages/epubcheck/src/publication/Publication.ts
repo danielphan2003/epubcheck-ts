@@ -235,6 +235,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
         spine: opf.spine.flatMap((idref) => byId.get(idref)?.path ?? []).map(nfc),
         packagePath: opf.path,
         narrators,
+        manifest: opf.items,
       }),
     );
   }

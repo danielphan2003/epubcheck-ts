@@ -119,7 +119,11 @@ export const read = (document: Xml.XmlDocument, path: string, publication?: Publ
         column: element.column,
       });
     }
-    const type = resolved === undefined ? undefined : publication?.mediaTypeOf(resolved.target);
+    // Upstream finds no registered type for a data URL here.
+    const type =
+      resolved === undefined || resolved.target.kind === "data"
+        ? undefined
+        : publication?.mediaTypeOf(resolved.target);
     if (resolved !== undefined && type !== undefined && !BLESSED_AUDIO.has(type)) {
       findings.push(finding(path, element, "MED-005", Url.nameOf(resolved.target), type));
     }
@@ -144,6 +148,8 @@ export interface PublicationContext {
   readonly spine: ReadonlyArray<string>;
   readonly packagePath: string;
   readonly narrators: ReadonlyMap<string, string>;
+  // Every manifest item, remote ones included, in manifest order.
+  readonly manifest: ReadonlyArray<ManifestItem>;
 }
 
 // The text link checks upstream's reference checker makes, and its reading order check over all
@@ -196,10 +202,12 @@ export const publicationFindings = (
     }
   }
   // Upstream checks each content document's media-overlay attribute against its narrator.
-  for (const item of context.items.values()) {
-    if (item.path === undefined || !isContentDocument(item.mediaType)) continue;
+  for (const item of context.manifest) {
+    if (!isContentDocument(item.mediaType)) continue;
     const declared = Xml.attribute(item.element, "media-overlay");
-    const narrator = context.narrators.get(item.path);
+    const narrator = context.narrators.get(
+      item.path === undefined ? Url.remoteKey(item.href) : item.path.normalize("NFC"),
+    );
     const at = { line: item.element.line, column: item.element.column };
     if (narrator !== undefined && (declared === undefined || declared === "")) {
       findings.push(finding(context.packagePath, at, "MED-010"));
