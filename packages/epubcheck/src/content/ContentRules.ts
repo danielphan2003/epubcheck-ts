@@ -15,6 +15,8 @@ const OPS_NS = "http://www.idpf.org/2007/ops";
 const XMLNS_NS = "http://www.w3.org/2000/xmlns/";
 
 const DISCOURAGED = new Set(["base", "embed", "rp"]);
+// SVG elements whose deprecated `xlink:href` upstream reports.
+const XLINKED = new Set(["a", "font-face-uri", "image", "use"]);
 
 // Alternate style tags (EPUB Alternate Style Tags 1.0) that cannot apply together.
 const CONFLICTING_TAGS: ReadonlyArray<readonly [string, string]> = [
@@ -198,7 +200,7 @@ export const check = (document: Xml.XmlDocument, path: string, kind: "xhtml" | "
           findings.push(at(path, element, "HTM-025"));
         }
       }
-    } else if (element.ns === SVG_NS) {
+    } else if (element.ns === SVG_NS && XLINKED.has(element.local)) {
       const xlink = Xml.attribute(element, "href", XLINK_NS);
       const href = Xml.attribute(element, "href");
       if (xlink !== undefined && href === undefined) findings.push(at(path, element, "HTM-062"));
