@@ -232,7 +232,7 @@ describe("Collect.fromDocument SVG references", () => {
 });
 
 describe("Collect.fromDtbook", () => {
-  // The references upstream's DTBookHandler registers, by type and target.
+  // The references upstream's DTBookHandler registers, by type and target, and its findings.
   it.each([
     {
       name: "links and images",
@@ -242,18 +242,31 @@ describe("Collect.fromDtbook", () => {
         ["generic", "EPUB/c2.xml#x"],
         ["image", "EPUB/i.png"],
       ],
+      findings: [],
     },
     {
       name: "remote links",
-      body: '<p><a href="https://example.org/a" external="true">x</a><a href="https://example.org/b">y</a></p>',
+      body: '<p><a href="https://example.org/a" external="true">x</a><a href="foo:bar" external="true">y</a><a href="https://example.org/b">z</a></p>',
       found: [["generic", "https://example.org/b"]],
+      findings: [["OPF-021", "foo:bar"]],
+    },
+    // A base stays in force after its element ends.
+    {
+      name: "links after a base",
+      body: '<level1 xml:base="sub/"><p><img src="a.png"/></p></level1><p><a href="c2.xml">x</a></p>',
+      found: [
+        ["image", "EPUB/sub/a.png"],
+        ["generic", "EPUB/sub/c2.xml"],
+      ],
+      findings: [],
     },
     {
       name: "elements of other namespaces",
       body: '<p><a xmlns="urn:x" href="c2.xml">x</a><img xmlns="http://www.w3.org/1999/xhtml" src="i.png"/></p>',
       found: [],
+      findings: [],
     },
-  ])("reads $name", ({ body, found }) => {
+  ])("reads $name", ({ body, found, findings }) => {
     const parsed = Xml.parse(
       `<dtbook xmlns="http://www.daisy.org/z3986/2005/dtbook/" version="2005-2"><book>${body}</book></dtbook>`,
     );
@@ -265,6 +278,7 @@ describe("Collect.fromDtbook", () => {
     expect(
       read.references.map((reference) => [reference.type, Url.referenceName(reference)]),
     ).toEqual(found);
+    expect(read.findings.map(({ id, args }) => [id, ...args])).toEqual(findings);
   });
 });
 

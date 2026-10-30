@@ -11,7 +11,12 @@ import * as Ncx from "../ncx/Ncx.ts";
 import * as MediaOverlays from "../overlays/MediaOverlays.ts";
 import type * as Container from "../ocf/Container.ts";
 import * as OcfChecker from "../ocf/OcfChecker.ts";
-import type { Collection, ManifestItem, PackageDocument } from "../opf/PackageDocument.ts";
+import {
+  type Collection,
+  type ManifestItem,
+  type PackageDocument,
+  registered,
+} from "../opf/PackageDocument.ts";
 import * as Collect from "../references/Collect.ts";
 import * as Profiles from "../profiles/Profiles.ts";
 import * as ReadingOrder from "../references/ReadingOrder.ts";
@@ -149,7 +154,8 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   const fonts: Array<{ readonly embedded: boolean; readonly name: string }> = [];
   // The `toc` links of the Navigation Documents, in the order they are read.
   const tocLinks: Array<ReadingOrder.TocLink> = [];
-  for (const item of opf.items) {
+  // Upstream reads the items it registers: the last of each ID, with an `href`.
+  for (const item of registered(opf)) {
     // An item for the package document itself is OPF-099, not a content document.
     if (item.path === undefined || item.path === opf.path) continue;
     const kind = ContentChecker.kindOf(item.mediaType, item.properties, opf.version);
@@ -361,7 +367,8 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   }
   // The media overlays upstream registers, before any other reference.
   const overlaid = (opf.version === "3" ? PackageChecks.overlayOwners(opf) : []).flatMap((item) => {
-    const overlay = byId.get(Xml.attribute(item.element, "media-overlay")?.trim() ?? "");
+    // Upstream looks the attribute up as written.
+    const overlay = byId.get(Xml.attribute(item.element, "media-overlay") ?? "");
     return overlay === undefined ? [] : [{ item, overlay }];
   });
   const keyOf = (target: Url.Target) => (target.kind === "local" ? target.path : target.url);
@@ -376,17 +383,28 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   const used = new Set(
     references.flatMap(({ type, target }) => (RESOURCE_TYPES.has(type) ? [keyOf(target)] : [])),
   );
+  // Each item's URL as a reference's target would equal it. Upstream's package checker reads the
+  // metadata links, then the items with an ID, and keeps a local query once it has seen an
+  // absolute URL. A reference's target has no fragment, and no local query.
   const itemUrls = Url.checker(opf.path, { container: true });
+  for (const { href } of opf.version === "3" ? opf.links : []) itemUrls.check(href);
+  const keys = new Map(
+    opf.items.flatMap((item) => {
+      const href = Xml.attribute(item.element, "href");
+      if (Xml.attribute(item.element, "id") === undefined || href === undefined) return [];
+      const { problems, resolved } = itemUrls.check(href);
+      if (resolved === undefined || href.includes("#")) return [];
+      const kept = /^[^#]*\?/.test(href) && problems.every(({ id }) => id !== "RSC-033");
+      return resolved.target.kind === "local" && kept ? [] : [[item, keyOf(resolved.target)]];
+    }),
+  );
   for (const { overlay } of overlaid) {
-    const target = itemUrls.check(overlay.href).resolved?.target;
-    if (target !== undefined) used.add(keyOf(target));
+    const key = keys.get(overlay);
+    if (key !== undefined) used.add(key);
   }
-  // Upstream compares a reference's target, which has no fragment (and no query when local),
-  // with the item's URL as written, so an item URL with either is never used.
   const isUsed = (item: ManifestItem) => {
-    const target = item.href.includes("#") ? undefined : itemUrls.check(item.href).resolved?.target;
-    if (target === undefined || (target.kind === "local" && item.href.includes("?"))) return false;
-    return used.has(keyOf(target));
+    const key = keys.get(item);
+    return key !== undefined && used.has(key);
   };
   const nonLinear = new Set(opf.spineItems.flatMap(({ idref, linear }) => (linear ? [] : [idref])));
   // Upstream's checks of each item after reading the resources, in manifest order:
@@ -394,7 +412,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   //   load it, unless a script might fetch it (RSC-006);
   // - an item outside the spine needs a reference that uses it (OPF-097);
   // - a non-linear spine item needs a hyperlink, or perhaps a script (OPF-096).
-  for (const item of opf.version === "3" ? byId.values() : []) {
+  for (const item of opf.version === "3" ? registered(opf) : []) {
     const href = item.href.trim();
     const remote = item.path === undefined && href !== "" && !/^data:/i.test(href);
     const type = item.mediaType;

@@ -27,7 +27,7 @@ const CONFLICTING_TAGS = [
 ] as const;
 
 // Upstream's URISchemes, the schemes a remote link may use without HTM-025.
-const REGISTERED_SCHEMES = new Set([
+export const REGISTERED_SCHEMES = new Set([
   "aaa",
   "aaas",
   "acap",
