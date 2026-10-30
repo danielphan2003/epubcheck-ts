@@ -492,19 +492,99 @@ export const fromCss = (css: string, path: string, context: Context, offset = 0)
   return { references, findings, remote };
 };
 
-// `@font-face` rules of a style sheet: the font family and the URLs of its sources.
-export const fontFaces = (css: string) =>
-  [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/@font-face\s*\{([^}]*)\}/gi)].map((match) => {
-    const body = match[1] ?? "";
-    const family = /font-family\s*:\s*([^;]+)/i
-      .exec(body)?.[1]
-      ?.trim()
-      .replace(/^(["'])(.*)\1$/, "$2");
-    const urls = [...body.matchAll(/url\(\s*(["']?)([^"')]*?)\1\s*\)/gi)].map(
-      (url) => url[2] ?? "",
-    );
-    return { family, urls };
+// Where a quoted string that starts at `start` ends, past its closing quote.
+const stringEnd = (text: string, start: number) => {
+  const quote = text[start];
+  let index = start + 1;
+  while (index < text.length && text[index] !== quote && text[index] !== "\n") {
+    index += text[index] === "\\" ? 2 : 1;
+  }
+  return Math.min(index + 1, text.length);
+};
+
+// The text of the block that starts at `start`, up to its closing brace.
+const blockAt = (text: string, start: number) => {
+  let depth = 0;
+  for (let index = start; index < text.length; index++) {
+    const char = text[index];
+    if (char === '"' || char === "'") index = stringEnd(text, index) - 1;
+    else if (char === "{") depth++;
+    else if (char === "}" && depth-- === 0) return text.slice(start, index);
+  }
+  return text.slice(start);
+};
+
+// `text` split at `separator` outside strings and parentheses.
+const splitOutside = (text: string, separator: string) => {
+  const parts: Array<string> = [];
+  let depth = 0;
+  let from = 0;
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (char === '"' || char === "'") index = stringEnd(text, index) - 1;
+    else if (char === "(") depth++;
+    else if (char === ")") depth = Math.max(0, depth - 1);
+    else if (char === separator && depth === 0) {
+      parts.push(text.slice(from, index));
+      from = index + 1;
+    }
+  }
+  parts.push(text.slice(from));
+  return parts;
+};
+
+// A value's first component, as written: a string with its quotes, or a word.
+const firstComponent = (value: string | undefined) => {
+  if (value === undefined || value === "") return undefined;
+  if (value.startsWith('"') || value.startsWith("'")) return value.slice(0, stringEnd(value, 0));
+  return /^[^\s,]+/.exec(value)?.[0];
+};
+
+// The `@font-face` rules of a style sheet, as upstream's CSS handler reads them: the first
+// component of `font-family`, `font-style` and `font-weight` as written, and the URLs of `src`.
+export const fontFaces = (css: string) => {
+  // Comments go, strings stay; positions no longer matter.
+  let text = "";
+  for (let index = 0; index < css.length;) {
+    const char = css[index] ?? "";
+    if (char === "/" && css[index + 1] === "*") {
+      const close = css.indexOf("*/", index + 2);
+      index = close < 0 ? css.length : close + 2;
+    } else if (char === '"' || char === "'") {
+      const end = stringEnd(css, index);
+      text += css.slice(index, end);
+      index = end;
+    } else {
+      text += char;
+      index++;
+    }
+  }
+  return [...text.matchAll(/@font-face\s*\{/gi)].map((match) => {
+    const body = blockAt(text, match.index + match[0].length);
+    const declarations = new Map<string, string>();
+    for (const declaration of splitOutside(body, ";")) {
+      const colon = declaration.indexOf(":");
+      if (colon < 0) continue;
+      const name = declaration.slice(0, colon).trim().toLowerCase();
+      declarations.set(
+        name,
+        declaration
+          .slice(colon + 1)
+          .replace(/!\s*important\s*$/i, "")
+          .trim(),
+      );
+    }
+    const src = declarations.get("src") ?? "";
+    return {
+      family: firstComponent(declarations.get("font-family")),
+      style: firstComponent(declarations.get("font-style")),
+      weight: firstComponent(declarations.get("font-weight")),
+      urls: [...src.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^)\s]*))\s*\)/gi)].map(
+        (url) => url[1] ?? url[2] ?? url[3] ?? "",
+      ),
+    };
   });
+};
 
 // The URLs an SVG element links to: `xlink:href` in EPUB 2, and `href` too in EPUB 3.
 const svgHrefs = (element: Xml.XmlElement, epub3: boolean) => {

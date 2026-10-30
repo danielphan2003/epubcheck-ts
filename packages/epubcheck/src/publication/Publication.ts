@@ -9,7 +9,7 @@ import * as Ncx from "../ncx/Ncx.ts";
 import * as MediaOverlays from "../overlays/MediaOverlays.ts";
 import type * as Container from "../ocf/Container.ts";
 import * as OcfChecker from "../ocf/OcfChecker.ts";
-import type { ManifestItem, PackageDocument } from "../opf/PackageDocument.ts";
+import type { Collection, ManifestItem, PackageDocument } from "../opf/PackageDocument.ts";
 import * as Collect from "../references/Collect.ts";
 import * as Profiles from "../profiles/Profiles.ts";
 import * as ReferenceChecker from "../references/ReferenceChecker.ts";
@@ -17,6 +17,10 @@ import * as Url from "../references/Url.ts";
 import * as Report from "../report/Report.ts";
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as Xml from "../xml/Xml.ts";
+import * as Summary from "./Summary.ts";
+
+const XHTML_NS = "http://www.w3.org/1999/xhtml";
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 const reportFindings = Effect.fn("Publication.reportFindings")(function* (
   findings: ReadonlyArray<Collect.Finding>,
@@ -104,6 +108,8 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
   const narrators = new Map<string, string>();
   const references: Array<Collect.Reference> = [];
   let scripts = false;
+  // Characters in the content documents, which upstream's reports count.
+  let characters = 0;
   const positions = new Map<string, ReadonlyMap<string, number>>();
   const overlays: Array<{
     readonly item: ManifestItem;
@@ -226,6 +232,15 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
     }
     const collected = Collect.fromDocument(document.value, item.path, context);
     references.push(...collected.references);
+    const elements = [document.value.root, ...Xml.descendants(document.value.root)];
+    for (const element of elements) {
+      for (const child of element.children)
+        if (child.kind === "text") characters += child.text.length;
+      // Inline style sheets declare fonts too.
+      if ((element.ns === XHTML_NS || element.ns === SVG_NS) && element.local === "style") {
+        styleSheets.push({ path: item.path, css: Xml.textContent(element) });
+      }
+    }
     ids.set(nfc(item.path), Collect.ids(document.value));
     yield* reportFindings(collected.findings);
     if (collected.features.scripts) scripts = true;
@@ -297,8 +312,7 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       }
     }
   }
-  const result = ReferenceChecker.check(references, publication);
-  yield* reportFindings(result.findings);
+  yield* reportFindings(ReferenceChecker.check(references, publication));
   if (opf.version === "3") {
     yield* reportFindings(MediaOverlays.styleFindings(opf.metadata, documents));
     yield* reportFindings(
@@ -339,34 +353,50 @@ export const checkResources = Effect.fn("Publication.checkResources")(function* 
       yield* report.message("OPF-078", Report.location(opf.path));
     }
   }
-  // Fonts declared by `@font-face` rules, embedded or remote, for the reports.
-  const embeddedFonts = new Set<string>();
-  const remoteFonts = new Set<string>();
-  for (const { css } of styleSheets) {
-    for (const face of Collect.fontFaces(css)) {
-      if (face.family === undefined || face.urls.length === 0) continue;
-      if (face.urls.some((url) => /^https?:/i.test(url))) remoteFonts.add(face.family);
-      else embeddedFonts.add(face.family);
-    }
-  }
+  // Every reference counts, before any check, and so do the package document's links.
+  const linkUrls = Url.checker(opf.path, { container: true });
+  const links = [...opf.links, ...collectionLinks(opf.collections)].flatMap(({ href }) => {
+    const resolved = linkUrls.check(href).resolved;
+    // Upstream registers no data URL, and no link to a part of the package document (OPF-098).
+    const self =
+      resolved?.target.kind === "local" &&
+      resolved.target.path === opf.path &&
+      (resolved.fragment ?? "") !== "";
+    return resolved === undefined || resolved.target.kind === "data" || self
+      ? []
+      : [{ from: opf.path, to: Summary.referenceName(resolved) }];
+  });
   return {
     scripted: new Set(
       documents.filter((document) => document.features.scripts).map((document) => document.path),
     ),
-    targets: result.targets,
-    embeddedFonts: [...embeddedFonts],
-    remoteFonts: [...remoteFonts],
+    references: [
+      ...references.map((reference) => ({
+        from: reference.path,
+        to: Summary.referenceName(reference),
+      })),
+      ...links,
+    ],
+    fonts: styleSheets.flatMap(({ path, css }) => Summary.fonts(css, path)),
+    characters,
   } satisfies Resources;
 });
 
 // What the reports need from a checked publication's resources.
 export interface Resources {
   readonly scripted: ReadonlySet<string>;
-  // What each resource references: container paths and remote URLs.
-  readonly targets: ReadonlyMap<string, ReadonlyArray<string>>;
-  readonly embeddedFonts: ReadonlyArray<string>;
-  readonly remoteFonts: ReadonlyArray<string>;
+  // Each reference, from the referencing document to its target as upstream names it.
+  readonly references: ReadonlyArray<{ readonly from: string; readonly to: string }>;
+  readonly fonts: ReadonlyArray<{ readonly embedded: boolean; readonly name: string }>;
+  readonly characters: number;
 }
+
+// The links of collections, nested ones included; annotated, as it is recursive.
+const collectionLinks = (collections: PackageDocument["collections"]): Collection["links"] =>
+  collections.flatMap((collection) => [
+    ...collection.links,
+    ...collectionLinks(collection.collections),
+  ]);
 
 // A single content document: references need a publication, so only its URLs are checked.
 export const checkDocumentReferences = Effect.fn("Publication.checkDocumentReferences")(function* (

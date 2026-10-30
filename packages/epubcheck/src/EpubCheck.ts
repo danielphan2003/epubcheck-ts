@@ -56,8 +56,6 @@ export type Override = NonNullable<CheckRequest["overrides"]>[string];
 export interface PublicationInfo {
   readonly version: EpubVersion;
   readonly metadata: PackageDocument.Metadata | undefined;
-  // The first rendition's resources, when its package document could be read.
-  readonly summary: Summary.PublicationSummary | undefined;
 }
 
 export interface CheckResult {
@@ -65,6 +63,8 @@ export interface CheckResult {
   readonly mode: CheckMode;
   // What the package document declares, when the publication's version could be read.
   readonly publication?: PublicationInfo | undefined;
+  // What upstream's reports describe of the publication and its files, once its container opens.
+  readonly summary?: Summary.PublicationSummary | undefined;
   // When the container was made, and its `mimetype`, as upstream's XML reports state them.
   readonly created?: string | undefined;
   readonly formatName?: string | undefined;
@@ -112,11 +112,21 @@ const make = Effect.gen(function* () {
     const exists = yield* fs.exists(target).pipe(Effect.orElseSucceed(() => false));
     if (!exists) {
       yield* report.message("PKG-018", Report.location(path.basename(target)));
-      return { publication: undefined, created: undefined, formatName: undefined };
+      return {
+        publication: undefined,
+        created: undefined,
+        formatName: undefined,
+        summary: undefined,
+      };
     }
     const ocf = yield* OcfChecker.check(target, profile);
     if (Option.isNone(ocf)) {
-      return { publication: undefined, created: undefined, formatName: undefined };
+      return {
+        publication: undefined,
+        created: undefined,
+        formatName: undefined,
+        summary: undefined,
+      };
     }
     const { created } = ocf.value.container;
     const { formatName } = ocf.value;
@@ -124,7 +134,10 @@ const make = Effect.gen(function* () {
     // Upstream counts files container.xml declares, manifest items with an ID (the last of each
     // ID) and no fragment, and the files EPUB 3 package metadata links to.
     const declared = new Set(ocf.value.declared.map((file) => file.normalize("NFC")));
-    let summary: Summary.PublicationSummary | undefined;
+    const renditions: Array<{
+      readonly opf: PackageDocument.PackageDocument;
+      readonly resources: Publication.Resources;
+    }> = [];
     for (const packageDocument of ocf.value.packageDocuments) {
       const bytes = yield* OcfChecker.readResource(ocf.value.container, packageDocument.path);
       if (Option.isNone(bytes)) continue;
@@ -148,10 +161,11 @@ const make = Effect.gen(function* () {
         opfResult.value,
         packageDocument.profile,
       );
-      summary ??= yield* Summary.summarize(ocf.value.container, opfResult.value, resources);
+      renditions.push({ opf: opfResult.value, resources });
     }
+    const summary = yield* Summary.summarize(ocf.value.container, renditions);
     // Container files no package document declares (OCF files aside) are reported as usages.
-    for (const file of ocf.value.container.files) {
+    for (const file of ocf.value.complete ? ocf.value.container.files : []) {
       if (
         file === "mimetype" ||
         file.startsWith("META-INF/") ||
@@ -169,8 +183,8 @@ const make = Effect.gen(function* () {
     const publication =
       first === undefined
         ? undefined
-        : ({ version: first.version, metadata, summary } satisfies PublicationInfo);
-    return { publication, created, formatName };
+        : ({ version: first.version, metadata } satisfies PublicationInfo);
+    return { publication, created, formatName, summary };
   });
 
   // Single-document modes check one file outside any publication, as upstream's `--mode`.
@@ -211,9 +225,14 @@ const make = Effect.gen(function* () {
       mode === "epub"
         ? checkPublication(target, profile)
         : checkDocument(target, mode, request.version ?? "3", profile).pipe(
-            Effect.as({ publication: undefined, created: undefined, formatName: undefined }),
+            Effect.as({
+              publication: undefined,
+              created: undefined,
+              formatName: undefined,
+              summary: undefined,
+            }),
           );
-    const { publication, created, formatName } = yield* run.pipe(
+    const { publication, created, formatName, summary } = yield* run.pipe(
       Effect.provideService(Report.Report, report),
       Effect.provide(platform),
     );
@@ -221,6 +240,7 @@ const make = Effect.gen(function* () {
       path: target,
       mode,
       publication,
+      summary,
       created,
       formatName,
       messages: yield* report.messages,

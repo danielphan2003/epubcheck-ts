@@ -104,8 +104,6 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
   };
   // Undeclared resources are reported once each.
   const undeclared = new Set<string>();
-  // What each document references, in order and once each, for the reports.
-  const targets = new Map<string, Array<string>>();
   for (const reference of references) {
     const { target, type } = reference;
     // Data URLs are resources of their own, registered with their type normalized, never in the
@@ -165,12 +163,6 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
       }
       continue;
     }
-    if (target.kind === "remote" || publication.files.has(target.path)) {
-      const name = target.kind === "remote" ? target.url : target.path;
-      const list = targets.get(reference.path) ?? [];
-      if (!list.includes(name)) list.push(name);
-      targets.set(reference.path, list);
-    }
     // An overlay link's fragment is checked with the other overlay rules.
     if (type === "overlay-text") continue;
     if (!resourceFindings(reference, item.mediaType, item)) continue;
@@ -216,7 +208,7 @@ export const check = (references: ReadonlyArray<Reference>, publication: Publica
       findings.push(finding(reference, "RSC-012"));
     }
   }
-  return { findings, targets };
+  return findings;
 };
 
 // The item vocabulary, in upstream's order.
