@@ -1,6 +1,7 @@
 import * as MediaTypes from "../resources/MediaTypes.ts";
 import * as Xml from "../xml/Xml.ts";
 import { percentDecode } from "../util/UrlFragment.ts";
+import * as Vocabularies from "./Vocabularies.ts";
 
 // The parts of a package document that other checks need: manifest items and the spine.
 
@@ -51,6 +52,7 @@ export interface SpineItem {
   // Upstream applies an itemref's properties only when its `idref` needs no trimming.
   readonly padded: boolean;
   readonly linear: boolean;
+  // Known properties, by their reserved prefixes.
   readonly properties: ReadonlyArray<string>;
 }
 
@@ -103,15 +105,18 @@ export const read = (
         element,
       };
     });
+  const prefixes = Vocabularies.parsePrefixes(Xml.attribute(document.root, "prefix"));
   const spineItems = (spine === undefined ? [] : Xml.childElements(spine))
     .filter((element) => element.ns === OPF_NS && element.local === "itemref")
     .map((element) => ({
       idref: (Xml.attribute(element, "idref") ?? "").trim(),
       padded: (Xml.attribute(element, "idref") ?? "").trim() !== Xml.attribute(element, "idref"),
       linear: (Xml.attribute(element, "linear") ?? "").trim() !== "no",
-      properties: (Xml.attribute(element, "properties") ?? "")
-        .split(/\s+/)
-        .filter((token) => token !== ""),
+      properties: Vocabularies.canonicalNames(
+        Xml.attribute(element, "properties"),
+        "itemref",
+        prefixes,
+      ),
     }));
   const itemrefs = spineItems.map((itemref) => itemref.idref);
   // Annotated, as it is recursive.

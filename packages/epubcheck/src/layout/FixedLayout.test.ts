@@ -13,7 +13,8 @@ const parse = (source: string) => {
 
 const opf = (layout: string, manifest: string, spine: string) =>
   PackageDocument.read(
-    parse(`<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+    parse(`<package xmlns="http://www.idpf.org/2007/opf" version="3.0"
+      prefix="rend: http://www.idpf.org/vocab/rendition/#">
       <metadata><meta property="rendition:layout">${layout}</meta></metadata>
       <manifest>${manifest}</manifest><spine>${spine}</spine></package>`),
     "EPUB/package.opf",
@@ -50,6 +51,13 @@ describe("FixedLayout", () => {
       manifest: `<item id="c" href="c.xhtml" media-type="application/xhtml+xml"/>`,
       spine: `<itemref idref="c" properties="rendition:layout-roll"/>`,
       fixed: [],
+    },
+    {
+      name: "an aliased rendition prefix",
+      layout: "reflowable",
+      manifest: `<item id="c" href="c.xhtml" media-type="application/xhtml+xml"/>`,
+      spine: `<itemref idref="c" properties="rend:layout-pre-paginated"/>`,
+      fixed: ["c"],
     },
     {
       name: "a padded idref",
