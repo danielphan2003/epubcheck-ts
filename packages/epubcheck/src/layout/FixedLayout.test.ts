@@ -51,6 +51,21 @@ describe("FixedLayout", () => {
       spine: `<itemref idref="c" properties="rendition:layout-roll"/>`,
       fixed: [],
     },
+    {
+      name: "a padded idref",
+      layout: "pre-paginated",
+      manifest: `<item id="c" href="c.xhtml" media-type="application/xhtml+xml"/>`,
+      spine: `<itemref idref=" c "/>`,
+      fixed: [],
+    },
+    {
+      name: "a fallback loop",
+      layout: "pre-paginated",
+      manifest: `<item id="a" href="a.xhtml" media-type="application/xhtml+xml" fallback="b"/>
+        <item id="b" href="b.xhtml" media-type="application/xhtml+xml" fallback="a"/>`,
+      spine: `<itemref idref="a"/>`,
+      fixed: ["a"],
+    },
   ])("finds fixed-layout items in $name", ({ layout, manifest, spine, fixed }) => {
     expect([...FixedLayout.fixedLayoutIds(opf(layout, manifest, spine))]).toEqual(fixed);
   });

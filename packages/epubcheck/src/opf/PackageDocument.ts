@@ -34,8 +34,8 @@ export interface Metadata {
   readonly date: string | undefined;
   readonly modified: string | undefined;
   readonly types: ReadonlyArray<string>;
-  // The global `rendition:layout` value.
-  readonly layout: string | undefined;
+  // The global `rendition:layout` values: those of metas that refine nothing.
+  readonly layouts: ReadonlyArray<string>;
 }
 
 // A `collection` element (EPUB 3): its roles, its own links, and the collections nested in it.
@@ -48,6 +48,8 @@ export interface Collection {
 
 export interface SpineItem {
   readonly idref: string;
+  // Upstream applies an itemref's properties only when its `idref` needs no trimming.
+  readonly padded: boolean;
   readonly linear: boolean;
   readonly properties: ReadonlyArray<string>;
 }
@@ -105,6 +107,7 @@ export const read = (
     .filter((element) => element.ns === OPF_NS && element.local === "itemref")
     .map((element) => ({
       idref: (Xml.attribute(element, "idref") ?? "").trim(),
+      padded: (Xml.attribute(element, "idref") ?? "").trim() !== Xml.attribute(element, "idref"),
       linear: (Xml.attribute(element, "linear") ?? "").trim() !== "no",
       properties: (Xml.attribute(element, "properties") ?? "")
         .split(/\s+/)
@@ -161,10 +164,11 @@ const readMetadata = (
   const identifier =
     identifiers.find((element) => Xml.attribute(element, "id")?.trim() === uniqueIdentifier) ??
     identifiers[0];
-  const layout = elements.find(
+  const layouts = elements.filter(
     (element) =>
       element.ns === OPF_NS &&
       element.local === "meta" &&
+      Xml.attribute(element, "refines") === undefined &&
       Xml.attribute(element, "property")?.trim() === "rendition:layout",
   );
   const modified = elements.find(
@@ -185,7 +189,7 @@ const readMetadata = (
     language: values("language")[0],
     date: values("date")[0],
     types: values("type"),
-    layout: layout === undefined ? undefined : Xml.textContent(layout).trim(),
+    layouts: layouts.map((element) => Xml.textContent(element).trim()),
     modified: modified === undefined ? undefined : Xml.textContent(modified).trim(),
   };
 };

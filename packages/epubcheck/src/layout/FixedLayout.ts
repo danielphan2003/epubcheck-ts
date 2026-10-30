@@ -11,21 +11,34 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 
 // Upstream's OPFHandler30.processItemrefProperties: the legacy `roll` layout is fixed whatever the
 // itemref says, and `pre-paginated` is unless the itemref is reflowable.
-export const isFixed = (itemref: SpineItem, layout: string | undefined) =>
-  layout === "roll" ||
-  (layout === "pre-paginated" && !itemref.properties.includes("rendition:layout-reflowable")) ||
+export const isFixed = (itemref: SpineItem, layouts: ReadonlyArray<string>) =>
+  layouts.includes("roll") ||
+  (layouts.includes("pre-paginated") &&
+    !itemref.properties.includes("rendition:layout-reflowable")) ||
   itemref.properties.includes("rendition:layout-pre-paginated");
 
 // IDs of fixed-layout items: spine items with a fixed itemref, and the direct fallback of each.
-// Upstream's FallbackChainResolver passes the property down one level only.
+// Upstream's FallbackChainResolver passes the property down one level only, and not into a chain
+// that never resolves because it loops.
 export const fixedLayoutIds = (opf: PackageDocument) => {
   const byId = new Map(opf.items.map((item) => [item.id, item] as const));
+  const resolves = (id: string) => {
+    const seen = new Set<string>();
+    for (let item = byId.get(id); item !== undefined; item = byId.get(item.fallback ?? "")) {
+      if (seen.has(item.id)) return false;
+      seen.add(item.id);
+      if (item.fallback === undefined) return true;
+    }
+    return true;
+  };
   const ids = new Set<string>();
   for (const itemref of opf.spineItems) {
     const item = byId.get(itemref.idref);
-    if (item === undefined || !isFixed(itemref, opf.metadata.layout)) continue;
+    if (item === undefined || itemref.padded || !isFixed(itemref, opf.metadata.layouts)) continue;
     ids.add(item.id);
-    if (item.fallback !== undefined && byId.has(item.fallback)) ids.add(item.fallback);
+    if (item.fallback !== undefined && byId.has(item.fallback) && resolves(item.fallback)) {
+      ids.add(item.fallback);
+    }
   }
   return ids;
 };
