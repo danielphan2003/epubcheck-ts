@@ -40,6 +40,31 @@ jobs:
       - name: Test
         run: vp run test
 
+  # Packs the tarball the release would publish and installs it into an empty project,
+  # so a packaging break fails the pull request instead of the release.
+  release_smoke:
+    name: Release smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          node-version-file: package.json
+          cache: true
+
+      - name: Pack
+        working-directory: packages/epubcheck
+        run: |
+          mkdir -p "$RUNNER_TEMP/tarball"
+          pnpm pack --out "$RUNNER_TEMP/tarball/epubcheck-ts.tgz"
+
+      - name: Install and run the tarball in an empty project
+        run: node scripts/smoke-tarball.ts --tarball "$RUNNER_TEMP/tarball/epubcheck-ts.tgz"
+
   conformance:
     name: Conformance
     runs-on: ubuntu-latest

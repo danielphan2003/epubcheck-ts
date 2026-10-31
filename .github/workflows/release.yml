@@ -1,0 +1,282 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release from main, for example 0.2.0 or 0.2.0-rc.1. The tag is created when the release is published."
+        required: true
+        type: string
+
+# One release at a time. A running release is never canceled, and queue: max keeps every
+# pending run instead of the default newest-wins single slot, so a queued tag is never dropped.
+concurrency:
+  group: release
+  cancel-in-progress: false
+  queue: max
+
+permissions:
+  contents: read
+  id-token: none
+
+jobs:
+  # Picks the commit and version every later job uses. A tag builds exactly the tagged commit;
+  # a manual run builds main's HEAD. Either way the commit must be on main.
+  preflight:
+    name: Preflight
+    if: github.repository == 'danielphan2003/epubcheck-ts'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      ref: ${{ steps.commit.outputs.ref }}
+      version: ${{ steps.release_meta.outputs.version }}
+      tag: ${{ steps.release_meta.outputs.tag }}
+      is_prerelease: ${{ steps.release_meta.outputs.is_prerelease }}
+      make_latest: ${{ steps.release_meta.outputs.make_latest }}
+      previous_tag: ${{ steps.release_meta.outputs.previous_tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - id: commit
+        name: Resolve release commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" && "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Manual releases must run from main, not $GITHUB_REF." >&2
+            exit 1
+          fi
+          ref="$(git rev-parse HEAD)"
+          if ! git merge-base --is-ancestor "$ref" origin/main; then
+            echo "$ref is not on main. Release only commits that have landed." >&2
+            exit 1
+          fi
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          node-version-file: package.json
+          cache: true
+
+      - id: release_meta
+        name: Resolve release version
+        env:
+          RAW_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}
+        run: node scripts/resolve-release.ts --version "$RAW_VERSION" --github-output
+
+      - name: Refuse a version that is already released
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ steps.release_meta.outputs.tag }}
+        run: |
+          if git rev-parse --verify --quiet "refs/tags/$TAG" > /dev/null; then
+            echo "$TAG already exists." >&2
+            exit 1
+          fi
+
+  quality:
+    name: Release quality checks
+    needs: [preflight]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          node-version-file: package.json
+          cache: true
+
+      - name: Format
+        run: vp run fmt:check
+
+      - name: Lint
+        run: vp run lint
+
+      - name: Typecheck
+        run: vp run typecheck
+
+  # Same suites as ci.yml; keep the two in sync.
+  test:
+    name: Release tests
+    needs: [preflight]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          node-version-file: package.json
+          cache: true
+
+      - name: Test
+        run: vp run test
+
+  # The committed score must match what this commit actually passes.
+  conformance:
+    name: Release conformance
+    needs: [preflight]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          node-version-file: package.json
+          cache: true
+
+      - name: Check conformance score
+        run: node conformance/src/bin.ts check
+
+  # The tarball is built once here; the smoke test and the release use these exact bytes.
+  pack:
+    name: Pack tarball
+    needs: [preflight]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          node-version-file: package.json
+          cache: true
+
+      # The repository keeps 0.0.0; only the packed manifest carries the release version.
+      - name: Align package version to release version
+        working-directory: packages/epubcheck
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: npm pkg set version="$VERSION"
+
+      - name: Pack
+        working-directory: packages/epubcheck
+        run: |
+          mkdir -p "$RUNNER_TEMP/tarball"
+          pnpm pack --out "$RUNNER_TEMP/tarball/epubcheck-ts-%v.tgz"
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@v7
+        with:
+          name: tarball
+          path: ${{ runner.temp }}/tarball/epubcheck-ts-${{ needs.preflight.outputs.version }}.tgz
+          if-no-files-found: error
+          retention-days: 7
+
+  smoke:
+    name: Smoke test tarball
+    needs: [preflight, pack]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.preflight.outputs.ref }}
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.22.0
+        with:
+          node-version-file: package.json
+          cache: true
+
+      - name: Download tarball
+        uses: actions/download-artifact@v8
+        with:
+          name: tarball
+          path: ${{ runner.temp }}/tarball
+
+      - name: Install and run the tarball in an empty project
+        run: node scripts/smoke-tarball.ts --tarball "$RUNNER_TEMP/tarball/epubcheck-ts-${{ needs.preflight.outputs.version }}.tgz"
+
+  release:
+    name: Publish GitHub Release
+    needs: [preflight, quality, test, conformance, pack, smoke]
+    if: ${{ !failure() && !cancelled() && needs.preflight.result == 'success' && needs.quality.result == 'success' && needs.test.result == 'success' && needs.conformance.result == 'success' && needs.pack.result == 'success' && needs.smoke.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      # Generated release notes read PR titles and authors.
+      pull-requests: read
+    steps:
+      - name: Download tarball
+        uses: actions/download-artifact@v8
+        with:
+          name: tarball
+          path: release-assets
+
+      # Consumers verify the tarball against this file, so it is written from the bytes that
+      # get uploaded, never from an earlier stage.
+      - name: Write checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          shopt -s nullglob
+          tarballs=(epubcheck-ts-*.tgz)
+          if [[ ${#tarballs[@]} -ne 1 ]]; then
+            echo "Expected exactly one tarball, found ${#tarballs[@]}." >&2
+            exit 1
+          fi
+          sha256sum "${tarballs[@]}" > SHA256SUMS
+          cat SHA256SUMS
+
+      # Release notes are pinned to the previous release tag.
+      - name: Publish release
+        if: needs.preflight.outputs.previous_tag != ''
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.preflight.outputs.tag }}
+          target_commitish: ${{ needs.preflight.outputs.ref }}
+          name: epubcheck-ts ${{ needs.preflight.outputs.tag }}
+          generate_release_notes: true
+          previous_tag: ${{ needs.preflight.outputs.previous_tag }}
+          prerelease: ${{ needs.preflight.outputs.is_prerelease }}
+          make_latest: ${{ needs.preflight.outputs.make_latest }}
+          files: |
+            release-assets/epubcheck-ts-*.tgz
+            release-assets/SHA256SUMS
+          fail_on_unmatched_files: true
+          token: ${{ github.token }}
+
+      - name: Publish first release
+        if: needs.preflight.outputs.previous_tag == ''
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.preflight.outputs.tag }}
+          target_commitish: ${{ needs.preflight.outputs.ref }}
+          name: epubcheck-ts ${{ needs.preflight.outputs.tag }}
+          generate_release_notes: true
+          prerelease: ${{ needs.preflight.outputs.is_prerelease }}
+          make_latest: ${{ needs.preflight.outputs.make_latest }}
+          files: |
+            release-assets/epubcheck-ts-*.tgz
+            release-assets/SHA256SUMS
+          fail_on_unmatched_files: true
+          token: ${{ github.token }}

@@ -9,3 +9,5 @@ dist/
 .plans/
 # Reference EPUBCheck jar and its cached reports (downloaded by scripts/fetch-epubcheck-jar.ts).
 .cache
+packages/epubcheck/LICENSE
+packages/epubcheck/THIRD_PARTY_NOTICES.md
